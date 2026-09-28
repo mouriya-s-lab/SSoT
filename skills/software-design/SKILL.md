@@ -7,7 +7,7 @@ description: 软件设计导读：按 C4 层级（系统上下文 / container / 
 
 设计阶段在设计的是**决定**，不是组件清单：责任怎么分、边界在哪、接口承诺什么、为什么这样而不是那样、怎么证明它满足要求。IEEE 1016 定义设计为"a conceptualization of a design subject"，必须"demonstrates a means of fulfilling requirements, supports analysis and evaluation"；Kruchten 压缩为 `Architecture = {Elements, Forms, Rationale/Constraints}`。三者缺一就是笔记，不是设计。
 
-本 skill 按阶段 0–7 引导思考与验证，后续决定必须能追溯到前面的需求与理由，走查发现问题时回到相应阶段修正。阶段不是文件划分，也不是必须逐项照搬的章节模板。文件划分只看 C4 层级：**每份文档描述一个元素在一个层级上的设计，并在其中完成该层的完整论证**（见「文档形态」）；不按功能、阶段、视图或读者拆分。出处在 [references/sources.md](references/sources.md)。
+本 skill 按阶段 0–7 引导思考与验证，后续决定必须能追溯到前面的需求与理由，走查发现问题时回到相应阶段修正。阶段不是文件划分，也不是必须逐项照搬的章节模板。文件划分只看 C4 层级：**每份文档描述一个元素在一个层级上的设计，并在其中完成该层的完整论证**（见「文档形态」）；不按功能、阶段、视图或读者拆分。
 
 ## 总体
 

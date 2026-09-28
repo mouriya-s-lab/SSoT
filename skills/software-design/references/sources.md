@@ -45,13 +45,13 @@
 
 - ATAM，§7：risks / non-risks / sensitivity points / tradeoff points；输出是风险清单不是"通过"。
 - Ubl, M. "Design Docs at Google." industrialempathy.com：`Alternatives considered` 的地位；"an implementation manual with no trade-offs or alternatives is a sign that a design doc may not be worthwhile"；原型与微基准。
-- Rust RFC 模板：`Rationale and alternatives` / `Drawbacks` / `Prior art` / `Unresolved questions`。
+- Rust RFC 模板：`Rationale and alternatives` / `Drawbacks` / `Prior art`。
 - Kubernetes KEP 模板：`Non-Goals` / `Drawbacks` / `Alternatives` / Production Readiness Review。
 - Keeling, M. *Design It!*：设计活动中的选项比较与风险暴露。
 
 ## 阶段 7 维护
 
-- Parnas & Clements §VI–VII：文档按问题组织、每个事实一处、失效即更新。
+- Parnas & Clements §VI–VII：文档按问题组织、每个事实一处、失效即更新；文档呈现理想化的理性设计过程（"fake it"），不记录实际走过的试错。
 
 ## 行业模板（文档形态）
 

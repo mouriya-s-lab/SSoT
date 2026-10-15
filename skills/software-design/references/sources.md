@@ -1,51 +1,50 @@
 # 出处
 
-按 SKILL.md 各节列出所依据的来源，供核对论据。这里只说明每条规则从哪里来；设计文档不需要引用这些来源，也不按来源组织。
+本节区分文献原则与本 skill 的工程选择。文献支持设计写法，不声称这些作者规定了本 DSL 的具体类型或检查算法。设计作者不需要按来源组织文档。
 
-## 设计是什么
+## 设计与实现
 
-- Brooks, F. *The Mythical Man-Month*, ch. 4：架构说明发生什么，实现说明怎样让它发生（"architecture tells what happens, implementation tells how it is made to happen"）。据此把组合成整体与逐情形的处理划给实现。
-- Parnas, D. L. (1972). "On the Criteria To Be Used in Decomposing Systems into Modules." *CACM* 15(12)：模块隐藏的决定可以在接口不变时改变。据此把"在连接不变时可以替换的做法"定为实现。
-- Lamport, L. (2015). "Who Builds a Skyscraper without Drawing Blueprints?" *CACM* 58(4)：规格写在代码之上的抽象层，省略实现细节。
-- Parnas, D. L., Clements, P. C. (1986). "A Rational Design Process: How and Why to Fake It." *IEEE TSE* SE-12(2)：文档呈现当前的设计，不记录试错过程。
+- Brooks, F. *The Mythical Man-Month*, ch. 4：架构说明发生什么，实现说明怎样让它发生。这个区分支持省略兑现接口的可替换做法；把组合根与逐情形处理排除在本 skill 的设计交付之外，是本 skill 的边界选择。
+- Parnas, D. L. (1972). “On the Criteria To Be Used in Decomposing Systems into Modules.” *CACM* 15(12)：模块隐藏的决定可以在接口不变时改变。本 skill 以“连接不变时可替换”划分设计与实现。
+- Lamport, L. (2015). “Who Builds a Skyscraper without Drawing Blueprints?” *CACM* 58(4)：规格在实现之上描述抽象，省略实现细节。
+- Parnas, D. L., Clements, P. C. (1986). “A Rational Design Process: How and Why to Fake It.” *IEEE TSE* SE-12(2)：文档呈现当前设计，不记录试错历史。
 
-## 骨架与优先级
+## 骨架与两条轴
 
-- Perry, D. E., Wolf, A. L. (1992). "Foundations for the Study of Software Architecture." *ACM SIGSOFT SEN* 17(4)：`Architecture = {Elements, Form, Rationale}`，对应骨架的三问：由什么组成、用什么组成、为什么。
-- Kruchten, P. (1995). "The 4+1 View Model of Architecture." *IEEE Software* 12(6)：沿用同一公式；进程视图与物理视图中部件运行在哪里、随谁部署，是与模块分解不同的投影。据此用 `Scope` 单独表达包含，模块树不代表任何包含。
-- Booch, G. (2006). "On Architecture." *IEEE Software*：架构是一组重要决定，必须保持可见。据此把骨架与业务分开写。
+- Perry, D. E., Wolf, A. L. (1992). “Foundations for the Study of Software Architecture.” *ACM SIGSOFT SEN* 17(4)：Elements、Form、Rationale 支持骨架的组成、连接与理由三问。
+- Kruchten, P. (1995). “The 4+1 View Model of Architecture.” *IEEE Software* 12(6)：模块、进程、物理结构是不同投影，关键场景用来走查架构。本 skill 用独立 Scope 表达包含，不将目录树当成部署或存续分组。
+- Booch, G. (2006). “On Architecture.” *IEEE Software*：架构的重要决定需要保持可见；本 skill 据此优先展示骨架，而非把业务细节混入其中。
+- Parnas (1972)：按隐藏的困难或可变决定划分模块。本 skill 将模块分成外部连接、核心材料、内部设计，不按篇幅或步骤分块。
+- Parnas (1979). “Designing Software for Ease of Extension and Contraction.” *IEEE TSE* SE-5(2)，以及 Parnas、Clements、Weiss (1985). “The Modular Structure of Complex Systems.”：模块指南与 uses 层次支持抽象分解与清晰依赖。只检查已声明组合的同层绑定环、不枚举未绑定候选组合，是本工具对可判定范围的明确选择。
 
-## 两条轴
+## 类型语言与语义读取
 
-- Parnas, D. L. (1972)，出处见「设计是什么」：按难的或会变的决定划分模块，模块向外只暴露接口。据此划出外部连接、核心代码、内部设计，并只按抽象划分模块。
-- Parnas, D. L. (1979). "Designing Software for Ease of Extension and Contraction." *IEEE TSE* SE-5(2)：uses 关系必须无环、分层，依赖只指向接口。据此规定模块只使用自己与祖先的核心元素、模块依赖不成环。
-- Parnas, Clements, Weiss (1985). "The Modular Structure of Complex Systems."：模块指南按层级组织，与抽象层级这条轴对应。
+- Fowler, M. (2010). *Domain-Specific Languages*：内部 DSL 可以借宿主语法与检查器。本 skill 借 TypeScript 约束局部类型构造，不再自行解释 TS 表面语法。
+- Minsky, Y. “Effective ML”：使非法状态不可表达。本 skill 用闭合和类型、必填说明、显式 Fact/Follow/Selection 与规格键约束表达局部不变量；跨文件关系仍需独立检查。
+- Yallop, J., White, L. (2014). “Lightweight Higher-Kinded Polymorphism.” *FLOPS*，以及 [Effect HKT](https://github.com/Effect-TS/effect/blob/main/packages/effect/src/HKT.ts)：类型构造器编码提供 TypeLambda/this 参数写法的先例。显式 Apply 描述符与先投影参数、只应用一次 HKT 是本 DSL 的选择。
+- [TypeScript Project References](https://www.typescriptlang.org/docs/handbook/project-references.html)：项目引用、composite 与 declaration 支持方向检查。本工具打开根 analysis 项目及所有 leaf 项目，直接读取 source redirect，不调用 build 或 emitter。
+- [TypeScript native API](https://github.com/microsoft/typescript-go/tree/main/internal/api)：当前安装的 TypeScript 包通过 `typescript/unstable/async` 提供 API、snapshot、program、checker。包根入口不暴露 compiler API，不意味着 native API 不存在。实现按实际安装的声明与运行验证使用 async 入口；不固定版本，API 不支持则明确 CompilerUnavailable。
 
-## DSL
+Compiler 负责别名、泛型、HKT、tuple 与项目诊断；resolver 使用其语义 Symbol/Type，拷贝成领域值后释放 session。Babel、打印类型解析与按 import 路径猜身份都不是本工具的语义来源。六类诊断全部收集，semantic 为空不能掩盖 program/config 错误。
 
-- Fowler, M. (2010). *Domain-Specific Languages*：内部 DSL 借用宿主语言的语法与检查器。据此把设计元素写成 TypeScript 类型构造器，由 `tsc` 执行约束。
-- Minsky, Y. "Effective ML."（"make illegal states unrepresentable"）：用类型排除不可能的组合。据此让说明成为必填的类型参数，让成员只能是 DSL 元素。
-- Yallop, J., White, L. (2014). "Lightweight Higher-Kinded Polymorphism." *FLOPS*：在没有原生高阶类型的语言中编码类型构造器。Effect 的 `HKT` 模块以 `TypeLambda` 加 `this` 取参的方式编码高阶类型，是 DSL 载体写法的先例。
-- TypeScript Handbook，"Project References"：一个项目只能看到自己的文件与被引用项目的输出。据此由项目引用强制架构不引用业务。
+## 连接、事实与走查
 
-## 连接
+- Parnas (1972). “A Technique for Software Module Specification with Examples.” *CACM* 15(5)：接口只提供使用者需要的信息。
+- Parnas、Clements (1986)：接口规格包含使用者可观察的不希望发生的事件。本 skill 用 Outcome 表达这些结局，用 Next/Later/Duty 区分下一次调用与最终责任。
+- Liskov, B., Wing, J. (1994). “A Behavioral Notion of Subtyping.” *ACM TOPLAS* 16(6)：可替换性取决于行为规格，不只是签名。本 skill 的 Carrier 与连接定律属于人工语义边界，类型相容不等于允许接入。
+- Cockburn, A. (2000). *Writing Effective Use Cases*：失败扩展与主流程共同说明交互。本 skill 要求正常、失败、中断场景，但有限事实匹配不证明现实覆盖性。
 
-- Parnas, D. L. (1972). "A Technique for Software Module Specification with Examples." *CACM* 15(5)：接口只给出使用者需要的信息。
-- Parnas, D. L., Clements, P. C. (1986)，出处见「设计是什么」：接口规格包含 undesired events，即使用方能观察到的失败。据此要求失败结局是 `Outcome` 中的一支，并由 `Then` 指出恢复要走的操作。
-- Liskov, B., Wing, J. (1994). "A Behavioral Notion of Subtyping." *ACM TOPLAS* 16(6)：可替换性取决于行为规格，不只取决于签名。据此规定准入定律，签名相容不等于可以接入。
+Returned/Occurred、最大义务匹配、静态 Lifecycle、Role 与可选 Binding、一次内存 Graph 均是本 skill 的工程契约，不归因于某篇文献。它们分别避免把发起调用当成功、贪心错配责任、模拟运行值、隐式选提供者与持久派生副本。
 
-## 场景
+## 依据、需求与理由
 
-- Kruchten, P. (1995)，出处见「骨架与优先级」：以关键场景走查架构，走不通就修改架构。
-- Cockburn, A. (2000). *Writing Effective Use Cases*：主流程之外，每个失败分支都是一条扩展。据此要求每种失败结局都有场景。
+- Jackson, M. (2001). *Problem Frames*：区分世界的性质与机器行为；需求是问题域中期望成立的性质，不是机器功能列表。
+- Barbacci, M. et al. (2003). *Quality Attribute Workshops (QAWs), Third Edition*. CMU/SEI-2003-TR-016：环境、刺激、响应与响应度量支持可观察质量要求。
+- Nygard, M. (2011). “Documenting Architecture Decisions.”：决定与背景、后果放在一起。
+- Ubl, M. [“Design Docs at Google”](https://www.industrialempathy.com/posts/design-docs-at-google/)：可信替代与取舍是设计说明的一部分。本 skill 只在有真实替代时要求说明，而不制造固定模板的虚假选项。
 
-## 依据与理由
+## Markdown 与运行时视图
 
-- Jackson, M. (2001). *Problem Frames*：区分世界中系统不能设计的性质与系统本身；需求是期望在问题域中成立的性质，不是机器的功能列表。依据中的外部事实与业务单元的「需求」沿用这一区分。
-- Barbacci, M. et al. (2003). *Quality Attribute Workshops (QAWs), Third Edition*. CMU/SEI-2003-TR-016：质量场景由刺激、环境、响应与响应度量等要素组成。依据中的质量要求沿用其中的环境、刺激、响应、度量四项。
-- Nygard, M. (2011). "Documenting Architecture Decisions."：决定与其背景、后果写在一起。
-- Ubl, M. "Design Docs at Google." industrialempathy.com：可信替代与取舍是设计文档的必要内容。据此规定确实存在可信替代时写一句为什么不选。
+[CommonMark](https://spec.commonmark.org/) 与 [mdast-util-from-markdown](https://github.com/syntax-tree/mdast-util-from-markdown) 提供真实 Markdown 语法树。工具只检查节点结构、链接与符号引用，不从正则片段推断语义，也不把代码/HTML 当正文规则。
 
-## 脚本
-
-- `scripts/design.ts` 用 Babel 解析器（`@babel/parser` 的 TypeScript 插件）读取设计类型、抽取设计图，用 TypeScript 编译器构建项目。npm 上 TypeScript 7 的包不再提供 JavaScript 编译器 API，所以语法树由 Babel 提供。
+Graph 子 skill 复用父验证结果，使用本次调用的 Map 与有向邻接表，提供 view/search/neighbors/path。stdout 不是持久设计输入，结构路径不是运行证明。自动五阶段成功与 ManualReviewRequired 分开，是本工具的检查边界。

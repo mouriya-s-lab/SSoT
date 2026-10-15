@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@babel/parser": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "mdast-util-from-markdown": "latest",
+    "@types/bun": "latest"
   }
 }

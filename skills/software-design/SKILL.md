@@ -1,307 +1,214 @@
 ---
 name: software-design
-description: 软件设计文档的写法。设计用一套 TypeScript 类型级 DSL 写成：模块、连接点、连接面、结局、生命周期、范围、场景、业务单元都是带说明参数的类型，由 tsc 检查；类型说不清的写成 Markdown。骨架（架构：由什么组成、用什么组成、为什么）先于业务，业务只经连接接入；在连接不变时可以替换的做法属于实现，不写进设计。scripts/design.ts 初始化骨架、检查设计，并从类型导出设计图供检查。用于写、审或重组设计文档、架构方案、RFC；不用于 issue、PR 或实现。
+description: 软件设计文档的写法。设计用带说明的 TypeScript 类型级 DSL 表达，native compiler 检查类型，Markdown 解释类型说不清的语义。骨架（由什么组成、用什么组成、为什么）先于业务，连接不变时可替换的做法属于实现。用于写、审或重组设计、架构方案与 RFC，不用于 issue、PR 或运行实现。读取设计图、搜索、邻域与路径时使用 skill://software-design-graph；父脚本只生成、升级和检查设计。
 ---
 
 # software-design
 
 ## 设计是什么
 
-设计是代码化的文档。设计元素用 DSL 类型写成，由 `tsc` 检查；类型说不清的语义写成 Markdown，作为类型的额外解释。设计的价值是作为参考，并陈述不变量。
+设计是代码化的文档。类型写定义、值的形状、连接与可判定关系；Markdown 写类型说不清的含义。设计的价值是作为参考，并陈述不变量。
 
-设计与实现的界线：
+**在连接不变时可以替换的做法属于实现。** 如果一种做法只规定如何兑现连接，换掉它时连接的类型与定律不变，就不写进设计。组合根、适配器、总入口、完整可运行调用链和为编译通过补的实现不属于设计交付。
 
-- **判据：在连接不变时可以替换的做法属于实现。** 一段内容只规定怎样兑现连接，并且换一种做法时连接的类型与定律都不变，它就是实现，不写进设计。
-- **失败与并发按同一判据划分。** 会改变部件、连接、状态空间，或改变使用方能观察到的承诺的决定属于设计，例如是否承诺恰好一次、"结果未知"是不是一种结局、崩溃后由谁接管。罕见不等于是实现：一个低频事件改变了这些，它就属于设计。
-- **设计不展开逐情形的处理。** 不改变连接、状态空间、不变量和可观察承诺的处理细节属于实现，例如逐项的拒绝原因、编码与字节细节、在既定承诺下选哪种算法。一段细节保护某条不变量时，设计只写这条不变量。
-- **设计不要求组合成整体。** 组合根、适配器、总入口、完整调用链、为编译通过补的实现都属于实现。设计类型只要求本身合法、引用能解析。
+失败与并发也遵守这个判据。恰好一次、结果未知、崩溃后的接手方等会改变状态空间或可观察承诺，属于设计；罕见不等于实现。不改变连接、不变量或可观察承诺的逐项拒绝原因、编码、字节与算法细节不展开，只陈述它保护的不变量。
 
-design 的类型与 src 的类型相互独立。实现可以 import design 类型，也可以用 DSL 的投影（`Shape`、`Signature`、`Implementation`）得到普通 TypeScript 形状，也可以定义自己的类型；本 skill 不规定实现怎样使用 design 类型。design 不依赖 src，因为设计不能随实现改变。
+设计类型与 `src` 类型独立。实现可以 import 设计类型，使用 `Shape`、`Signature`、`Implementation` 投影，或定义自己的类型；skill 不规定实现如何消费设计。设计不依赖 `src`，不随实现的偶然行为改变。
 
 ## 骨架与优先级
 
-骨架就是架构。架构回答三个问题：
+骨架就是架构，必须先回答三问：
 
 1. **由什么组成**：有哪些模块，各是什么，谁在谁里面。
-2. **用什么组成**：模块由哪些核心元素拼成，彼此经由哪些连接相接。
-3. **为什么**：为什么是这些模块和这些材料，依据哪些事实、约束与需求。
+2. **用什么组成**：模块拥有哪些核心材料，经哪些连接相接。
+3. **为什么**：哪些事实、约束、需求证明这些材料与划分。
 
-业务建在骨架上，只经连接接入。架构贴近抽象，业务贴近实现；两者分开写，混在一起时谁都看不出架构是什么样。
+业务建在骨架上，只经连接接入。架构贴近抽象，业务贴近实现，两者分开写。
 
 ```mermaid
 flowchart TB
-    G["依据：外部事实、约束、系统级需求与质量要求"] --> A["架构（骨架）<br/>Module · 连接 · 核心元素 · Scope"]
-    A -->|"连接点 / 连接面"| B["业务：Unit · 需求 · Scenario"]
-    B -.->|"走不通"| A
-    A -.-> X["附录：示例 · 证据 · 实现参考"]
+    G[外部事实、约束与系统级质量要求] --> A[架构：Module、材料、Connection、Scope]
+    A -->|连接契约| B[业务：Unit、需求与场景]
+    B -.->|走不通时审查抽象| A
+    A -.->|示例与证据| X[附录]
 ```
 
-- **依赖方向。** 业务引用架构，架构不引用业务；由项目引用强制，架构项目看不到业务文件。架构里也不得有只为某一个业务单元存在的类型、分支或规则。
-- **架构由需求证明。** 改变骨架的需求与质量要求写进架构的依据，写明来源；架构的依据可以说明它来自哪类业务场景，但架构不引用业务单元的类型。
-- **对不上时判断哪一边错。** 业务在骨架上写不出来，或场景走不通时，判断是业务表达错了、这项业务不属于本系统，还是骨架的抽象不成立，不预设结论。改骨架是单独的决定：写出哪条依据变了，改完后让每个业务单元与场景重新通过检查。
-- **附录不设立规则。** 正文可以指向附录中的证据，附录可以引用正文。
+业务引用架构，架构不得引用业务；独立项目引用检查这个方向。只为某个业务存在的类型、分支与规则不塞进架构。改变骨架的业务需求与质量要求进入架构的依据，注明来源，但不让架构反向引用业务类型。
+
+业务写不出来或场景走不通时，判断是表达错误、不属于本系统，还是骨架抽象不成立。改变骨架是单独决定：指出依据变化，改完后重新检查所有业务与场景。附录只演示或取证，不设规则。
 
 ## 两条轴
 
-抽象层级与模块划分是两条独立的轴。
+抽象层级与模块划分是独立的轴。
 
-- **抽象层级**是架构模块树的深度：`architecture/` 是根模块，每个子目录是一个子模块。父模块粒度粗，子模块粒度细。父模块用 `parts` 列出子模块，可以在 `provides` 里转交子模块提供的连接，作为自己对外的连接；父模块的其他元素不使用子模块的核心元素与连接。`requires` 只写外部需要的连接：本模块或子模块提供的连接不写进 `requires`。
-- **模块划分**是每个模块固定的三部分，不论它在哪一层：
+- **抽象层级**由 architecture 目录树表达。根目录是根 Module，子目录是子 Module；父模块的 parts 恰好列出直接子模块。父模块用 Expose 转交子模块的公开连接，用 public 延续直接子模块的显式材料公开路径。
+- **模块划分**在每一层都保持三部分：外部连接、核心材料、内部设计。
 
-| 部分 | 写在哪里 |
+|部分|表达|
 |---|---|
-| 外部连接 | `Module` 的 `provides` 与 `requires`：本模块提供与需要的连接 |
-| 核心代码 | `Module` 的 `core`：本模块拥有的核心元素，以及定义它们的类型文件 |
-| 内部设计 | `Module` 的 `parts`：由哪些子模块组成；`README.md` 与主题文件：类型说不清的语义 |
+|外部连接|ports 定义归属；provides 声明自身能力；requires 声明外部需要；reexports 声明转交|
+|核心材料|core 列出 Data、Family、Carrier、Event、Lifecycle，类型文件按内容命名|
+|内部设计|parts 列出直接子模块；README 与主题文件解释类型说不清的语义|
 
-模块的划分只按抽象：一组可以对外陈述连接、内部决定可以对其他模块隐藏的元素，成为一个模块。篇幅不是拆分模块的理由。
+模块只按抽象划分：能陈述公开连接、能隐藏内部决定的一组元素成为模块，篇幅不是拆分理由。父模块的外部 requires 不绑定给自己或后代模块。
 
-业务不分三部分。业务单元用 `Unit` 声明它接在哪些连接上、向其他业务单元提供哪些连接、拥有哪些类型。业务单元之间只经连接协作，不直接使用对方的类型。
+业务不分三部分。Unit 用 types、ports、provides、必填 plugsInto 陈述材料与接入，业务之间只随公开连接契约交换材料，不直接共享私有类型。Unit 没有独立 public 旁路。
 
-## DSL
+## DSL 与投影
 
-skill 自带的 `templates/dsl.ts` 由 `init` 复制为设计目录中的 `dsl/dsl.ts`，设计文件不修改它。每个设计元素是一个导出的类型别名，右侧直接是一个 DSL 构造器，第一个参数是这个元素的说明。元素名是整个设计中的唯一标识，文字用元素名指认它。
+[`templates/dsl.ts`](templates/dsl.ts) 包含完整类型签名与投影。init 生成 `design/dsl/dsl.ts`；该受管文件不手改，用 upgrade 更新。泛型、alias、re-export、interface 辅助定义由 native compiler 解释，不限制作者必须直接书写构造器。内联成员不强迫逐个导出。
 
-| 元素 | 写法 | 是什么 |
-|---|---|---|
-| `Value` | `Value<'说明', T>` | 一个带说明的值；`T` 是普通类型或另一个数据元素 |
-| `Opaque` | `Opaque<'说明'>` | 使用方拿不到内部结构的值，表达"不承诺" |
-| `Struct` | `Struct<'说明', { 字段: Value<…> }>` | 一组一起出现的字段 |
-| `Variant` | `Variant<'说明', { 字段 }, [OpRef<…>]>` | 结局中的一支；第三个参数是拿到这一支之后要走的操作 |
-| `Outcome` | `Outcome<'说明', { 名字: Variant<…> }>` | 使用方必须区分处理的几类结局，闭合 |
-| `Op` | `Op<'说明', { 参数: Value<…> }, 结果>` | 一个操作；参数都带说明，结果是 `Value` 或 `Outcome` |
-| `Point` | `Point<'说明', Op<…>, ['定律']>` | 连接点：一个操作，一个接入方 |
-| `Face` | `Face<'说明', '共享的不变量', { 名字: Op<…> }, ['定律']>` | 连接面：共享一条不变量、必须由同一个实现提供的一组操作 |
-| `OpRef` | `OpRef<连接, '操作名'>` | 指向连接上的一个操作；连接点省略操作名 |
-| `External` | `External<'说明'>` | 设计之外的参与方或事件 |
-| `Lifecycle` | `Lifecycle<'说明', 开始锚点, 结束锚点>` | 一段生命周期；锚点是 `OpRef` 或 `External`；说明写由谁确认结束 |
-| `Module` | `Module<'说明', { provides; requires; core; parts }>` | 架构模块 |
-| `Unit` | `Unit<'说明', { plugsInto; provides; types }>` | 业务单元 |
-| `Scope` | `Scope<'说明', 'process' \| 'lifecycle' \| 'trust' \| 'deploy', [被包含者]>` | 一种包含关系中的一个范围；嵌套的范围必须是同一种包含，不同种类的包含各自成树 |
-| `Step` | `Step<参与方, OpRef<…>, '分支'>` | 场景中的一步：参与方调用一个操作，走其中一个结局分支 |
-| `Scenario` | `Scenario<'说明', [Step<…>, …]>` | 沿连接逐步走通的一条路径，包括失败分支 |
+具名节点的身份是 `相对文件路径#声明名`，不要求名称全设计唯一。透明 alias/re-export 引用同一定义，不复制拥有者；独立定义即使字段相同仍各有身份。说明解释是什么，不承担身份。
 
-DSL 的约束由 `tsc` 直接执行：缺说明、成员不是 DSL 元素、引用连接上不存在的操作、场景走不存在的分支、模块的核心里放了连接、业务接在不是连接的元素上，都编译不过。说明只能检查有没有写，空字符串仍能通过，靠审查清单把关。
+|类型组|表达的事实|
+|---|---|
+|Value、Opaque|已描述的标量/数据；不承诺结构的稳定领域 key|
+|Struct、Tuple|具名字段的积；有位置意义的数据集合|
+|Case、Choice|核心和类型的闭合分支，不附带操作后继|
+|Variant、Outcome|操作结局、字段与 End/Next/Later 后继|
+|TypeLambda、Family、Apply|类型构造器、公开构造器说明、本次显式容器应用|
+|Carrier、Point、Face|允许载体与准入定律；一个操作；共享不变量的一组操作|
+|Op、OpRef、Returned、Occurred|参数/结果、操作引用、已返回合法分支、已发生事件|
+|Event、Duty、Lifecycle|确认者与 payload、完成责任与事实、key 及 starts/ends/within|
+|Module、Unit、External|架构模块、业务单元、外部参与方及声明能力/使用|
+|Expose、Binding、Composition|公开转交路径、消费者局部选择、可选部分组合|
+|Scope、Step、EventStep、Scenario|独立包含分组、调用/事件事实、有限走查及完成/中断|
 
-### 载体与高阶类型
-
-连接不规定同步还是异步。DSL 用高阶类型表达载体：`Implementation<Async, RunFace>` 与 `Implementation<Sync, RunFace>` 从同一个连接得到两种签名。需要别的载体时，按 `TypeLambda` 写一个新的载体：
+Value 的原生叶子只接受 string、number、boolean、bigint、symbol、null、undefined、void 及相应字面量、模板字面量和品牌交叉。领域字段使用 Struct；不将普通领域 object、ReadonlyMap 或 unknown 塞进 Value 隐藏结构。结构未知时使用 `Opaque<'说明','稳定领域键'>`。
 
 ```ts
-interface Result extends TypeLambda {
-  readonly type: { readonly ok: true; readonly value: this['A'] } | { readonly ok: false };
+import type { Apply, Family, Shape, Struct, Tuple, TypeLambda, Value } from '../dsl/dsl.ts';
+
+interface ListF extends TypeLambda { readonly type: readonly this['A'][] }
+interface ByKeyF extends TypeLambda {
+  readonly type: this['A'] extends readonly [infer K, infer V] ? ReadonlyMap<K, V> : never;
 }
+export type ListFamily = Family<'有序只读集合', ListF>;
+export type Item = Struct<'一项业务数据', { case: Value<'业务分类', string> }>;
+export type Items = Apply<'这些业务数据的有序集合', ListFamily, Item>;
+export type Keyed<K extends string> = Apply<'按键读取数据', ByKeyF, Tuple<'键和值', [Value<'键', K>, Item]>>;
+type NativeItems = Shape<Items>;
 ```
 
-值随一个类型变化时，写带类型参数的辅助别名，用在元素内部的字段、参数或结果里，例如 `type Keyed<T> = Value<'按请求号存放的值', ReadonlyMap<string, T>>`。设计图只从直接用 DSL 构造器写成的具名元素读取，所以放进 `Module`、`Unit`、`Scope` 列表的元素，以及连接的操作表、结局的分支表，都直接写出来，不经辅助别名。
+Apply 保留 doc/lambda/argument，唯一投影为 `Kind<F,Shape<A>>`，不二次扫描 F 的原生输出。多参构造器用 Tuple 或 Struct 的投影接收参数。Choice/Outcome 投影统一为 `{ readonly case: K; readonly fields: ... }`，业务字段叫 case 或 kind 也不碰撞。
 
-## 连接
+Family 说明公开构造器；私有 TypeLambda 可以只是辅助定义。Point/Face 必填非空 carriers 元组，Carrier 保存 key、lambda、laws。`Implementation<某个允许的Carrier,某连接>` 只接受该连接列出的载体；同步与异步不是隐含全局默认。相容的签名不证明接入定律或接受时刻、失败、取消语义成立，这些仍需说明和人工审查。
 
-连接是一等概念。业务与架构在哪里相关、模块之间在哪里相接，都由连接写清。一个连接面是不是面，看它的操作是否共享同一条不变量，例如同一个确认方、同一段生命周期；不看它们是否写在一起。
+## 连接、公开与组合
 
-| 内容 | 写在哪里 |
-|---|---|
-| 位置与形状 | `Point` 或 `Face`，由某个模块的 `provides` 拥有 |
-| 交换 | `Op` 的参数与结果 |
-| 结局 | 结果中的 `Outcome`，只列使用方必须区分处理的结局，不逐项列出原因 |
-| 失败与恢复 | 使用方能观察到的失败结局，例如"结果未知"，是 `Outcome` 中的一支；这一支的 `Then` 写恢复要走的操作，说明写谁确认 |
-| 生命周期 | `Lifecycle` 的开始与结束锚点；锚点可以在不同连接上，也可以是 `External` 事件 |
-| 不承诺 | `Opaque` |
-| 准入定律 | `Point` 或 `Face` 的定律元组：类型强制不了、实现接入必须满足的等式、幂等、次序、不伪造结果 |
-| 质量承诺 | 约束实现能否接入的质量承诺写进定律；改变骨架的质量要求写进依据 |
-| 参与方 | 提供方是 `provides` 列出它的最深的模块；使用方是 `requires` 或 `plugsInto` 列出它的模块与业务单元 |
-| 跨连接的语义 | 多个连接之间的时序、定时规则、并发写在模块 `README.md` 的「语义」或它链接的主题文件 |
+连接是一等概念。Face 的操作必须共享不变量，例如确认方与生命周期；不是因为写在同一个文件就成为 Face。
 
-签名对得上不等于满足定律；一个结构上相容、却违反定律的实现不能接入。只陈述定律，不设计测试。
+ports 决定 Connection 的定义拥有者，provides 决定原始能力，requires/plugsInto/uses 决定使用。External 是参与方，不兼作事件。Event 单独陈述 confirms 与数据。静态确认关系不从某次组合反写到定义。
 
-例：一个有生命周期、结果可能未知、并且有恢复通道的连接面。
+Module.public 显式公开 Data/Event/Lifecycle；公开连接的交换数据、载体、Family、Follow/Fact 中事件与必要辅助定义则随连接契约可见。两种通道不同：签名里的材料不能被任意摘出成为全局 public。Lifecycle 的 key 随它公开，Fact 连接、事件和 within 必须另外可见；Unit 的 Lifecycle 不成为其他 Unit 的公开 within。
+
+Expose 声明公开转交路径，不选择运行提供方。多条不同 From 可以并存，同一路径不可重复。父模块不能跳过隐藏子模块边界；business/External 从根架构契约进入。
+
+每项使用默认是 Role，保留所有合法候选，零候选与唯一候选都不自动绑定。设计不要求全体组合；需要表达一次局部选择时，在 relations 写独立 Composition/Binding。Binding 必须保留消费者，选择已声明 provides 且公开可达的原始提供方。同一组合的同一消费者/连接只绑定一次，其他使用仍是 Role。不同 Composition 互不影响。
+
+只有显式绑定产生确定依赖。工具分别检查每个已声明组合的同层绑定环，不声称全部可能组合无环，也不把候选边当成已经选择。
+
+## 事实、义务与场景
+
+生命周期从事实开始、以事实结束，不把发起 start 调用当成已经成功。`Returned<OpRef<RunFace,'start'>,'Started'>` 选择已返回分支；Occurred 引用已发生 Event。Lifecycle 的 key 是具名 Data，在两侧参数/所选结果或事件 payload 中都须出现；within 表达静态嵌套，不模拟每个运行值。
 
 ```ts
-import type { Face, Lifecycle, Module, Op, OpRef, Outcome, Value, Variant } from '../../dsl/dsl.ts';
-import type { RecordFinish } from '../store/store.ts';
-import type { RunHandle } from '../system.ts';
+import type { Carrier, Duty, Face, Later, Lifecycle, Op, OpRef, Outcome, Opaque, Returned, Sync, Value, Variant } from '../dsl/dsl.ts';
 
-export type StartOutcome = Outcome<'start 的结局', {
-  Started: Variant<'运行已经开始；之后必须用 finish 结束', { handle: Value<'结束时交回的句柄', RunHandle> }, [OpRef<RunFace, 'finish'>]>;
-  Rejected: Variant<'提供方拒绝，没有产生运行'>;
-  Unknown: Variant<'结果未知；使用方不得重试，改用 status 确认', {}, [OpRef<RunFace, 'status'>]>;
+export type RunHandle = Opaque<'关联开始与结束的凭据', 'run-handle'>;
+export type Direct = Carrier<'直接返回已确认结果', 'direct', Sync, ['返回时已接受并完成确认']>;
+export type Started = Outcome<'开始的可观察结局', {
+  Started: Variant<'运行已开始，调用方最终负责结束', { handle: RunHandle }, Later<'可以先做其他工作', [Duty<'最终结束运行', 'caller', Returned<OpRef<RunFace, 'finish'>, 'done'>>]>>;
+  Rejected: Variant<'没有开始运行'>;
 }>;
-
-export type StatusOutcome = Outcome<'status 的结局', {
-  Running: Variant<'运行存在且未结束', { handle: Value<'这次运行的句柄', RunHandle> }, [OpRef<RunFace, 'finish'>]>;
-  Absent: Variant<'这次运行不存在'>;
-}>;
-
-export type RunFace = Face<
-  '运行的连接面',
-  'start、status、finish 共享同一段运行生命周期，由同一实现提供',
-  {
-    start: Op<'开始一次运行', { request: Value<'调用方给出的请求号，用于 status 找回运行', string> }, StartOutcome>;
-    status: Op<'按请求号确认一次运行是否存在', { request: Value<'start 时给出的请求号', string> }, StatusOutcome>;
-    finish: Op<'结束一次运行', { handle: Value<'要结束的运行', RunHandle> }, Value<'结束已由提供方确认', void>>;
-  },
-  ['同一句柄 finish 两次与一次效果相同', '同一请求号 start 两次只产生一次运行']
->;
-
-export type RunLifecycle = Lifecycle<'一次运行；结束由 RunFace 的提供方确认', OpRef<RunFace, 'start'>, OpRef<RunFace, 'finish'>>;
-
-export type Runner = Module<'执行运行并在结束时记录', {
-  provides: [RunFace];
-  requires: [RecordFinish];
-  core: [StartOutcome, StatusOutcome, RunLifecycle];
+export type RunFace = Face<'运行契约', '同一凭据关联运行，finish 幂等', {
+  start: Op<'开始运行', {}, Started>;
+  finish: Op<'确认结束', { handle: RunHandle }, Value<'已确认结束', void>>;
+}, [Direct]>;
+export type RunLifecycle = Lifecycle<'一次运行', {
+  key: RunHandle;
+  starts: Returned<OpRef<RunFace, 'start'>, 'Started'>;
+  ends: Returned<OpRef<RunFace, 'finish'>, 'done'>;
 }>;
 ```
 
-`RunHandle` 同时被 `runner` 与 `store` 使用，所以它是两者共同的父模块的核心元素，不是 `runner` 的。
+Next 约束产生它的 actor 的下一次 Call，其他 actor 和 EventStep 可以穿插；Later 允许任意合法中间步骤，正常完成前履行全部 Duty。Duty 的责任可为 caller、provider 或具名 Participant，完成条件为 Fact。provider 在 Bound 上要求选定提供方，在 Role 上只能由一个合法候选作见证，不因此推断绑定。
 
-## 场景
+Scenario 是有限声明走查，默认 Uncomposed，也可指定一个部分 Composition。Complete 不遗留义务或 pendingNext；Interrupted 必须有非空步骤，最后一步就是中断事实，并保存接手方和未履行项。每个完成步骤至多匹配一次义务，工具使用最大匹配而非贪心消费。真实关联值、结束时序、责任兑现与覆盖性仍需人工审查。
 
-场景是设计的走查，写成 `Scenario`：参与方沿连接一步步调用操作，每一步写明走哪个结局分支。关键的正常路径、每一种失败结局、生命周期中断都各写一个场景。
+关键正常路径、每种可观察失败结局与生命周期中断都应有场景。写不出场景时回到连接、结局或骨架，不另外堆走查报告，不补运行实现。
 
-```ts
-export type LaunchUnknown = Scenario<'启动结果未知时找回运行并结束', [
-  Step<Launch, OpRef<RunFace, 'start'>, 'Unknown'>,
-  Step<Launch, OpRef<RunFace, 'status'>, 'Running'>,
-  Step<Launch, OpRef<RunFace, 'finish'>, 'done'>,
-]>;
-```
+## 文字、依据与理由
 
-`tsc` 检查操作与分支存在；`check` 检查参与方确实使用这个连接、下一步属于上一步分支的 `Then`、场景不停在要求后续操作的分支上。写不出某个场景，说明连接、结局或骨架缺了东西：回到对应的类型去改，不另写走查报告。
+Markdown 写类型说不清的语义：时间/调度、跨连接次序与并发、事实与副本、恢复责任、定律展开、依据、需求与理由。
 
-## 文字
+- 一句陈述一条事实或规则；规则用必须、不得、可以、只。
+- 用反引号指认元素与成员，规范性引用优先完整 id，例如 `architecture/run.ts#RunFace.finish`。唯一可见名称可简写；歧义用路径限定。无关的 JSON/HTTP 等 code span 不被猜成设计引用。
+- 没有类型对应的概念在所属文字中解释一次，其他地方链接；数量给出数值、单位与条件。
+- 类型已有的模块组成、范围、连接、场景用 `skill://software-design-graph` 临时查看，不在 Markdown 保存另一份生成图。语义图只表达类型说不清的时序等内容。
 
-Markdown 写类型说不清的语义，是类型的额外解释：
+**依据**是会改变设计的外部事实、约束与需求。每条注明来源并说明它让设计多了或少了什么。质量要求用环境、刺激、响应、度量表达，只使用有出处的数值。当前实现目录与偶然调用顺序不是依据。系统级依据放根模块，局部依据放所属模块或 Unit，长证据进附录；不编号，不建追溯矩阵。
 
-- **定时与调度**：例如周期发送、按给定节奏观察、不承诺有限时间内结束。这类规则写一句话比写代码清楚。
-- **时序与并发**：跨越多个连接的次序，哪些可以同时发生、哪些必须先后。
-- **事实与副本**：谁确认一件事发生了，哪些记录是源头事实，哪些是取回的副本或索引。
-- **失败与恢复**：跨越多个连接的恢复，例如崩溃后由谁接管哪些运行。
-- **定律的展开**：定律元组里一句话说不完的等式与关系。
-- **依据、需求与理由**：见「依据与理由」。
+**需求**写业务 README 的需求节，是必须在问题域成立、可观察的结果，不是机器功能列表。每条有来源，至少由一个场景走通。
 
-写法：
-
-- 一句陈述一条事实或一条规则；规则用"必须、不得、可以、只"。
-- 用元素名指认东西，写在反引号里，例如 `RunFace`、`RunFace.start`、`StartOutcome.Unknown`；`check` 校验它们存在并且当前文档看得见。字面量值带引号写，例如 `'Unknown'`。
-- 没有对应元素的概念，在一处文字里说清它是什么，其他地方链接到那里。
-- 数量写数值、单位和条件。
-- 模块的组成、范围、连接、场景由 `graph` 从类型导出，不在 Markdown 里另画；Markdown 里的图只画类型说不清的东西，例如定时序列。
-
-## 依据与理由
-
-**依据**是会改变设计的外部事实、约束与需求：
-
-- 架构模块的依据写改变模块、连接或核心元素的事实、约束、系统级需求与质量要求；业务单元的依据写约束这个单元的事实与约束。
-- 每条一句话，写出来源，并接一句"所以……"，说明它让骨架或这个业务单元多了或少了什么。
-- 质量要求写成"在〈环境〉下，〈刺激〉发生时，〈响应〉满足〈度量〉"，并写出来源。数值只在有出处时写，不为凑格式编造指标。
-- 当前实现的目录、调用步骤和偶然行为不是依据。
-- 影响整个系统的依据写在根模块；只影响一个模块的写在该模块；只约束一个业务单元的写在该单元。篇幅大的证据放进附录，依据只引用它。
-- 不编号，不建追溯矩阵。
-
-**需求**写在业务单元 `README.md` 的「需求」：需求是必须在问题域中成立、可以被观察到的结果，例如用户或外部系统看到什么，不是机器的功能列表。每条写出来源，并至少由一个场景走通。
-
-**理由**写在「为什么」：
-
-- 每个改变骨架或业务形状的决定都写理由，理由引用依据或需求。
-- 确实存在可信替代时，写一句为什么不选它。
-- 理由引用的依据不再成立时，决定要重审。决定依赖的前提不在依据里时，把前提写进理由。
-- 只关系到一个元素的选择，理由写进这个元素的说明。
+**理由**写为什么节，引用依据或需求。存在可信替代时说明为什么不选；前提不在依据中时写进理由。前提变化需要重审决定。只关系一个元素的理由可以写入元素说明。
 
 ## 目录与文件
 
 ```mermaid
 flowchart TB
-    D["design/"]
-    D --> R["README.md：阅读入口，只做导航"]
-    D --> TS["tsconfig.json：项目引用的总入口"]
-    D --> L["dsl/：DSL，不修改"]
-    D --> A["architecture/：根模块"]
-    D --> B["business/：业务单元"]
-    D --> X["appendix/：examples/ · evidence/ · reference/"]
-    A --> AR["README.md：依据 · 为什么 · 语义"]
-    A --> AT["&lt;name&gt;.ts：设计类型，按内容命名"]
-    A --> AP["&lt;topic&gt;.md：主题文件"]
-    A --> AK["&lt;child&gt;/：子模块，结构相同"]
-    B --> BU["&lt;unit&gt;/：README.md（依据 · 需求 · 为什么 · 语义）· &lt;name&gt;.ts · &lt;topic&gt;.md"]
+    D[design] --> N[README.md：阅读次序与位置导航]
+    D --> L[dsl：受管 DSL 与配置]
+    D --> A[architecture：递归模块目录]
+    D --> B[business：可选、直接 Unit 目录]
+    D --> R[relations：扁平关系与辅助定义]
+    D --> X[appendix：examples、evidence、reference]
+    A --> AT[README、按内容命名的 TS 与主题 Markdown]
+    A --> AC[子模块目录]
+    B --> BT[每个 Unit 的 README、TS 与主题 Markdown]
 ```
 
-- 目录与项目配置由 `init`、`module`、`unit` 生成，不手改。
-- `architecture/` 与 `business/` 各是一个 TypeScript 项目；业务项目引用架构项目，架构项目看不到业务文件。
-- 每个模块目录声明恰好一个 `Module`，每个业务单元目录声明恰好一个 `Unit`；父模块的 `parts` 恰好是它的直接子目录中的模块。
-- 每个元素声明在拥有它的模块或业务单元的目录里。
-- **类型文件。** 一组一起变化的元素放在一个文件里，文件按内容命名，例如 `run.ts`。两组各自独立变化时分成两个文件。不按篇幅拆分。
-- **README。** 标题之后先写一段：这个模块或业务单元负责什么、不负责什么。之后的小节按固定次序，没有内容的小节不写。
-- **主题文件。** 一组一起变化、类型说不清的语义，在 `README.md` 里展开会遮住骨架时，放进主题文件。主题文件开头用一段话说明它展开 `README.md` 的哪一节、负责什么，`README.md` 的那一节链接它；主题文件内部的小节按内容写。拆开会迫使读者跨文件拼出同一个不变量、生命周期或失败窗口时不拆。
-- `design/README.md` 只列阅读次序与各模块、业务单元的位置。
-- 附录分三类：`examples/` 演示已有规则，`evidence/` 存放依据的证据，`reference/` 说明实现可以怎样满足连接。附录文件按内容命名，不设立规则；附录里出现新规则时，把它移到所属的模块或业务单元。
-- 文档只写当前设计：不标状态，不并列新旧规则，不写变更历史。
+每个 architecture 目录恰好一个 Module，每个 business 直接子目录恰好一个 Unit，业务不嵌套。relations 放跨单元 External/Scope/Scenario/Composition 和辅助定义，架构与业务不得反向 import 它；Event/Lifecycle 留在定义拥有者目录。只服务架构端口的 External 放根 architecture 或最小共同模块，只服务单 Unit 的 External 可放该单元，跨层参与方放 relations。
 
-## 脚本
+类型文件与主题文件按内容命名，不预定义领域类型名，也不限每目录一个文件。一起变化的材料放一起，不按篇幅拆。主题介绍说明展开 README 的哪节，由该 README 的真实行内或 reference-style 链接接入。
 
-skill 的 `scripts/design.ts` 初始化骨架、检查设计、导出设计图。首次使用前在 `scripts/` 目录运行一次 `bun install --no-save`。`tsc -b` 的声明输出写在仓库根的 `.design-build/`，不在 `design/` 里；把它加进仓库的 `.gitignore`。
+README 标题之后先介绍负责与不负责的范围。architecture 的二级节按依据、为什么、语义排列；business 按依据、需求、为什么、语义；空节不写，出现的节须有正文。relations README 作导航和语义说明，不设领域规则。根 README 只导航，不维护第二份完整模块树。
 
-| 命令 | 作用 |
+附录 examples 演示已有规则，evidence 保存依据证据，reference 说明实现可以如何满足连接；附录不设规则。文档只写当前设计，不写状态或历史，不并列互相矛盾的新旧指导。
+
+## 脚本与检查
+
+首次运行检查或 Graph 前，在本 skill 的 scripts 目录执行 `bun install --no-save`。init/module/unit 只依赖生成器与文件系统，不提前加载 compiler 或 Markdown parser。native 检查从不 build/emit，不创建 `.design-build`、`.d.ts` 或 `.tsbuildinfo`。
+
+|命令（相对本 skill 目录）|作用|
 |---|---|
-| `bun scripts/design.ts init <仓库根>` | 在 `<仓库根>/design` 生成骨架：导航、项目引用、DSL、根模块目录、附录目录 |
-| `bun scripts/design.ts module <design 目录> <a/b>` | 建立子模块目录；父模块目录必须已存在 |
-| `bun scripts/design.ts unit <design 目录> <名字>` | 建立业务单元目录；第一个业务单元同时生成业务项目 |
-| `bun scripts/design.ts check <design 目录>` | 检查全部规则，逐条列出违规，有违规时退出码为 1 |
-| `bun scripts/design.ts graph <design 目录> [--json]` | 从类型导出设计图：模块树、模块表（提供、需要、核心元素、子模块）、每个模块的组成、业务接入、每种范围、每个场景的时序、连接表、生命周期 |
+|`bun scripts/design.ts init <repo>`|生成 repo/design 导航、DSL、配置、根模块与 relations、三类附录；不生成领域定义|
+|`bun scripts/design.ts module <design> <a/b>`|建立模块目录和标题；父目录必须存在|
+|`bun scripts/design.ts unit <design> <name>`|建立 Unit 目录；首次创建 business 项目并刷新受管配置|
+|`bun scripts/design.ts upgrade <design> --check`|只报告 UpToDate/UpgradeAvailable 与固定受管路径|
+|`bun scripts/design.ts upgrade <design>`|按当前模板替换 DSL/config，保留全部领域 TS/Markdown，再检查并报告迁移位置|
+|`bun scripts/design.ts check <design> [--json]`|五阶段自动检查；成功始终保留人工待审事项|
 
-`check` 依次检查：
+检查保证、公开闭包、场景义务与失败分类见 [`references/checking.md`](references/checking.md)。成功表示自动结构检查通过，不表示设计语义已被确认。类型、解析、关系或文字拒绝时不产生部分 Graph。Graph 的 view/search/neighbors/path 全部通过 `skill://software-design-graph` 运行，父 CLI 不提供 graph 命令。
 
-1. **目录与配置**：只有模板中的目录与文件，隐藏条目只允许 `.gitkeep`，名字只用英文小写字母、数字与连字符；`dsl/dsl.ts` 与项目配置和生成时一致。
-2. **类型**：`tsc -b` 构建全部项目，DSL 的约束与架构不引用业务在这里检查。
-3. **设计图**：每个数据元素与连接有且只有一个拥有者并声明在拥有者的目录里（`Module`、`Unit`、`External`、`Scope`、`Scenario` 不属于任何拥有者）；每个目录恰好一个模块或业务单元，`parts` 与子目录一致；模块的元素只使用自己与祖先的核心元素，不使用后代的连接，`requires` 不含本模块或子模块提供的连接；业务单元之间只经连接协作；需要的连接有提供方；模块之间的依赖不成环；同一种包含中一个元素只属于一个范围，嵌套的范围同种、不成环；场景中的参与方使用该连接，下一步属于上一步分支的 `Then`，场景不停在要求后续操作的分支上。
-4. **文字**：README 小节与次序，主题文件有链接与开头说明，反引号里的元素名存在且当前文档看得见，`.成员` 是连接的操作或结局的分支。
+## 工作顺序与审查
 
-`check` 证明规则被遵守、名字存在、图上的关系成立；说明写得对不对、定律与依据是否成立，仍靠「审查清单」。`graph` 的输出用来审查骨架：只看图，能否说出系统由什么组成、用什么组成、谁在谁里面、关键场景怎样走。
+1. init 后先写根模块依据，再写核心材料、连接与 Module。
+2. 写为什么与语义，按抽象用 module 逐层分解，并维护父 parts。
+3. 用 unit 写业务依据、需求、接入类型与语义。
+4. 为关键正常、失败与中断路径写 Scenario；必要时另写可选 Composition。
+5. 运行 check，再用 Graph 子 skill 临时查看结构与查询关系。
+6. 人工核对以下事项；自动成功不能代替这些判断。
 
-## 工作顺序
+|审查方面|必须回答|
+|---|---|
+|骨架|只看结构能否说清组成、材料、层级？划分是否按抽象而非篇幅/步骤？Scope 是否与模块树分开？|
+|依据与理由|来源是否真实？改变骨架的需求是否进入依据？决定是否有前提与取舍？|
+|连接|分支是否只列使用方必须区分的结局？Face 是否真的共享不变量？载体定律与质量承诺是否足够？|
+|生命周期|锚点、关联值、静态确认关系与真实结束责任是否清楚？Next/Later 是否准确表达恢复？|
+|组合|未绑定选择是否有意保留？局部绑定是否符合意图，而非被工具自动选择？|
+|场景与业务|关键需求、失败和中断是否覆盖？业务是否只经连接合作？实际履责与关联是否成立？|
+|文字|说明是否解释承诺而非复述形状？Markdown 是否只补类型说不清的含义且不与类型矛盾？|
+|实现界线|是否混入可替换做法、逐情形处理、组合根或凑编译的实现？附录是否偷设规则？|
 
-1. 用 `init` 生成骨架，写根模块 `README.md` 的依据。
-2. 写根模块的类型：核心元素、对外的连接、`Module`。
-3. 写根模块 `README.md` 的为什么与语义。
-4. 用 `module` 建立每个子模块，写它的依据、类型与 README，逐层向下；父模块的 `parts` 随之更新。
-5. 用 `unit` 建立业务单元：先写依据与需求，再写 `Unit` 与业务类型，最后写为什么与语义。
-6. 为关键路径、每种失败结局与生命周期中断写 `Scenario`。写不出来时回到第 2 到 5 步修正。
-7. 运行 `check`，用 `graph` 导出设计图审查骨架，再按「审查清单」逐项检查。
-
-改动的传递：
-
-- 骨架变了，先改依据、类型与理由，再让每个业务单元与场景重新通过 `check`。
-- 业务变了，先改业务；业务或场景在骨架上走不通时，按「骨架与优先级」判断哪一边错。
-- 重写已有设计时，先在新骨架中建立模块与连接，旧文档只作取证材料；不沿旧目录逐文件改写，也不默认旧结论仍然成立。
-
-## 审查清单
-
-骨架：
-
-1. 只看 `graph` 导出的模块树、组成与范围，能否说出系统由什么组成、用什么组成、谁在谁里面？
-2. 每条依据是否写出了来源，并说明它让设计多了或少了什么？改变骨架的需求是否都进了依据？
-3. 每个改变骨架的决定是否都有理由，理由是否引用了依据？
-4. 每个模块是否按抽象划分，而不是按篇幅或执行步骤划分？README 开头是否写了它负责什么、不负责什么？
-5. 每种适用的包含关系是否都声明了 `Scope`？模块树本身不代表任何包含。
-
-连接：
-
-6. 每个结局是否只列使用方必须区分处理的分支？每种可观察的失败是否都是一支，恢复是否由 `Then` 指出？
-7. 每个连接面的不变量是否真的被它的全部操作共享？准入定律是否写全了类型强制不了的约束？
-8. 生命周期的开始与结束锚点、确认方是否都写清了？
-
-场景与业务：
-
-9. 每条需求是否至少由一个场景走通？关键的失败结局与生命周期中断是否都有场景？
-10. 业务单元之间是否只经连接协作？
-
-文字：
-
-11. 每个元素的说明是否写了它是什么、承诺什么，而不是复述它的形状？
-12. Markdown 是否只写类型说不清的语义？是否与类型矛盾？
-
-设计与实现：
-
-13. 是否有在连接不变时可以替换的做法写进了设计？
-14. 是否展开了不改变连接、状态空间、不变量和可观察承诺的逐情形处理？
-15. 是否要求了组合根、适配器、总入口，或为编译通过补了实现？
-16. 附录是否设立了规则？
+骨架变化先改依据、类型与理由，再重查所有业务和场景。业务变化先改业务，走不通时判断抽象是否成立。重组旧设计时先建立新骨架与连接，旧文档只作证据，不默认旧结论仍成立。

@@ -1,258 +1,354 @@
-/**
- * 设计 DSL。设计文件里的每个设计元素都用这里的类型写成；每个类型的第一个参数是这个元素的说明。
- * 本文件由 `design.ts init` 复制进设计目录，设计文件不修改它。
- */
+/** 代码化设计：类型保存说明，投影只解释显式描述的数据。 */
+declare const descriptor: unique symbol;
+declare const opaque: unique symbol;
+declare const familyArgument: unique symbol;
+type Tag<K extends string> = { readonly [descriptor]: true; readonly design: K };
+type Described<K extends string, D extends string> = Tag<K> & { readonly doc: D };
 
-// ---------------------------------------------------------------------------
-// 高阶类型：连接的载体
-
-/** 类型构造器：接收 `A`，产出 `type`；实现者用 `this['A']` 写出 `type`。 */
+/** F 接收已经投影的 A；不对 F 的原生输出再递归。 */
 export interface TypeLambda {
   readonly A: unknown;
   readonly type: unknown;
 }
-
-/** 把类型构造器 `F` 应用到 `A`。 */
 export type Kind<F extends TypeLambda, A> = (F & { readonly A: A })['type'];
-
-/** 同步载体：结果直接返回。 */
 export interface Sync extends TypeLambda {
   readonly type: this['A'];
 }
-
-/** 异步载体：结果以 Promise 返回。 */
 export interface Async extends TypeLambda {
   readonly type: Promise<this['A']>;
 }
-
-// ---------------------------------------------------------------------------
-// 标记
-
-declare const element: unique symbol;
-declare const opaque: unique symbol;
-
-// ---------------------------------------------------------------------------
-// 数据
-
-/** 一个带说明的值；`T` 是普通 TypeScript 类型或另一个数据元素。 */
-export type Value<D extends string, T> = {
-  readonly [element]: 'Value';
-  readonly doc: D;
-  readonly type: T;
+export type Scalar = string | number | boolean | bigint | symbol | null | undefined | void;
+export type Fields = { readonly [name: string]: Data };
+export type Cases = { readonly [name: string]: Described<'Case', string> & { readonly fields: Fields } };
+export type Variants = {
+  readonly [name: string]: Described<'Variant', string> & {
+    readonly fields: Fields;
+    readonly follow: Follow;
+  };
 };
-
-/** 使用方拿不到内部结构的值；说明写明它代表什么、由谁造出。 */
-export type Opaque<D extends string> = {
-  readonly [element]: 'Opaque';
-  readonly doc: D;
+export type Data =
+  | (Described<'Value', string> & { readonly type: Scalar | Data })
+  | (Described<'Opaque', string> & { readonly key: string })
+  | (Described<'Struct', string> & { readonly fields: Fields })
+  | (Described<'Tuple', string> & { readonly items: readonly Data[] })
+  | (Described<'Apply', string> & { readonly lambda: TypeLambda; readonly argument: Data })
+  | (Described<'Choice', string> & { readonly cases: Cases })
+  | (Described<'Outcome', string> & { readonly variants: Variants });
+export type Value<D extends string, T extends Scalar | Data> = Described<'Value', D> & { readonly type: T };
+export type Opaque<D extends string, K extends string> = Described<'Opaque', D> & { readonly key: K };
+export type Struct<D extends string, F extends Fields> = Described<'Struct', D> & { readonly fields: F };
+export type Tuple<D extends string, I extends readonly Data[]> = Described<'Tuple', D> & {
+  readonly items: I;
 };
-
-/** 字段表：每个字段都是带说明的值。 */
-export type Fields = { readonly [name: string]: AnyValue };
-
-/** 一组一起出现的字段。 */
-export type Struct<D extends string, F extends Fields> = {
-  readonly [element]: 'Struct';
-  readonly doc: D;
+export type Apply<D extends string, F extends TypeLambda, A extends Data> = Described<'Apply', D> & {
+  readonly lambda: F;
+  readonly argument: A;
+};
+export type Case<D extends string, F extends Fields = Record<never, never>> = Described<'Case', D> & {
   readonly fields: F;
 };
-
-/** 结局中的一支；`Then` 列出使用方拿到这一支之后要走的操作。 */
-export type Variant<D extends string, F extends Fields = {}, Then extends readonly AnyOpRef[] = []> = {
-  readonly [element]: 'Variant';
-  readonly doc: D;
-  readonly fields: F;
-  readonly then: Then;
+export type Choice<D extends string, C extends Cases> = Described<'Choice', D> & { readonly cases: C };
+/** 公开的类型构造器；私有 TypeLambda 辅助定义不必成为领域术语。 */
+export type Family<D extends string, F extends TypeLambda> = F &
+  Described<'Family', D> & { readonly [familyArgument]: F };
+/** K 只在同一连接的载体选项内唯一；定律不是类型相容性的推论。 */
+export type Carrier<
+  D extends string,
+  K extends string,
+  F extends TypeLambda,
+  Laws extends readonly string[],
+> = Described<'Carrier', D> & { readonly key: K; readonly lambda: F; readonly laws: Laws };
+export type AnyCarrier = Described<'Carrier', string> & {
+  readonly key: string;
+  readonly lambda: TypeLambda;
+  readonly laws: readonly string[];
 };
-
-/** 使用方必须区分处理的几类结局，闭合。 */
-export type Outcome<D extends string, Vs extends { readonly [name: string]: AnyVariant }> = {
-  readonly [element]: 'Outcome';
-  readonly doc: D;
-  readonly variants: Vs;
-};
-
-// ---------------------------------------------------------------------------
-// 连接
-
-/** 一个操作：参数是字段表，结果是一个值或一组结局。 */
-export type Op<D extends string, Params extends Fields, Result extends AnyValue | AnyOutcome> = {
-  readonly [element]: 'Op';
-  readonly doc: D;
+export type Op<D extends string, Params extends Fields, Result extends Data> = Described<'Op', D> & {
   readonly params: Params;
   readonly result: Result;
 };
-
-/** 连接点：一个操作，一个接入方。`Laws` 是实现接入必须满足、类型强制不了的定律。 */
-export type Point<D extends string, O extends AnyOp, Laws extends readonly string[] = []> = {
-  readonly [element]: 'Point';
-  readonly doc: D;
-  readonly op: O;
-  readonly laws: Laws;
-};
-
-/** 连接面：共享 `Invariant` 这条不变量、必须由同一个实现提供的一组操作。 */
+export type AnyOp = Described<'Op', string> & { readonly params: Fields; readonly result: Data };
+export type Point<
+  D extends string,
+  O extends AnyOp,
+  Modes extends readonly [AnyCarrier, ...AnyCarrier[]],
+  Laws extends readonly string[] = [],
+> = Described<'Point', D> & { readonly op: O; readonly carriers: Modes; readonly laws: Laws };
 export type Face<
   D extends string,
   Invariant extends string,
   Ops extends { readonly [name: string]: AnyOp },
+  Modes extends readonly [AnyCarrier, ...AnyCarrier[]],
   Laws extends readonly string[] = [],
-> = {
-  readonly [element]: 'Face';
-  readonly doc: D;
+> = Described<'Face', D> & {
   readonly invariant: Invariant;
   readonly ops: Ops;
+  readonly carriers: Modes;
   readonly laws: Laws;
 };
-
-/** 连接点或连接面。 */
-export type Connection = AnyPoint | AnyFace;
-
-/** 连接上可引用的操作名：面是它的操作名，点是 `'op'`。 */
-export type OpName<C extends Connection> =
-  C extends Face<any, any, infer Ops, any> ? keyof Ops & string : C extends AnyPoint ? 'op' : never;
-
-/** 指向连接上的一个操作；面必须写出操作名。 */
-export type OpRef<C extends Connection, K extends OpName<C> = OpName<C>> = {
-  readonly [element]: 'OpRef';
+export type Connection =
+  | (Described<'Point', string> & {
+      readonly op: AnyOp;
+      readonly carriers: readonly AnyCarrier[];
+      readonly laws: readonly string[];
+    })
+  | (Described<'Face', string> & {
+      readonly invariant: string;
+      readonly ops: { readonly [name: string]: AnyOp };
+      readonly carriers: readonly AnyCarrier[];
+      readonly laws: readonly string[];
+    });
+export type OpName<C extends Connection> = C extends { readonly design: 'Point' }
+  ? 'op'
+  : C extends { readonly design: 'Face'; readonly ops: infer O }
+    ? keyof O & string
+    : never;
+export type OpRef<C extends Connection, K extends OpName<C> = OpName<C>> = Tag<'OpRef'> & {
   readonly connection: C;
   readonly name: K;
 };
-
-/** 引用的操作的结局分支名；结果是单个值时为 `'done'`。 */
+export type AnyOpRef = Tag<'OpRef'> & { readonly connection: Connection; readonly name: string };
+type Operation<C extends Connection, K extends string> = C extends {
+  readonly design: 'Point';
+  readonly op: infer O extends AnyOp;
+}
+  ? O
+  : C extends { readonly design: 'Face'; readonly ops: infer O }
+    ? K extends keyof O
+      ? O[K]
+      : never
+    : never;
 export type Branch<R extends AnyOpRef> =
-  R extends OpRef<infer C, infer K>
-    ? OpOf<C, K>['result'] extends Outcome<any, infer Vs>
-      ? keyof Vs & string
+  Operation<R['connection'], R['name']> extends { readonly result: infer O extends Data }
+    ? O extends { readonly design: 'Outcome'; readonly variants: infer V }
+      ? keyof V & string
       : 'done'
     : never;
-
-type OpOf<C, K> =
-  C extends Face<any, any, infer Ops, any> ? (K extends keyof Ops ? Ops[K] : never) : C extends Point<any, infer O, any> ? O : never;
-
-// ---------------------------------------------------------------------------
-// 结构
-
-/** 设计之外的事件或参与方，例如用户操作、外部系统的回调。 */
-export type External<D extends string> = {
-  readonly [element]: 'External';
-  readonly doc: D;
+export type Returned<R extends AnyOpRef, B extends Branch<R>> = Tag<'Returned'> & {
+  readonly via: R;
+  readonly branch: B;
+};
+export type Participant = AnyModule | AnyUnit | AnyExternal;
+export type Event<D extends string, By extends Participant, Payload extends Data> = Described<'Event', D> & {
+  readonly confirms: By;
+  readonly payload: Payload;
+};
+export type AnyEvent = Described<'Event', string> & {
+  readonly confirms: Participant;
+  readonly payload: Data;
+};
+export type Occurred<E extends AnyEvent> = Tag<'Occurred'> & { readonly event: E };
+export type Fact =
+  | (Tag<'Returned'> & { readonly via: AnyOpRef; readonly branch: string })
+  | (Tag<'Occurred'> & { readonly event: AnyEvent });
+export type Duty<
+  D extends string,
+  By extends 'caller' | 'provider' | Participant,
+  CompleteFact extends Fact,
+> = Described<'Duty', D> & { readonly by: By; readonly complete: CompleteFact };
+export type AnyDuty = Described<'Duty', string> & {
+  readonly by: 'caller' | 'provider' | Participant;
+  readonly complete: Fact;
+};
+export type End = Tag<'End'>;
+/** 只约束产生本后继的调用方的下一次 Call；其他参与方和事件可穿插。 */
+export type Next<
+  D extends string,
+  Targets extends readonly [AnyOpRef, ...AnyOpRef[]],
+  Duties extends readonly AnyDuty[] = [],
+> = Described<'Next', D> & { readonly targets: Targets; readonly duties: Duties };
+export type Later<D extends string, Duties extends readonly [AnyDuty, ...AnyDuty[]]> = Described<
+  'Later',
+  D
+> & { readonly duties: Duties };
+export type Follow =
+  | End
+  | (Described<'Next', string> & {
+      readonly targets: readonly AnyOpRef[];
+      readonly duties: readonly AnyDuty[];
+    })
+  | (Described<'Later', string> & { readonly duties: readonly AnyDuty[] });
+export type Variant<
+  D extends string,
+  F extends Fields = Record<never, never>,
+  After extends Follow = End,
+> = Described<'Variant', D> & { readonly fields: F; readonly follow: After };
+export type Outcome<D extends string, V extends Variants> = Described<'Outcome', D> & {
+  readonly variants: V;
 };
 
-/** 生命周期的锚点：一个操作，或一个设计之外的事件。 */
-export type Anchor = AnyOpRef | AnyExternal;
-
-/** 一段生命周期：从 `Start` 开始，到 `End` 结束；说明写明由谁确认结束。 */
-export type Lifecycle<D extends string, Start extends Anchor, End extends Anchor> = {
-  readonly [element]: 'Lifecycle';
-  readonly doc: D;
-  readonly start: Start;
-  readonly end: End;
+export type Expose<D extends string, C extends Connection, From extends AnyModule | AnyExternal> = Described<
+  'Expose',
+  D
+> & { readonly connection: C; readonly from: From };
+export type AnyExpose = Described<'Expose', string> & {
+  readonly connection: Connection;
+  readonly from: AnyModule | AnyExternal;
 };
-
-/** 架构模块：提供与需要的连接、核心元素、组成它的子模块。 */
+export type ModuleSpec = {
+  readonly core?: readonly Core[];
+  readonly ports?: readonly Connection[];
+  readonly provides?: readonly Connection[];
+  readonly requires?: readonly Connection[];
+  readonly public?: readonly (Data | AnyEvent | AnyLifecycle)[];
+  readonly parts?: readonly AnyModule[];
+  readonly reexports?: readonly AnyExpose[];
+};
 export type Module<
   D extends string,
-  S extends {
-    readonly provides?: readonly Connection[];
-    readonly requires?: readonly Connection[];
-    readonly core?: readonly CoreElement[];
-    readonly parts?: readonly AnyModule[];
-  },
-> = {
-  readonly [element]: 'Module';
-  readonly doc: D;
-  readonly spec: S;
+  S extends ModuleSpec & { readonly [K in Exclude<keyof S, keyof ModuleSpec>]: never },
+> = Described<'Module', D> & { readonly spec: S };
+export type AnyModule = Described<'Module', string> & { readonly spec: ModuleSpec };
+export type UnitSpec = {
+  readonly types?: readonly Core[];
+  readonly ports?: readonly Connection[];
+  readonly provides?: readonly Connection[];
+  readonly plugsInto: readonly Connection[];
 };
-
-/** 业务单元：接在哪些连接上、向其他业务单元提供哪些连接、自己的类型。 */
 export type Unit<
   D extends string,
-  S extends {
-    readonly plugsInto: readonly Connection[];
-    readonly provides?: readonly Connection[];
-    readonly types?: readonly CoreElement[];
-  },
-> = {
-  readonly [element]: 'Unit';
-  readonly doc: D;
-  readonly spec: S;
+  S extends UnitSpec & { readonly [K in Exclude<keyof S, keyof UnitSpec>]: never },
+> = Described<'Unit', D> & { readonly spec: S };
+export type AnyUnit = Described<'Unit', string> & { readonly spec: UnitSpec };
+export type ExternalSpec = {
+  readonly provides?: readonly Connection[];
+  readonly uses?: readonly Connection[];
 };
-
-/** 包含的种类。 */
+export type External<
+  D extends string,
+  S extends ExternalSpec & { readonly [K in Exclude<keyof S, keyof ExternalSpec>]: never },
+> = Described<'External', D> & { readonly spec: S };
+export type AnyExternal = Described<'External', string> & { readonly spec: ExternalSpec };
+export type LifecycleSpec = {
+  readonly key: Data;
+  readonly starts: Fact;
+  readonly ends: Fact;
+  readonly within?: AnyLifecycle;
+};
+export type Lifecycle<
+  D extends string,
+  S extends LifecycleSpec & { readonly [K in Exclude<keyof S, keyof LifecycleSpec>]: never },
+> = Described<'Lifecycle', D> & { readonly spec: S };
+export type AnyLifecycle = Described<'Lifecycle', string> & { readonly spec: LifecycleSpec };
+export type AnyFamily = TypeLambda & Described<'Family', string>;
+export type Core = Data | AnyFamily | AnyCarrier | AnyLifecycle | AnyEvent;
 export type ScopeKind = 'process' | 'lifecycle' | 'trust' | 'deploy';
-
-/** 一种包含关系中的一个范围：谁在它里面。 */
-export type Scope<D extends string, K extends ScopeKind, Contains extends readonly (AnyModule | AnyUnit | AnyScope | AnyExternal)[]> = {
-  readonly [element]: 'Scope';
-  readonly doc: D;
+export type Scope<
+  D extends string,
+  K extends ScopeKind,
+  Members extends readonly (Participant | AnyScope<K>)[],
+> = Described<'Scope', D> & { readonly kind: K; readonly contains: Members };
+export type AnyScope<K extends ScopeKind = ScopeKind> = Described<'Scope', string> & {
   readonly kind: K;
-  readonly contains: Contains;
+  readonly contains: readonly (Participant | AnyScope<K>)[];
 };
-
-/** 场景中的一步：`Actor` 经 `Via` 调用一个操作，走 `Take` 这一个结局分支。 */
-export type Step<Actor extends AnyModule | AnyUnit | AnyExternal, Via extends AnyOpRef, Take extends Branch<Via>> = {
-  readonly [element]: 'Step';
-  readonly actor: Actor;
-  readonly via: Via;
-  readonly take: Take;
-};
-
-/** 一个场景：沿连接逐步走通的一条路径，包括失败分支。 */
-export type Scenario<D extends string, Steps extends readonly AnyStep[]> = {
-  readonly [element]: 'Scenario';
-  readonly doc: D;
-  readonly steps: Steps;
-};
-
-// ---------------------------------------------------------------------------
-// 元素的上界
-
-export type AnyValue = Value<any, unknown>;
-export type AnyOpaque = Opaque<any>;
-export type AnyStruct = Struct<any, Fields>;
-export type AnyVariant = Variant<any, Fields, readonly AnyOpRef[]>;
-export type AnyOutcome = Outcome<any, { readonly [name: string]: AnyVariant }>;
-export type AnyOp = Op<any, Fields, AnyValue | AnyOutcome>;
-export type AnyPoint = Point<any, AnyOp, readonly string[]>;
-export type AnyFace = Face<any, any, { readonly [name: string]: AnyOp }, readonly string[]>;
-export type AnyOpRef = { readonly [element]: 'OpRef'; readonly connection: Connection; readonly name: string };
-export type AnyExternal = External<any>;
-export type AnyLifecycle = Lifecycle<any, Anchor, Anchor>;
-export type AnyModule = { readonly [element]: 'Module'; readonly doc: string; readonly spec: object };
-export type AnyUnit = { readonly [element]: 'Unit'; readonly doc: string; readonly spec: object };
-export type AnyScope = { readonly [element]: 'Scope'; readonly doc: string; readonly kind: ScopeKind; readonly contains: readonly unknown[] };
-export type AnyStep = { readonly [element]: 'Step'; readonly actor: unknown; readonly via: AnyOpRef; readonly take: string };
-
-/** 模块或业务单元自己拥有的元素。 */
-export type CoreElement = AnyValue | AnyOpaque | AnyStruct | AnyOutcome | AnyLifecycle;
-
-// ---------------------------------------------------------------------------
-// 投影：从设计元素得到普通 TypeScript 形状，实现可以用，也可以不用
-
-type Simplify<T> = { [K in keyof T]: T[K] } & {};
-
-/** 数据元素对应的形状。 */
-export type Shape<X> =
-  X extends Value<any, infer T>
-    ? Shape<T>
-    : X extends Opaque<infer D>
-      ? { readonly [opaque]: D }
-      : X extends Struct<any, infer F>
-        ? ShapeOfFields<F>
-        : X extends Outcome<any, infer Vs>
-          ? { [K in keyof Vs]: Simplify<{ readonly kind: K } & ShapeOfFields<Vs[K]['fields']>> }[keyof Vs]
-          : X;
-
-type ShapeOfFields<F> = Simplify<{ readonly [K in keyof F]: Shape<F[K]> }>;
-
-/** 操作在载体 `F` 上的签名。 */
-export type Signature<F extends TypeLambda, O extends AnyOp> = (params: ShapeOfFields<O['params']>) => Kind<F, Shape<O['result']>>;
-
-/** 连接在载体 `F` 上的实现形状。 */
-export type Implementation<F extends TypeLambda, C extends Connection> =
-  C extends Face<any, any, infer Ops, any>
-    ? { readonly [K in keyof Ops]: Signature<F, Ops[K]> }
-    : C extends Point<any, infer O, any>
-      ? Signature<F, O>
+/** 这些条件类型只分类参与方的声明，不把边界转交当作原始能力。 */
+export type Used<P extends Participant> = P extends AnyModule
+  ? P['spec'] extends { readonly requires: readonly (infer C extends Connection)[] }
+    ? C
+    : never
+  : P extends AnyUnit
+    ? P['spec']['plugsInto'][number]
+    : P extends AnyExternal
+      ? P['spec'] extends { readonly uses: readonly (infer C extends Connection)[] }
+        ? C
+        : never
       : never;
+export type DeclaredProvided<P extends Participant> = P['spec'] extends {
+  readonly provides: readonly (infer C extends Connection)[];
+}
+  ? C
+  : never;
+export type Binding<
+  D extends string,
+  Consumer extends Participant,
+  C extends Used<Consumer> & DeclaredProvided<Provider>,
+  Provider extends Participant,
+> = Described<'Binding', D> & {
+  readonly consumer: Consumer;
+  readonly connection: C;
+  readonly provider: Provider;
+};
+export type AnyBinding = Described<'Binding', string> & {
+  readonly consumer: Participant;
+  readonly connection: Connection;
+  readonly provider: Participant;
+};
+export type Composition<D extends string, Bindings extends readonly AnyBinding[]> = Described<
+  'Composition',
+  D
+> & { readonly bindings: Bindings };
+export type AnyComposition = Described<'Composition', string> & { readonly bindings: readonly AnyBinding[] };
+export type Uncomposed = Tag<'Uncomposed'>;
+export type ScenarioAssembly = Uncomposed | AnyComposition;
+export type Step<Actor extends Participant, Via extends AnyOpRef, Take extends Branch<Via>> = Tag<'Step'> & {
+  readonly actor: Actor;
+  readonly fact: Returned<Via, Take>;
+};
+export type EventStep<E extends AnyEvent> = Tag<'EventStep'> & { readonly fact: Occurred<E> };
+export type AnyStep =
+  | (Tag<'Step'> & {
+      readonly actor: Participant;
+      readonly fact: Tag<'Returned'> & { readonly via: AnyOpRef; readonly branch: string };
+    })
+  | (Tag<'EventStep'> & { readonly fact: Tag<'Occurred'> & { readonly event: AnyEvent } });
+export type Complete = Tag<'Complete'>;
+/** 最后一步就是中断事实；本描述只陈述接手方，不声称义务兑现。 */
+export type Interrupted<D extends string, Responsible extends Participant> = Described<'Interrupted', D> & {
+  readonly responsible: Responsible;
+};
+export type Completion =
+  Complete | (Described<'Interrupted', string> & { readonly responsible: Participant });
+export type Scenario<
+  D extends string,
+  Steps extends (Ends extends { readonly design: 'Interrupted' }
+    ? readonly [AnyStep, ...AnyStep[]]
+    : readonly AnyStep[]),
+  Ends extends Completion = Complete,
+  Assembly extends ScenarioAssembly = Uncomposed,
+> = Described<'Scenario', D> & { readonly steps: Steps; readonly ends: Ends; readonly assembly: Assembly };
+
+type Shapes<F extends Fields> = { readonly [K in keyof F]: Shape<F[K]> };
+type CaseShapes<C extends Cases> = {
+  [K in keyof C]: { readonly case: K; readonly fields: Shapes<C[K]['fields']> };
+}[keyof C];
+type VariantShapes<V extends Variants> = {
+  [K in keyof V]: { readonly case: K; readonly fields: Shapes<V[K]['fields']> };
+}[keyof V];
+/** 唯一投影：DSL 递归在 Apply 的参数处结束，原生容器输出不再扫描。 */
+export type Shape<X extends Data> = X extends {
+  readonly design: 'Value';
+  readonly type: infer T extends Scalar | Data;
+}
+  ? T extends Data
+    ? Shape<T>
+    : T
+  : X extends { readonly design: 'Opaque'; readonly key: infer K extends string }
+    ? { readonly [opaque]: K }
+    : X extends { readonly design: 'Struct'; readonly fields: infer F extends Fields }
+      ? Shapes<F>
+      : X extends { readonly design: 'Tuple'; readonly items: infer I extends readonly Data[] }
+        ? { readonly [K in keyof I]: Shape<I[K]> }
+        : X extends {
+              readonly design: 'Apply';
+              readonly lambda: infer F extends TypeLambda;
+              readonly argument: infer A extends Data;
+            }
+          ? Kind<F, Shape<A>>
+          : X extends { readonly design: 'Choice'; readonly cases: infer C extends Cases }
+            ? CaseShapes<C>
+            : X extends { readonly design: 'Outcome'; readonly variants: infer V extends Variants }
+              ? VariantShapes<V>
+              : never;
+export type CarrierOf<C extends Connection> = C['carriers'][number];
+export type Signature<F extends AnyCarrier, O extends AnyOp> = (
+  params: Shapes<O['params']>,
+) => Kind<F['lambda'], Shape<O['result']>>;
+export type Implementation<F extends CarrierOf<C>, C extends Connection> = C extends {
+  readonly design: 'Point';
+  readonly op: infer O extends AnyOp;
+}
+  ? Signature<F, O>
+  : C extends { readonly design: 'Face'; readonly ops: infer O extends { readonly [name: string]: AnyOp } }
+    ? { readonly [K in keyof O]: Signature<F, O[K]> }
+    : never;

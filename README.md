@@ -1,4 +1,4 @@
-# software-design
+# SSoT
 
 本仓库维护两项配套 skill：
 
@@ -12,7 +12,7 @@
 通过 GitHub 来源安装两个 skill；按实际使用的 agent 调整 `--agent`：
 
 ```sh
-npx skills add mouriya-s-lab/software-design --skill software-design software-design-graph --global --agent claude-code codex --yes
+npx skills add mouriya-s-lab/SSoT --skill software-design software-design-graph --global --agent claude-code codex --yes
 ```
 
 检查与 Graph 使用 Bun。安装后在父 skill 的脚本目录安装依赖：

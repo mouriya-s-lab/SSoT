@@ -1,9 +1,13 @@
 ---
 name: software-design
-description: 软件设计文档的写法。骨架（由什么组成、用什么组成、为什么）先于业务，业务只经连接接入；连接、数据、不变量与状态写成 VDM-SL 规格，类型说不清的语义写成同一文件里的文字。在连接不变时可以替换的做法属于实现，不写进设计。文学式 LaTeX 承载规格与文字，scripts/design.ts 初始化目录、用 VDMJ 检查类型与反例、核对目录、方向、说明与文字引用，并导出模块图。用于写、审或重组设计文档、架构方案与 RFC；不用于 issue、PR 或实现代码。
+description: 软件设计文档的写法。上篇讲设计：骨架（由什么组成、用什么组成、为什么）先于业务，业务只经连接接入；连接、数据、不变量与状态是设计的主体；在连接不变时可以替换的做法属于实现，不写进设计。下篇讲落地：连接、数据、不变量与状态写成 VDM-SL 规格，规格说不清的语义写成同一个文学式 LaTeX 文件里的文字；每个上篇的概念都有一份通过检查的 VDM-SL 示例；附 VDM-SL 写法示例、本地 VDM 文档与多 agent 并行编写的指令表。scripts/design.ts 初始化目录、用 VDMJ 检查类型与反例、核对目录、方向、说明、文字引用与语法树上的反模式，并导出模块图；scripts/review.py 在 omp eval 里用 jev 审查需要理解含义的反模式，防止规格退化成只核对名字的字符串检测器。用于写、审或重组设计文档、架构方案与 RFC；不用于 issue、PR 或实现代码。
 ---
 
 # software-design
+
+本 skill 分两篇。上篇讲设计是什么、怎样组织；下篇讲怎样用 VDM-SL 与文学式 LaTeX 写出来，并用一份通过检查的[示例设计](references/example/design/)逐条解释上篇。
+
+# 上篇：设计
 
 ## 设计是什么
 
@@ -12,10 +16,10 @@ description: 软件设计文档的写法。骨架（由什么组成、用什么�
 - **判据：在连接不变时可以替换的做法属于实现。** 一段内容只规定怎样兑现连接，换一种做法时连接与不变量都不变，它就是实现，不写进设计。两个独立的实现者各写一份时必须得出同一外部行为的内容，才写进设计。
 - **失败与并发按同一判据划分。** 会改变部件、连接、状态空间或使用方可观察承诺的决定属于设计，例如是否承诺恰好一次、“结果未知”是不是一种结局、崩溃后由谁接管。罕见不等于是实现。
 - **设计不展开边界情况与逐情形处理。** 不改变连接、状态空间、不变量和可观察承诺的处理细节属于实现，例如逐项的拒绝原因、编码与字节、在既定承诺下选哪种算法。一段细节保护某条不变量时，设计只写这条不变量。
-- **设计不要求组合成整体。** 组合根、适配器、总入口、完整调用链、为通过检查补的实现都不属于设计。规格只要求本身合法、引用能解析。
-- **设计与实现的类型是两码事。** design 不依赖 src，因为设计不能随实现改变；实现怎样表达这些类型由实现决定。
+- **设计不要求组合成整体。** 组合根、适配器、总入口、完整调用链、为通过检查补的实现都不属于设计。设计只要求本身合法、引用能解析。
+- **设计与实现的类型是两码事。** 设计不依赖实现，因为设计不能随实现改变；实现怎样表达这些类型由实现决定。
 
-为什么不直接写代码：代码必须完整、能运行，设计决定、可替换的选择与为了能跑而补的边界处理混在一起，读不出哪一行是不能改的承诺；而且代码是唯一产物时，没有独立的参照可以检验它。为什么不只写文字：文字没法机械核对，同一个概念在各处的说法会漂移，AI 写文字会自造词，并把边界处理与业务写进设计。所以能形式化的部分写成 VDM-SL 规格，由工具检查；规格说不清的语义写成文字，文字只引用规格里已有的名字。
+为什么不直接写代码：代码必须完整、能运行，设计决定、可替换的选择与为了能跑而补的边界处理混在一起，读不出哪一行是不能改的承诺；而且代码是唯一产物时，没有独立的参照可以检验它。为什么不只写文字：文字没法机械核对，同一个概念在各处的说法会漂移，AI 写文字会自造词，并把边界处理与业务写进设计。所以能形式化的部分写成可以检查的规格，规格说不清的语义写成文字，文字只引用规格里已有的名字。
 
 ## 骨架与优先级
 
@@ -35,7 +39,7 @@ flowchart TB
     A -.-> X["附录：示例 · 证据 · 实现参考"]
 ```
 
-- **依赖方向。** 业务引用架构，架构不引用业务；check 拒绝架构模块 import 业务模块。架构里也不得有只为某一个业务单元存在的类型、分支或规则。
+- **依赖方向。** 业务引用架构，架构不引用业务。架构里也不得有只为某一个业务单元存在的类型、分支或规则。
 - **架构由需求证明。** 改变骨架的需求与质量要求写进架构的依据，写明来源；依据可以说明它来自哪类业务场景，但架构不引用业务单元的规格。
 - **对不上时判断哪一边错。** 业务在骨架上写不出来，或场景走不通时，判断是业务表达错了、这项业务不属于本系统，还是骨架的抽象不成立，不预设结论。改骨架是单独的决定：写出哪条依据变了，改完后让每个业务单元与场景重新通过检查。
 - **附录不设立规则。** 正文可以指向附录中的证据，附录可以引用正文。
@@ -44,42 +48,39 @@ flowchart TB
 
 抽象层级与模块划分是两条独立的轴。
 
-- **抽象层级**是架构目录树的深度：`architecture/` 是根模块，每个子目录是一个子模块。父模块粒度粗，子模块粒度细。子模块可以使用祖先拥有的材料；父模块不依赖子模块，几个子模块共用的材料放在它们共同的父模块。
+- **抽象层级**是模块树的深度：根模块之下是子模块。父模块粒度粗，子模块粒度细。子模块可以使用祖先拥有的材料；父模块不依赖子模块，几个子模块共用的材料放在它们共同的父模块。
 - **模块划分**是每个模块固定的三部分，不论它在哪一层：
-
-| 部分 | 写在哪里 |
-|---|---|
-| 外部连接 | 本目录各 VDM-SL 模块的 `exports`：导出的操作、函数与类型 |
-| 核心代码 | 本目录各 VDM-SL 模块里的类型（带 `inv`）、状态、函数与操作 |
-| 内部设计 | 子目录；`README.tex` 的「语义」与主题文件：规格说不清的语义 |
+  - **外部连接**：别的模块能用的操作、函数与类型；
+  - **核心代码**：本模块拥有的类型、不变量、状态、函数与操作；
+  - **内部设计**：子模块，以及规格说不清的本模块语义。
 
 模块的划分只按抽象：一组可以对外陈述连接、内部决定可以对其他模块隐藏的元素，成为一个模块。篇幅不是拆分模块的理由。
 
-业务不分三部分。业务单元是 `business/` 下的一个目录，用自己的 VDM-SL 模块 import 架构导出的操作与类型接入，向其他业务单元导出它提供的操作。业务单元之间只经导出的操作协作；不带 `struct` 导出的类型对使用方不透明，使用方不能依赖它的结构。
+业务不分三部分。业务单元用架构导出的操作与类型接入，向其他业务单元导出它提供的操作。业务单元之间只经导出的操作协作；对使用方不承诺结构的类型，使用方不能依赖它的结构。
 
-## 规格：VDM-SL
+## 连接与数据
 
-规格用 VDM-SL 写在文学式 LaTeX 文件里：文字在外，规格在 `\begin{vdm_al}` 与 `\end{vdm_al}` 之间，VDMJ 只解析规格块。一个文件至多一个 VDM-SL 模块，规格必须写在具名的 `module … end` 里。写法范例在 [`references/vdm.md`](references/vdm.md)。
+连接是一等概念：模块之间只经连接相接，连接写清楚之后，两边可以各自替换实现。
 
-| 设计概念 | VDM-SL |
+| 概念 | 是什么 |
 |---|---|
-| 连接点 | 一个导出的操作或函数 |
-| 连接面 | 同一模块导出、共享该模块状态与 `inv` 的一组操作；共享的不变量就是状态不变式 |
-| 交换 | 操作的参数与结果类型 |
-| 结局 | 结果的并类型，每支是 quote 或记录；只列使用方必须区分处理的结局，不逐项列原因 |
-| 可观察的失败 | 结局中的一支，例如结果未知；恢复要走的操作写在这一支的说明里 |
-| 准入定律 | `pre`、`post`、`inv`；写不成谓词的定律与质量承诺进「语义」 |
-| 不承诺 | 不带 `struct` 导出的类型，或 `token` |
-| 生命周期 | 模块状态里的集合或映射：开始操作的 `post` 加入，结束操作的 `pre` 要求存在、`post` 移除；嵌套写成状态不变式；确认者写在操作的说明里 |
-| 场景 | 一个操作依次调用连接 |
+| 连接点 | 一个可以被调用的操作或函数 |
+| 连接面 | 共享同一份状态与同一条不变量的一组操作；共享的那条不变量就是这个面的规则 |
+| 交换 | 连接收进与交出的数据 |
+| 结局 | 一次调用的全部可能结果；只列使用方必须区分处理的结局，不逐项列原因 |
+| 可观察的失败 | 结局中的一支，例如结果未知；写明恢复要走哪个连接 |
+| 准入定律 | 实现必须满足的前置条件、后置条件与不变量；签名对得上不等于可以接入 |
+| 不承诺 | 对使用方隐藏结构的类型：使用方只能原样传递，不能读、不能造 |
+| 生命周期 | 一样东西从开始到结束：由哪个连接开始、哪个连接结束，嵌套在谁之内，由谁确认 |
+| 场景 | 按次序调用连接，走通一条需求、一种失败结局或一次生命周期中断 |
+| 判定 | 两个实现必须得出同一结果的计算；这时计算本身就是设计决定 |
 
-- **先写隐式规格。** 连接写成只有 `pre`/`post` 的隐式操作或函数：说做到什么，不说怎么做。只有计算本身就是设计决定时才写显式体，例如两个实现必须得出同一结果的判定算法；不为了能执行而补显式体。
-- **类型优先，说明跟着类型。** 先写类型，再写文字；文字不替代类型的描述。每个定义前写 `--` 注释，说明它是什么、承诺什么，而不是复述形状；记录与状态的每个字段在同一行末尾或上一行写 `--` 注释。check 拒绝缺说明的定义与字段。
+- **说做到什么，不说怎么做。** 连接只写前置条件与后置条件；只有判定才写出计算过程。不为了能执行而补过程。
+- **类型优先，说明跟着类型。** 先写类型，再写文字；文字不替代类型的描述。每个元素都有一句说明，说它是什么、承诺什么，而不是复述形状。
 - **名字就是词汇。** 规格里的名字是设计唯一的词汇；文字只用这些名字指认元素，不另造同义词。一个概念重要到要在文字里反复提，就把它写成规格元素；不重要就不起名字。
-- **场景。** 关键的正常路径、每种可观察的失败结局、生命周期中断都各写一个场景操作。类型检查核对场景用到的操作与结局存在；证明义务把每一步的前置条件写成待证命题，QuickCheck 找它们的反例。写不出某个场景，说明连接、结局或骨架缺了东西：回到规格去改，不另写走查报告。
-- **规格说不清的不硬写。** 进程、并发、崩溃窗口、持久化顺序、定时规则在 VDM-SL 里没有直接表达；不要为它们造模拟机制，写进「语义」。
+- **场景先于文字走查。** 关键的正常路径、每种可观察的失败结局、生命周期中断都各写一个场景。写不出某个场景，说明连接、结局或骨架缺了东西：回去修改，不另写走查报告。
 
-## 文字
+## 规格说不清的语义
 
 文字写规格说不清的语义，是规格的额外解释：
 
@@ -89,15 +90,8 @@ flowchart TB
 - **失败与恢复**：跨越多个连接的恢复，例如崩溃后由谁接管哪些运行。
 - **包含关系**：哪些模块在同一进程、同一部署、同一信任范围或同一存续期内；模块树本身不代表任何包含。
 - **定律的展开**：一句谓词写不清的等式与关系。
-- **依据、需求与理由**：见「依据与理由」。
 
-写法：
-
-- 一句陈述一条事实或一条规则；规则用“必须、不得、可以、只”。
-- 用 `\vdmref{模块}`、``\vdmref{模块`名字}``、``\vdmref{模块`名字.字段}`` 指认规格元素；check 拒绝指向不存在元素的引用。
-- 数量写数值、单位和条件。
-- 不在文字里复述规格已经说清的内容，不与规格矛盾。
-- 模块的组成与依赖由 `graph` 从规格导出，不在文档里另画。
+写法：一句陈述一条事实或一条规则，规则用“必须、不得、可以、只”；数量写数值、单位和条件；不复述规格已经说清的内容，不与规格矛盾；不为这些语义造模拟机制。
 
 ## 依据与理由
 
@@ -110,16 +104,31 @@ flowchart TB
 - 影响整个系统的依据写在根模块；只影响一个模块的写在该模块；只约束一个业务单元的写在该单元。篇幅大的证据放进附录，依据只引用它。
 - 不编号，不建追溯矩阵。
 
-**需求**写在业务单元 `README.tex` 的「需求」：需求是必须在问题域中成立、可以被观察到的结果，例如用户或外部系统看到什么，不是机器的功能列表。每条写出来源，并至少由一个场景走通。
+**需求**属于业务单元：需求是必须在问题域中成立、可以被观察到的结果，例如用户或外部系统看到什么，不是机器的功能列表。每条写出来源，并至少由一个场景走通。
 
-**理由**写在「为什么」：
+**理由**写为什么：
 
 - 每个改变骨架或业务形状的决定都写理由，理由引用依据或需求。
 - 确实存在可信替代时，写一句为什么不选它。
 - 理由引用的依据不再成立时，决定要重审。决定依赖的前提不在依据里时，把前提写进理由。
-- 只关系到一个元素的选择，理由写进这个元素的说明注释。
+- 只关系到一个元素的选择，理由写进这个元素的说明。
 
-## 目录与文件
+# 下篇：落地
+
+规格用 VDM-SL 写在文学式 LaTeX 文件里，由 VDMJ 检查。下篇所有示例都取自 [`references/example/design/`](references/example/design/)，它通过 `check`；标着“反例”的片段与 `check` 的输出是在它的副本上改出来的。
+
+VDM 的本地文档在 [`references/vdm/`](references/vdm/README.md)，随时查阅：
+
+| 文档 | 用途 |
+|---|---|
+| [语言手册](references/vdm/language-manual.md) | VDM-SL 的全部语法与语义 |
+| [运算符速查](references/vdm/operators.md) | 集合、序列、映射等运算符 |
+| [诊断信息](references/vdm/messages.md) | VDMJ 错误与警告的编号和原文，读 `check` 的输出时用 |
+| [VDMJ 用户指南](references/vdm/vdmj-user-guide.md) | 解释器、证明义务与命令行 |
+| [外部格式](references/vdm/external-formats.md) | 文学式 LaTeX 等文件格式 |
+| [QuickCheck](references/vdm/quickcheck.md) | 证明义务的反例搜索 |
+
+## 文件与目录
 
 ```mermaid
 flowchart TB
@@ -136,17 +145,369 @@ flowchart TB
 
 - `init`、`module`、`unit` 生成目录与 `README.tex`；文件名只用英文小写字母、数字与连字符。
 - `design.tex` 以 `\input` 列出阅读次序，每个 `architecture/`、`business/` 下的 `.tex` 恰好一次；它不写规则。
+- **规格文件**：文字在外，规格在 `\begin{vdm_al}` 与 `\end{vdm_al}` 之间，VDMJ 只解析规格块。一个文件至多一个 VDM-SL 模块，规格必须写在具名的 `module … end` 里。一组一起变化的元素放在一个文件，文件按内容命名，例如 `run.tex`；两组各自独立变化时分成两个文件；不按篇幅拆分。
 - **README.tex**：以 `\section{模块名}` 开头，先写一段本模块负责什么、不负责什么，之后的小节按固定次序，没有内容的小节不写。架构是「依据」「为什么」「语义」；业务是「依据」「需求」「为什么」「语义」。其余内容放进主题文件。
-- **规格文件**：一组一起变化的元素放在一个文件、一个 VDM-SL 模块里，文件按内容命名，例如 `run.tex`。两组各自独立变化时分成两个文件。不按篇幅拆分，也不预设类型的名字。
 - **主题文件**：一组一起变化、规格说不清的语义，在 `README.tex` 里展开会遮住骨架时，放进主题文件；它开头用一段话说明它展开 `README.tex` 的哪一节。拆开会迫使读者跨文件拼出同一个不变量、生命周期或失败窗口时不拆。
-- **附录**分三类：`examples/` 演示已有规则，`evidence/` 存放依据的证据，`reference/` 说明实现可以怎样满足连接。附录不设立规则；附录里出现新规则时，把它移到所属的模块或业务单元。
+- **文字引用**：用 `\vdmref{模块}`、``\vdmref{模块`名字}``、``\vdmref{模块`名字.字段}`` 指认规格元素；check 拒绝指向不存在元素的引用。
+- **附录**分三类：`examples/` 演示已有规则，`evidence/` 存放依据的证据，`reference/` 说明实现可以怎样满足连接。附录不设立规则。
 - 文档只写当前设计：不标状态，不并列新旧规则，不写变更历史。
 
-**依赖方向**由 check 按 import 核对：
+## VDM-SL 写法
 
-- 架构模块不得 import 业务模块。
-- 父模块不得 import 子模块；共用的材料放在共同的父模块。
-- 目录之间的 import 不成环；同一目录内的模块可以互相引用。
+每个片段之后列出语言手册里对应的内容。
+
+**文学式文件。** LaTeX 标题与文字在外，规格块在 `vdm_al` 里：
+
+```latex
+\subsection{运行连接}
+
+\begin{vdm_al}
+module Run
+```
+
+**模块头。** `exports` 列出别的模块能用的东西，`struct` 表示连同结构一起导出；`imports` 逐项列出用到的名字，`renamed` 让本模块用短名：
+
+```vdm
+exports
+  types RunId; struct RequestNo; struct Started; struct StartOutcome; struct StatusOutcome
+  values RetrySeconds : nat1
+  operations
+    Start: RequestNo ==> StartOutcome;
+    Status: RequestNo ==> StatusOutcome;
+    Finish: RunId ==> ();
+    Recover: RequestNo ==> ()
+```
+
+```vdm
+imports
+  from Run
+    types RequestNo renamed RequestNo; Started renamed Started
+    operations Start renamed Start; Finish renamed Finish,
+  from Attempt
+    types Entry renamed Entry
+    operations Record renamed Record
+```
+
+**类型。** `token` 是没有结构的值；`inv` 给类型加不变式；`::` 定义记录，字段之间不加分号，分号结束整个定义；`|` 组成并类型，`<Rejected>` 是 quote 值：
+
+```vdm
+  -- 一次运行的身份；提供方造出，使用方不读结构
+  RunId = token;
+
+  -- 调用方给出的请求号，从 1 开始；同一请求号代表同一次请求
+  RequestNo = nat
+  inv r == r > 0;
+
+  -- 运行已经开始；调用方之后必须用 Finish 结束它
+  Started ::
+    run : RunId;  -- 结束时交回的身份
+
+  -- Start 的结局：使用方必须区分已开始、被拒绝与结果未知；结果未知时改用 Status 找回
+  StartOutcome = Started | <Rejected> | <Unknown>;
+```
+
+**值。** 有名字的常量：
+
+```vdm
+values
+  -- 结果未知之后，两次找回之间至少相隔的秒数
+  RetrySeconds : nat1 = 30;
+```
+
+**状态。** 模块的状态是一条记录，带不变式与初值；`map`、`set of`、`seq of` 是映射、集合与序列。`init` 要写成 `r = mk_Runs(...)` 的形式：VDMJ 要执行它来初始化模块，才能生成并检验证明义务；写成别的谓词时 `check` 报 Error 4144：
+
+```vdm
+state Runs of
+  byRequest : map RequestNo to RunId  -- 请求号到它产生的运行
+  live : set of RunId  -- 已开始、尚未结束的运行
+  inv mk_Runs(b, l) == l subset rng b
+  init r == r = mk_Runs({|->}, {})
+end
+```
+
+**隐式操作。** 只写 `ext`（读写哪些状态分量）、`pre` 与 `post`，不写过程；`post` 里 `byRequest~` 是调用前的值，`++` 覆盖映射，`is_Started` 判断记录类型：
+
+```vdm
+  -- 开始一次运行；同一请求号重复开始只产生一次运行
+  Start(request: RequestNo) r: StartOutcome
+  ext wr byRequest wr live
+  post (is_Started(r)
+          and (request in set dom byRequest~ => r.run = byRequest~(request))
+          and byRequest = byRequest~ ++ {request |-> r.run}
+          and live = live~ union {r.run})
+       or ((r = <Rejected> or r = <Unknown>) and byRequest = byRequest~ and live = live~);
+```
+
+**显式函数。** 写出计算；这里用集合推导式、`inds`（序列下标）与 `exists`：
+
+```vdm
+  -- 需要找回的运行：最后一条尝试是结果未知的运行；两个实现必须得出同一集合，所以写显式体
+  Unresolved: seq of Entry -> set of RunId
+  Unresolved(log) ==
+    {log(i).run | i in set inds log &
+       log(i).outcome = <Unknown>
+       and not exists j in set inds log & j > i and log(j).run = log(i).run};
+```
+
+**显式操作。** 按次序调用别的操作；`cases` 按结局分支，`mk_Started(run)` 拆开记录，`let` 绑定中间结果，`;` 表示先后：
+
+```vdm
+  -- 场景：开始的结果未知时，按请求号找回运行并结束它
+  Recover: RequestNo ==> ()
+  Recover(request) ==
+    cases Start(request):
+      mk_Started(run) -> Finish(run),
+      <Rejected> -> skip,
+      <Unknown> ->
+        let found = Status(request) in
+          if found <> <Absent> then Finish(found)
+    end;
+```
+
+**说明注释。** `--` 写在定义前面，字段的说明写在同一行末尾；check 要求每个定义与字段都有。
+
+语言细节查[语言手册](references/vdm/language-manual.md)：模块与导入导出、类型与不变式、状态、隐式与显式定义、表达式与模式；运算符查[运算符速查](references/vdm/operators.md)。
+
+## 用 VDM-SL 解释上篇
+
+本节的小标题与上篇一一对应。
+
+### 设计是什么
+
+- **在连接不变时可以替换的做法属于实现。** `Run`Start` 只有 `post`（见上一节）：它规定开始之后运行表必须是什么样，不规定怎样查找、怎样插入。[`appendix/reference/run-store.md`](references/example/design/appendix/reference/run-store.md) 写了一种实现，换成别的实现，`Start` 的签名与后置条件都不变，所以那份材料在附录，不在规格里。
+- **失败按同一判据划分。** 结果未知改变了使用方必须处理的结局，所以它是 `StartOutcome` 的一支 `<Unknown>`，并且说明里写明恢复走 `Status`（见上一节的类型片段）。
+- **不展开边界情况。** 被拒绝只有一支 `<Rejected>`。逐项列出拒绝原因就是展开了边界情况：
+
+  ```vdm
+  -- 反例：逐项列出拒绝原因
+  StartOutcome = Started | <QuotaExceeded> | <BadRequest> | <UpstreamBusy> | <Unknown>;
+  ```
+
+- **不要求组合成整体。** `Report` 直接 import `Run` 与 `Attempt` 导出的操作；规格里没有哪个模块把实现装配起来，`check` 照样通过。
+- **设计与实现的类型是两码事。** 规格是 VDM-SL，实现无法 import 它；实现用自己的语言表达同样的类型，对照规格检验。
+
+### 骨架与优先级
+
+- **由什么组成、用什么组成。** `graph` 从规格导出目录、模块与 import 关系：
+
+  ```mermaid
+  flowchart TB
+    subgraph d_architecture["architecture"]
+      m_Run["Run"]
+      subgraph d_architecture__attempt["architecture/attempt"]
+        m_Attempt["Attempt"]
+      end
+    end
+    subgraph d_business__report["business/report"]
+      m_Report["Report"]
+    end
+    m_Attempt -->|import| m_Run
+    m_Report -->|import| m_Run
+    m_Report -->|import| m_Attempt
+  ```
+
+- **为什么。** 写在 `README.tex` 的「为什么」，引用规格元素：
+
+  ```latex
+  运行表与开始、找回、结束放在同一个模块，因为它们共享“活着的运行都来自某个请求”这条不变量（\vdmref{Run`Runs}）。
+  ```
+
+- **依赖方向。** 反例：在架构模块 `Run` 的头部加上 `imports from Report operations Daily renamed Daily`，`check` 输出：
+
+  ```text
+  architecture/run.tex:5: [structure] 架构模块 Run 不得引用业务模块 Report。
+  architecture/run.tex:5: [structure] 模块目录之间的依赖成环：architecture -> business/report -> architecture/attempt -> architecture。
+  ```
+
+- **架构由需求证明。** 根模块的依据写出需求、来源与“所以”：
+
+  ```latex
+  在上游可用的情况下，调用方用同一个请求号重复调用 \vdmref{Run`Start} 时，系统只产生一次运行（来源：示例需求）。所以 \vdmref{Run`Start} 按 \vdmref{Run`RequestNo} 幂等，运行表记下请求号到运行的对应。
+  ```
+
+- **对不上时判断哪一边错。** 反例：业务场景要处理一个骨架没有的结局，把 `Report`Daily` 的 `others -> skip` 改成 `<Lost> -> skip`，类型检查不通过：
+
+  ```text
+  business/report/report.tex:21: [typecheck] Error 3311: Pattern cannot match in 'Report' (business/report/report.tex) at line 21:7
+  ```
+
+  这时判断是业务写错了、这项业务不属于本系统，还是骨架少了一个结局。
+- **附录不设立规则。** 依据引用 [`appendix/evidence/upstream-timeout.md`](references/example/design/appendix/evidence/upstream-timeout.md) 作为证据；附录本身不出现在阅读次序里，不被检查，也不设立规则。
+
+### 两条轴
+
+- **抽象层级。** 子模块 `Attempt` 使用父模块的材料：
+
+  ```vdm
+  imports from Run types RunId renamed RunId
+  ```
+
+  反过来，父模块 `Run` import 子模块 `Attempt` 时，`check` 输出：
+
+  ```text
+  architecture/run.tex:5: [structure] 父模块 Run 不得依赖子模块 Attempt；共用的材料放到共同的父模块。
+  ```
+
+- **模块的三部分。** `Run` 的外部连接是它的 `exports`（见上一节的模块头）；核心代码是它的类型、状态 `Runs`、函数与操作；内部设计是子目录 `attempt/` 与 `README.tex` 的「语义」。
+- **按抽象划分。** `Attempt` 单独成为子模块的理由写在它的 `README.tex`：
+
+  ```latex
+  尝试的记录只追加，所以单独成为子模块：它只用到父模块的 \vdmref{Run`RunId}，父模块不需要知道记录怎样保存。
+  ```
+
+- **业务单元。** `Report` 只 import 架构导出的东西，并导出自己提供的操作：
+
+  ```vdm
+  exports
+    operations Daily: RequestNo ==> ()
+  ```
+
+  `RunId` 导出时没有 `struct`，`Report` 只能把 `Start` 交回的身份原样交给 `Finish` 与 `Record`，不能读出它的结构，也不能造一个。
+
+### 连接与数据
+
+| 概念 | 示例里的写法 |
+|---|---|
+| 连接点 | `Run`Status`：一个导出的操作 |
+| 连接面 | `Start`、`Status`、`Finish` 共享状态 `Runs`；它们共同的规则就是 `inv mk_Runs(b, l) == l subset rng b` |
+| 交换 | 参数与结果类型，例如 `Start: RequestNo ==> StartOutcome` |
+| 结局 | 并类型 `StartOutcome = Started \| <Rejected> \| <Unknown>` |
+| 可观察的失败 | `<Unknown>` 一支，说明里写明改用 `Status` 找回 |
+| 准入定律 | `Start` 的后置条件：同一请求号重复开始，得到同一运行 |
+| 不承诺 | `RunId = token`，导出时不带 `struct` |
+| 生命周期 | 运行由 `Start` 加入 `live` 开始、由 `Finish` 移出结束；`l subset rng b` 规定活着的运行都嵌套在某个请求之内；确认者写在操作的说明里 |
+| 场景 | `Run`Recover` 走通结果未知后的恢复；`Report`Daily` 走通每天的日报 |
+| 判定 | `Attempt`Unresolved` 写出显式体，因为两个实现必须得出同一集合 |
+
+- **说做到什么，不说怎么做。** `Start`、`Status`、`Finish`、`Record` 是隐式操作；只有判定 `Unresolved` 与场景 `Recover`、`Daily` 有显式体。
+- **说明跟着类型。** 反例：删掉 `Finish` 前面的说明，`check` 输出：
+
+  ```text
+  architecture/run.tex:60: [structure] Run`Finish 前面缺少说明它是什么、承诺什么的 -- 注释。
+  ```
+
+- **名字就是词汇。** 反例：根模块依据里把 ``\vdmref{Run`Status}`` 写成规格里没有的 ``\vdmref{Run`Lookup}``，`check` 输出：
+
+  ```text
+  architecture/README.tex:7: [prose] \vdmref{Run`Lookup} 指向的规格元素不存在；只引用规格里已有的模块、定义或字段，不造新词。
+  ```
+
+### 规格说不清的语义
+
+定时、进程边界与崩溃后的接管写在根模块「语义」，每个被提到的东西都是规格里的名字；时间间隔的数值是规格里的值 `RetrySeconds`：
+
+```latex
+调用方得到结果未知之后，两次调用 \vdmref{Run`Status} 至少相隔 \vdmref{Run`RetrySeconds} 秒。\vdmref{Run} 与 \vdmref{Attempt} 运行在同一进程内；进程崩溃后，新进程按 \vdmref{Run`Runs.byRequest} 接管尚未结束的运行。
+```
+
+### 依据与理由
+
+- **依据写来源与“所以”**，证据放附录：
+
+  ```latex
+  上游在超时之后仍可能已经开始了运行（来源：上游接口说明，证据见附录 \texttt{evidence/upstream-timeout.md}）。所以 \vdmref{Run`StartOutcome} 有结果未知一支，调用方经 \vdmref{Run`Status} 找回运行。
+  ```
+
+- **理由写为什么不选可信的替代**：
+
+  ```latex
+  不让调用方自己记下请求号与运行的对应：结果未知时调用方手里没有运行身份，只有提供方能按请求号找回。
+  ```
+
+- **需求写来源，并由场景走通**：
+
+  ```latex
+  每天生成一份日报（来源：示例需求），由 \vdmref{Report`Daily} 走通。
+  ```
+
+## 反模式
+
+规格可以通过 `check`，却仍然不是设计：它可能只是一张名字登记表，靠字符串表达含义，或者写成了实现。那样的规格只是让 `\vdmref` 有名字可指、让类型检查有东西可查，`check` 就退化成了字符串检测器，只核对名字存在，不再检验设计。反模式分两层查：程序能确定的，由 `check` 的 antipattern 阶段按 VDMJ 的语法树判断，不匹配源码文本；需要理解含义的，由 jev（omp 的 judge 模型）按校准过的问题判断。
+
+### 程序判断（`check`）
+
+| 反模式 | 为什么不是设计 |
+|---|---|
+| 字符串字面量 | 含义靠比较字符串内容，类型与谓词什么也没说 |
+| 显式体里有赋值、循环或 `dcl` | 写的是怎样做，不是做到什么 |
+| `is not yet specified` | 不承诺任何东西 |
+| 隐式定义的 `post` 恒为 `true` | 不承诺任何东西 |
+| 规格里没人用的顶层定义 | 只是一个名字，只为文字引用而存在（来自 VDMJ 的 Warning 5000） |
+
+反例：
+
+```vdm
+  -- 是否完成
+  Done: Job -> bool
+  Done(j) == j.status = "done";
+
+  -- 加入
+  Add: Job ==> ()
+  Add(j) == (dcl i : nat := 0; while i < 3 do i := i + 1; jobs := jobs ^ [j]);
+
+  -- 恒真
+  Always(n: nat)
+  ext rd jobs
+  post true;
+```
+
+```text
+architecture/bad.tex:25: [antipattern] Bad`Done：规格里出现了字符串字面量：设计靠类型与谓词表达含义，不比较字符串内容；改用 quote、token 或记录。
+architecture/bad.tex:34: [antipattern] Bad`Add：显式体里有局部变量声明（dcl）、循环语句、赋值语句：这是实现。连接写成隐式定义的 post；显式体只用于场景与判定，不改状态、不写循环。
+architecture/bad.tex:38: [antipattern] Bad`Always：隐式定义的 post 恒为 true，不承诺任何东西：写出它做到什么。
+```
+
+### 模型判断（jev）
+
+| 反模式 | 判断对象 | 为什么不是设计 |
+|---|---|---|
+| 字符串当类型 | `check` 找出的每个 `seq of char` | 身份、状态、种类或结构藏在字符串里；原样传递的文本不算 |
+| bool 堆叠 | `check` 找出的、有两个以上 `bool` 字段的记录或状态 | 几个 bool 一起表示互斥的状态，应当是一个 quote 并类型 |
+| 逐项列原因 | `check` 找出的、有四个以上 quote 分支的并类型 | 把失败或拒绝的原因逐项列出，是展开边界情况 |
+| 说明复述形状 | 每个定义与它的说明 | 说明没说它是什么、承诺什么 |
+| 显式体是实现 | 每个显式体 | 缓存、查找、生成身份这些是怎样做 |
+| 名字登记表 | 每个模块 | 模块只有名字，没有结构、不变式或 pre/post |
+| 模拟运行机制 | 每个模块 | 时钟、进程、调度应当写进「语义」，不建模 |
+| 业务进架构 | 每个架构定义 | 只为某个业务单元存在 |
+| 文字复述规格 | 每段文字与同目录的规格 | 规格已经说清，文字是重复 |
+| 自造词 | 每段文字与规格的全部名字 | 文字用了规格里没有的名字 |
+| 依据不成立 | 「依据」里的每段 | 没有来源，或拿实现与技术选型当理由 |
+
+在 omp 的 eval（Python）里运行：
+
+```python
+%load ~/.agents/skills/software-design/scripts/review.py
+findings = await review("/path/to/repo/design")
+```
+
+`review` 先运行 `bun scripts/design.ts review <design>` 取得判断对象，再交给 jev，输出格式与 `check` 相同。例如在示例设计的一个副本里加入这些反例：
+
+```vdm
+  -- 运行的信息
+  RunInfo ::
+    status : seq of char  -- 运行状态：waiting、running 或 done
+    running : bool  -- 正在运行
+    finished : bool;  -- 已结束
+
+  -- Start 失败的原因
+  FailReason = <QuotaExceeded> | <AuthExpired> | <UpstreamBusy> | <BadRequest> | <Unknown>;
+```
+
+```text
+architecture/run.tex:23: [review:bool_stack] 几个 bool 字段一起表示互斥的状态：改成一个 quote 并类型。 (p=0.84)
+architecture/run.tex:24: [review:stringly] 这里用字符串代表身份、状态、种类或结构：给它一个类型（token、quote 并类型或记录）。 (p=0.93)
+architecture/run.tex:29: [review:reasons] 结局逐项列出了失败或拒绝的原因：合成一支，原因不写进设计。 (p=0.95)
+```
+
+示例设计本身的模型审查结果是 0 处。
+
+问题的措辞与阈值用 [`scripts/review-calibration.json`](scripts/review-calibration.json) 里的正反样本校准过，每个问题在样本上零误判。改动措辞或阈值之后，在 eval 里运行 `await calibrate()`，零误判才算校准通过；遇到误判的新情形，把它加进样本再校准。
+
+jev 判断不了两件事：说明里的承诺有没有写进 `pre`、`post` 或 `inv`，场景有没有走通需求的每一步。实验里这两类问题的正反样本分不开，所以它们留在「审查清单」由人判断。
+
+## 并行编写
+
+几个 agent 同时编写同一份设计时，按模块目录分工：主控建目录、分配归属并做集成检查，每个写手只写自己的目录。写手之间只用[指令表](references/commands.md)里的指令通信：名字一律写成限定名，种类用 VDM-SL 的关键字，签名写成 VDM-SL，诊断原样转发。还没拿到的名字照样引用，`check` 把它报成断口，不妨碍各自继续。
 
 ## 脚本与检查
 
@@ -160,6 +521,7 @@ flowchart TB
 | `bun scripts/design.ts check <design> [--json]` | 检查全部规则，逐条列出违规，有违规时退出码为 1 |
 | `bun scripts/design.ts graph <design> [--json]` | 输出目录、模块与 import 关系的 Mermaid 图或 JSON |
 | `bun scripts/design.ts vdmj <design> [参数]` | 用全部规格文件运行 VDMJ，例如 `-i` 进解释器、`-e` 求值 |
+| `bun scripts/design.ts review <design>` | 输出模型审查的判断对象（JSON），由 `scripts/review.py` 交给 jev，见「反模式」 |
 
 `check` 依次检查：
 
@@ -168,11 +530,18 @@ flowchart TB
 | layout | 只有约定的目录与文件，名字合规，每个模块与业务单元目录有 `README.tex` |
 | parse | VDMJ 能解析每个文件的规格块 |
 | structure | 一个文件至多一个具名模块；每个定义与字段有说明；依赖方向与无环 |
+| antipattern | 语法树上的反模式：字符串字面量、显式体里的赋值与循环、`is not yet specified`、`post` 恒为 `true`、没人用的顶层定义 |
 | prose | `\vdmref` 都指向存在的元素；`README.tex` 的开头段与小节次序；`design.tex` 恰好列出每个文件 |
 | typecheck | VDMJ 类型检查全部模块 |
 | quickcheck | 生成证明义务，QuickCheck 没有找到反例 |
 
-通过表示规格类型正确、结构与方向成立、文字引用的名字都存在、QuickCheck 没有找到反例。它不表示证明义务都成立：输出列出“未定”“未评估”的义务，它们与说明、依据、理由一样靠审查清单判断。
+通过表示规格类型正确、结构与方向成立、文字引用的名字都存在、QuickCheck 没有找到反例。它不表示证明义务都成立：输出列出“未定”“未评估”的义务，例如示例设计里的这一条：
+
+```text
+  未定：Recover: subtype obligation in 'Run' (architecture/run.tex) at line 73:44
+```
+
+它要求 `Finish(found)` 的参数是 `RunId`；`found <> <Absent>` 保证了这一点，所以这条义务成立。未定的义务与说明、依据、理由一样靠审查清单判断。诊断编号的含义查[诊断信息](references/vdm/messages.md)。
 
 `design.tex` 用 XeLaTeX 编译成 PDF，例如 `tectonic -X compile design.tex`；它用到 `ctex`（fandol 字体）与 `vdmlisting`。检查不依赖 TeX，并忽略 `design.pdf` 等编译产物。
 
@@ -184,13 +553,15 @@ flowchart TB
 4. 用 `module` 建立每个子模块，写它的依据、规格与 `README.tex`，逐层向下。
 5. 用 `unit` 建立业务单元：先写依据与需求，再写接入的规格，最后写为什么与语义。
 6. 为关键路径、每种失败结局与生命周期中断写场景操作。写不出来时回到第 2 到 5 步修正。
-7. 运行 `check`，用 `graph` 导出模块图审查骨架，再按「审查清单」逐项检查，包括输出列出的未定义务。
+7. 运行 `check`，再在 omp 的 eval 里运行 `review`（见「反模式」），用 `graph` 导出模块图审查骨架，再按「审查清单」逐项检查，包括输出列出的未定义务。
+
+模块之间互不阻塞时，第 4、5 步可以按「并行编写」分给几个 agent。
 
 改动的传递：
 
 - 骨架变了，先改依据、规格与理由，再让每个业务单元与场景重新通过 `check`。
 - 业务变了，先改业务；业务或场景在骨架上走不通时，按「骨架与优先级」判断哪一边错。
-- 重写已有设计时，先在新骨架中建立模块与连接，旧文档只作取证材料；不沿旧目录逐文件改写，也不默认旧结论仍然成立。
+- 已有旧文档要迁入时，按 `design-migration` skill 原样搬运，迁移期间不按本 skill 修改内容；迁移完成之后，再按本 skill 审查与修改设计。
 
 ## 审查清单
 
@@ -224,3 +595,8 @@ flowchart TB
 14. 是否有在连接不变时可以替换的做法写进了设计？是否为了能执行而补了显式体？
 15. 是否展开了不改变连接、状态空间、不变量和可观察承诺的边界情况与逐情形处理？
 16. 是否要求了组合根、适配器、总入口？附录是否设立了规则？
+
+反模式：
+
+17. 模型审查列出的反模式是否逐条处理了？
+18. 每个说明里的承诺是否都写进了 `pre`、`post` 或 `inv`？每个场景是否走通了它对应的需求的每一步？这两项模型判断不了，由人看。

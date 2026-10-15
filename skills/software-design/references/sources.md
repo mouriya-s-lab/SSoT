@@ -51,5 +51,6 @@
 
 ## 脚本
 
-- [VDMJ](https://github.com/nickbattle/vdmj)：VDM-SL 的解析器、类型检查器、证明义务生成器与解释器；`scripts/Outline.java` 用它的解析器读出模块、定义、字段与 import，`check` 用它做类型检查与证明义务。
+- [VDMJ](https://github.com/nickbattle/vdmj)：VDM-SL 的解析器、类型检查器、证明义务生成器与解释器；`scripts/Outline.java` 用它的解析器读出模块、定义、字段与 import，并按语法树节点的类别找出反模式与审查对象；`check` 用它做类型检查与证明义务，没人用的顶层定义取自它的 Warning 5000。
 - Battle, N., Ellyton, M. (2024). ["QuickCheck for VDM"](https://arxiv.org/abs/2410.02046). *Proceedings of the 22nd Overture Workshop*：为证明义务寻找反例或证明；`check` 把反例当作违规，把未定的义务交给人判断。
+- omp 的 judge（jev 模型）：对给定材料回答校准过的是非问题；`scripts/review.py` 用它审查需要理解含义的反模式，问题与阈值由 `scripts/review-calibration.json` 的正反样本校准。

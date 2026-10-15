@@ -1,0 +1,37 @@
+\subsection{尝试的记录}
+
+\begin{vdm_al}
+module Attempt
+imports from Run types RunId renamed RunId
+exports
+  types struct Entry
+  operations Record: Entry ==> ()
+  functions Unresolved: seq of Entry -> set of RunId
+definitions
+types
+  -- 一条尝试的事实：只追加，永不改写为从未发生
+  Entry ::
+    run : RunId  -- 这次尝试属于哪次运行
+    outcome : <Accepted> | <Rejected> | <Unknown>;  -- 上游给出的结局，或结果未知
+
+  -- 尝试的日志
+state Log of
+  entries : seq of Entry  -- 按追加次序排列的尝试
+  init l == l = mk_Log([])
+end
+
+functions
+  -- 需要找回的运行：最后一条尝试是结果未知的运行；两个实现必须得出同一集合，所以写显式体
+  Unresolved: seq of Entry -> set of RunId
+  Unresolved(log) ==
+    {log(i).run | i in set inds log &
+       log(i).outcome = <Unknown>
+       and not exists j in set inds log & j > i and log(j).run = log(i).run};
+
+operations
+  -- 追加一条尝试；已有的记录不变
+  Record(e: Entry)
+  ext wr entries
+  post entries = entries~ ^ [e];
+end Attempt
+\end{vdm_al}

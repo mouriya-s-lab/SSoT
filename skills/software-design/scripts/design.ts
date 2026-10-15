@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-/** 设计目录的生成、检查与查看。规格语义只由 VDMJ 解释；本脚本只管目录、方向、说明与文字引用。 */
+/** 设计目录的生成、检查与查看。规格语义只由 VDMJ 解释；本脚本只管目录、方向、说明、文字引用、AST 反模式，并为模型审查准备材料。 */
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { delimiter, dirname, join, relative, resolve } from 'node:path';
 
@@ -16,16 +16,23 @@ const SECTIONS = {
 } as const;
 
 type Layer = keyof typeof SECTIONS;
-type Stage = 'layout' | 'parse' | 'structure' | 'prose' | 'typecheck' | 'quickcheck';
+type Stage = 'layout' | 'parse' | 'structure' | 'antipattern' | 'prose' | 'typecheck' | 'quickcheck';
 type Diagnostic = { readonly stage: Stage; readonly path: string; readonly line: number; readonly message: string };
 type Place = { readonly path: string; readonly layer: Layer; readonly dir: string; readonly readme: boolean };
 type Field = { readonly name: string; readonly line: number };
+/** AST 反模式（findings）与交给模型审查的候选（candidates）共用的形状。 */
+type Hit = { readonly rule: string; readonly line: number; readonly detail: string };
 type Definition = {
   readonly name: string;
   readonly kind: string;
   readonly line: number;
   readonly commented: boolean;
+  readonly commentLine: number;
+  readonly comment: string;
+  readonly explicit: boolean;
   readonly fields: readonly Field[];
+  readonly findings: readonly Hit[];
+  readonly candidates: readonly Hit[];
 };
 type Import = { readonly module: string; readonly line: number };
 type Module = {
@@ -57,7 +64,8 @@ type Command =
   | { readonly kind: 'Unit'; readonly design: string; readonly name: string }
   | { readonly kind: 'Check'; readonly design: string; readonly json: boolean }
   | { readonly kind: 'Graph'; readonly design: string; readonly json: boolean }
-  | { readonly kind: 'Vdmj'; readonly design: string; readonly args: readonly string[] };
+  | { readonly kind: 'Vdmj'; readonly design: string; readonly args: readonly string[] }
+  | { readonly kind: 'Review'; readonly design: string };
 
 class UsageError extends Error {}
 
@@ -68,7 +76,8 @@ const USAGE = `用法（相对本 skill 目录）：
   bun scripts/design.ts unit <design> <名字>       建立业务单元目录
   bun scripts/design.ts check <design> [--json]    检查目录、说明、方向、文字引用、类型与反例
   bun scripts/design.ts graph <design> [--json]    输出模块与 import 关系
-  bun scripts/design.ts vdmj <design> [VDMJ 参数]  用全部规格文件运行 VDMJ，例如 -e 或 -i`;
+  bun scripts/design.ts vdmj <design> [VDMJ 参数]  用全部规格文件运行 VDMJ，例如 -e 或 -i
+  bun scripts/design.ts review <design>            输出模型审查的材料（JSON），由 scripts/review.py 在 omp eval 里交给 jev 判断`;
 
 function assertNever(value: never): never {
   throw new Error(`程序错误：未处理的 variant ${String(value)}`);
@@ -100,6 +109,9 @@ function parseArguments(args: readonly string[]): Command {
       return { kind: 'Graph', design: resolve(target), json: flag('--json') };
     case 'vdmj':
       return { kind: 'Vdmj', design: resolve(target), args: rest };
+    case 'review':
+      if (rest.length > 0) throw new UsageError('review 只接受设计目录。');
+      return { kind: 'Review', design: resolve(target) };
     default:
       throw new UsageError(`未知命令 ${command}。`);
   }
@@ -261,7 +273,30 @@ function outline(design: string, places: readonly Place[]): readonly ParsedFile[
   const run = java(['-cp', classpath(), OUTLINE, ...places.map((p) => p.path)], design);
   const json = run.lines.find((line) => line.startsWith('['));
   if (run.code !== 0 || !json) throw new Error(`VDMJ 解析器没有给出结果：\n${run.lines.join('\n')}`);
-  return JSON.parse(json) as ParsedFile[];
+  type Raw = Omit<Definition, 'commented' | 'commentLine' | 'comment'>;
+  type RawFile = Omit<ParsedFile, 'modules'> & { readonly modules: readonly (Omit<Module, 'definitions'> & { readonly definitions: readonly Raw[] })[] };
+  return (JSON.parse(json) as RawFile[]).map((file) => {
+    const lines = readFileSync(join(design, file.path), 'utf8').split('\n');
+    return {
+      ...file,
+      modules: file.modules.map((module) => ({ ...module, definitions: module.definitions.map((d) => ({ ...d, ...leadingComment(lines, d.line) })) })),
+    };
+  });
+}
+
+/**
+ * 定义的说明是紧挨在定义之前、独占整行的 -- 注释。VDMJ 会把上一个记录字段的行尾注释也算给下一个定义，
+ * 所以说明按源码的行来认，不用 VDMJ 的注释归属。
+ */
+function leadingComment(lines: readonly string[], line: number): Pick<Definition, 'commented' | 'commentLine' | 'comment'> {
+  let first = line;
+  while (first - 2 >= 0 && lines[first - 2]!.trim().startsWith('--')) first--;
+  const comment = lines
+    .slice(first - 1, line - 1)
+    .map((text) => text.trim().replace(/^--\s?/, ''))
+    .join(' ')
+    .trim();
+  return { commented: comment !== '', commentLine: first, comment };
 }
 
 // ---------------------------------------------------------------- 结构与方向
@@ -464,6 +499,138 @@ function readmeShape(place: Place, lines: readonly ProseLine[]): Diagnostic[] {
   return diagnostics;
 }
 
+// ---------------------------------------------------------------- 模型审查材料
+
+/** 一条交给 jev 判断的材料：问题编号、位置与判断对象。问题的措辞与阈值只在 scripts/review.py 里。 */
+type ReviewItem = {
+  readonly question: ReviewQuestion;
+  readonly path: string;
+  readonly line: number;
+  readonly state: Readonly<Record<string, string | readonly string[]>>;
+};
+type ReviewQuestion =
+  | 'stringly'
+  | 'bool_stack'
+  | 'reasons'
+  | 'comment_shape'
+  | 'impl_body'
+  | 'registry'
+  | 'simulation'
+  | 'business_in_arch'
+  | 'prose_restates'
+  | 'coined'
+  | 'basis';
+type Paragraph = { readonly path: string; readonly line: number; readonly section: string; readonly text: string };
+
+/** 把文字里的 LaTeX 引用写法还原成读者看到的名字。 */
+function plain(text: string): string {
+  return text.replace(/\\(?:vdmref|texttt)\{([^}]*)\}/g, '$1');
+}
+
+function paragraphs(design: string, place: Place): Paragraph[] {
+  const result: Paragraph[] = [];
+  let section = '';
+  let current: { line: number; lines: string[] } | null = null;
+  const flush = () => {
+    if (current) result.push({ path: place.path, line: current.line, section, text: plain(current.lines.join('')) });
+    current = null;
+  };
+  for (const { line, text, inSpec } of proseLines(readFileSync(join(design, place.path), 'utf8'))) {
+    const heading = /^\\(sub)?section\{([^}]*)\}/.exec(text);
+    if (inSpec || text === '' || heading) {
+      flush();
+      if (heading) section = heading[1] ? heading[2]!.trim() : '';
+      continue;
+    }
+    if (current) current.lines.push(text);
+    else current = { line, lines: [text] };
+  }
+  flush();
+  return result;
+}
+
+/** 每个定义的源码：从它的说明注释开始，到下一个定义的说明之前。 */
+function sources(design: string, module: Located): { readonly module: string; readonly definitions: ReadonlyMap<Definition, { readonly full: string; readonly body: string }> } {
+  const lines = readFileSync(join(design, module.place.path), 'utf8').split('\n');
+  const end = lines.findIndex((text, i) => i >= module.line - 1 && new RegExp(`^\\s*end\\s+${module.name}\\b`).test(text));
+  const last = end < 0 ? lines.length : end + 1;
+  const sorted = [...module.definitions].sort((a, b) => a.commentLine - b.commentLine);
+  const section = /^\s*(types|values|functions|operations|definitions)\s*$/;
+  const definitions = new Map<Definition, { full: string; body: string }>();
+  sorted.forEach((definition, i) => {
+    const stop = i + 1 < sorted.length ? sorted[i + 1]!.commentLine - 1 : last - 1;
+    const slice = (from: number) => {
+      const span = lines.slice(from - 1, stop);
+      while (span.length > 0 && (span.at(-1)!.trim() === '' || section.test(span.at(-1)!))) span.pop();
+      return span.join('\n');
+    };
+    definitions.set(definition, { full: slice(definition.commentLine), body: slice(definition.line) });
+  });
+  return { module: lines.slice(module.line - 1, last).join('\n'), definitions };
+}
+
+function review(design: string): readonly ReviewItem[] {
+  const loaded = load(design);
+  const blocking = loaded.diagnostics.filter((d) => d.stage === 'layout' || d.stage === 'parse');
+  if (blocking.length > 0) {
+    printReport({ kind: 'Rejected', diagnostics: blocking, warnings: [] });
+    throw new UsageError('先让 check 通过 layout 与 parse 两个阶段，再做模型审查。');
+  }
+  const items: ReviewItem[] = [];
+  const names = loaded.modules.flatMap((m) => [
+    m.name,
+    ...m.definitions.flatMap((d) => [`${m.name}\`${d.name}`, ...d.fields.map((f) => `${m.name}\`${d.name}.${f.name}`)]),
+  ]);
+  const readmes = loaded.places.filter((p) => p.readme);
+  const units = readmes
+    .filter((p) => p.layer === 'business')
+    .map((p) => `${p.dir.slice('business/'.length)}: ${paragraphs(design, p).find((para) => para.section === '')?.text ?? ''}`);
+  const specsByDir = new Map<string, string[]>();
+
+  for (const module of loaded.modules) {
+    const src = sources(design, module);
+    const path = module.place.path;
+    specsByDir.set(module.place.dir, [...(specsByDir.get(module.place.dir) ?? []), src.module]);
+    items.push({ question: 'registry', path, line: module.line, state: { spec: src.module } });
+    items.push({ question: 'simulation', path, line: module.line, state: { spec: src.module } });
+    const fileLines = readFileSync(join(design, path), 'utf8').split('\n');
+    for (const definition of module.definitions) {
+      const text = src.definitions.get(definition)!;
+      const owner = `${module.name}\`${definition.name}`;
+      if (definition.commented) items.push({ question: 'comment_shape', path, line: definition.line, state: { comment: definition.comment, definition: text.body } });
+      if (definition.explicit) items.push({ question: 'impl_body', path, line: definition.line, state: { definition: text.full } });
+      if (module.place.layer === 'architecture' && units.length > 0) {
+        items.push({ question: 'business_in_arch', path, line: definition.line, state: { definition: text.full, business_units: units } });
+      }
+      for (const hit of definition.candidates) {
+        switch (hit.rule) {
+          case 'string-type':
+            items.push({ question: 'stringly', path, line: hit.line, state: { element: fileLines[hit.line - 1]!.trim(), comment: definition.comment, owner } });
+            break;
+          case 'bool-fields':
+            items.push({ question: 'bool_stack', path, line: hit.line, state: { definition: text.full } });
+            break;
+          case 'quote-union':
+            items.push({ question: 'reasons', path, line: hit.line, state: { definition: text.full } });
+            break;
+          default:
+            throw new Error(`程序错误：Outline.java 给出了未知的候选 ${hit.rule}`);
+        }
+      }
+    }
+  }
+
+  for (const place of loaded.places) {
+    const spec = (specsByDir.get(place.dir) ?? []).join('\n\n');
+    for (const para of paragraphs(design, place)) {
+      items.push({ question: 'coined', path: para.path, line: para.line, state: { spec_names: names, paragraph: para.text } });
+      if (spec !== '' && para.section !== '') items.push({ question: 'prose_restates', path: para.path, line: para.line, state: { spec, paragraph: para.text } });
+      if (para.section === '依据') items.push({ question: 'basis', path: para.path, line: para.line, state: { paragraph: para.text } });
+    }
+  }
+  return items;
+}
+
 // ---------------------------------------------------------------- VDMJ
 
 const LOCATION = /in '[^']*' \(([^)]+)\) at line (\d+):\d+/;
@@ -475,13 +642,21 @@ function vdmj(design: string, modules: readonly Located[]): { readonly diagnosti
   const lines = run.lines.map((line) => line.replace(/^(> )+/, ''));
   const diagnostics: Diagnostic[] = [];
   const warnings: string[] = [];
+  const seen = new Set<string>();
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
+    // 解释器初始化失败时，VDMJ 会把同一条错误重复打印，并在消息里再套一层编号。
+    const line = lines[i]!.replace(/^(Error \d+: )(?:Error \d+: )+/, '$1');
     if (/^Error \d+:/.test(line)) {
       const detail = [line];
       while (i + 1 < lines.length && /^(Expected|Actual|\s)/.test(lines[i + 1]!) && lines[i + 1]!.trim() !== '') detail.push(lines[++i]!.trim());
       const at = LOCATION.exec(line);
-      diagnostics.push({ stage: 'typecheck', path: at?.[1] ?? 'design.tex', line: Number(at?.[2] ?? 1), message: detail.join('；') });
+      const message = /^Error 4144:/.test(line)
+        ? `${detail.join('；')}；init 要写成 s = mk_<状态>(...) 的形式，VDMJ 才能初始化模块、生成并检验证明义务`
+        : detail.join('；');
+      const key = `${at?.[1]}:${at?.[2]}:${/^Error (\d+)/.exec(line)![1]}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      diagnostics.push({ stage: 'typecheck', path: at?.[1] ?? 'design.tex', line: Number(at?.[2] ?? 1), message });
     } else if (/^Warning \d+:/.test(line)) warnings.push(line);
   }
   if (diagnostics.length > 0 || run.code !== 0) {
@@ -539,7 +714,36 @@ function load(design: string): { readonly places: readonly Place[]; readonly mod
   const parse = files.flatMap((file) => file.errors.map((e): Diagnostic => ({ stage: 'parse', path: file.path, line: e.line, message: e.message })));
   if (parse.length > 0) return { places: found.places, modules: [], diagnostics: parse };
   const checked = structure(design, found.places, files);
-  return { places: found.places, modules: checked.modules, diagnostics: checked.diagnostics };
+  return { places: found.places, modules: checked.modules, diagnostics: [...checked.diagnostics, ...antipatterns(checked.modules)] };
+}
+
+/** AST 反模式：每一条都让规格变成设计以外的东西，所以是错误，不是提示。 */
+function antipatterns(modules: readonly Located[]): Diagnostic[] {
+  const message = (rule: string, details: string): string => {
+    switch (rule) {
+      case 'string-literal':
+        return '规格里出现了字符串字面量：设计靠类型与谓词表达含义，不比较字符串内容；改用 quote、token 或记录。';
+      case 'implementation':
+        return `显式体里有${details}：这是实现。连接写成隐式定义的 post；显式体只用于场景与判定，不改状态、不写循环。`;
+      case 'unspecified':
+        return 'is not yet specified 不承诺任何东西：写出 pre 与 post；还没想清楚就不写这个定义。';
+      case 'no-promise':
+        return `隐式定义的 ${details}，不承诺任何东西：写出它做到什么。`;
+      default:
+        throw new Error(`程序错误：Outline.java 给出了未知的反模式 ${rule}`);
+    }
+  };
+  // 同一个定义里同一条规则只报一次，报在第一次出现的行。
+  return modules.flatMap((module) =>
+    module.definitions.flatMap((definition) =>
+      [...Map.groupBy(definition.findings, (hit) => hit.rule)].map(([rule, hits]): Diagnostic => ({
+        stage: 'antipattern',
+        path: module.place.path,
+        line: Math.min(...hits.map((hit) => hit.line)),
+        message: `${module.name}\`${definition.name}：${message(rule, [...new Set(hits.map((hit) => hit.detail))].join('、'))}`,
+      })),
+    ),
+  );
 }
 
 function check(design: string): Report {
@@ -547,10 +751,33 @@ function check(design: string): Report {
   if (loaded.diagnostics.some((d) => d.stage === 'layout' || d.stage === 'parse')) return { kind: 'Rejected', diagnostics: loaded.diagnostics, warnings: [] };
   const written = prose(design, loaded.places, loaded.modules);
   const spec = loaded.modules.length > 0 ? vdmj(design, loaded.modules) : { diagnostics: [], warnings: [], obligations: { total: 0, provable: 0, maybe: [], unchecked: [] } };
-  const diagnostics = [...loaded.diagnostics, ...written, ...spec.diagnostics];
+  const unused = unusedDefinitions(loaded.modules, spec.warnings);
+  const diagnostics = [...loaded.diagnostics, ...written, ...spec.diagnostics, ...unused.diagnostics];
   return diagnostics.length > 0
-    ? { kind: 'Rejected', diagnostics, warnings: spec.warnings }
-    : { kind: 'Accepted', modules: loaded.modules.length, warnings: spec.warnings, obligations: spec.obligations };
+    ? { kind: 'Rejected', diagnostics, warnings: unused.warnings }
+    : { kind: 'Accepted', modules: loaded.modules.length, warnings: unused.warnings, obligations: spec.obligations };
+}
+
+/**
+ * VDMJ 的 Warning 5000 报告没被用到的名字。落在模块顶层定义上时，这个名字在规格里没有任何用处，
+ * 只能被文字引用，规格就成了名字的登记表，所以算反模式；落在参数等局部名字上时仍是提示。
+ */
+function unusedDefinitions(modules: readonly Located[], warnings: readonly string[]): { readonly diagnostics: readonly Diagnostic[]; readonly warnings: readonly string[] } {
+  const diagnostics: Diagnostic[] = [];
+  const rest: string[] = [];
+  for (const warning of warnings) {
+    const unused = /^Warning 5000: Definition '([^']+)' not used in '([^']+)' \(([^)]+)\) at line (\d+):\d+/.exec(warning);
+    const owner = unused && modules.find((m) => m.name === unused[2] && m.definitions.some((d) => d.name === unused[1] && d.line === Number(unused[4])));
+    if (unused && owner) {
+      diagnostics.push({
+        stage: 'antipattern',
+        path: owner.place.path,
+        line: Number(unused[4]),
+        message: `${owner.name}\`${unused[1]}：规格里没有任何地方用到它，它只是一个名字。导出它给别的模块用，或在本模块里用它；只为文字引用而存在的名字不是设计。`,
+      });
+    } else rest.push(warning);
+  }
+  return { diagnostics, warnings: rest };
 }
 
 function printReport(report: Report): void {
@@ -650,6 +877,10 @@ async function main(): Promise<number> {
     case 'Vdmj':
       requireJava();
       return passthrough(command.design, command.args);
+    case 'Review':
+      requireJava();
+      console.log(JSON.stringify({ design: command.design, items: review(command.design) }, null, 2));
+      return 0;
     default:
       return assertNever(command);
   }

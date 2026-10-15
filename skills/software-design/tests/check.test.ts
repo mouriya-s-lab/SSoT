@@ -1,11 +1,13 @@
 /** 用真实 VDMJ 跑 CLI：每个用例在自有 /tmp 工作区里改一处，看 check 是否接受或在正确位置拒绝。 */
-import { afterAll, describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const CLI = resolve(import.meta.dir, '..', 'scripts', 'design.ts');
 const roots: string[] = [];
+// 每个用例都要启动几次 JVM 跑 VDMJ，默认的 5 秒不够。
+setDefaultTimeout(60_000);
 
 // 不用 String.raw：Bun 会把模板里的非 ASCII 字符转写成 \u 转义，raw 文本因此不再是原文。
 const SHARED = `\\subsection{共用材料}
@@ -117,6 +119,11 @@ afterAll(() => {
 });
 
 describe('check', () => {
+  test('SKILL.md 引用的示例设计通过检查', () => {
+    const run = cli('check', resolve(import.meta.dir, '..', 'references', 'example', 'design'));
+    expect(run.code).toBe(0);
+  });
+
   test('完整设计通过，并报告证明义务', () => {
     const run = cli('check', fixture());
     expect(run.code).toBe(0);
@@ -220,5 +227,38 @@ end Ledger
     const design = fixture();
     write(design, 'architecture/Notes.md', '随手笔记');
     rejected(design, 'architecture/Notes.md', '只放 README.tex');
+  });
+
+  test('规格里比较字符串内容是反模式', () => {
+    const design = fixture();
+    edit(design, 'business/billing/billing.tex', 'operations\n', 'functions\n  -- 是不是日报\n  IsDaily: seq of char -> bool\n  IsDaily(k) == k = "daily";\n\noperations\n');
+    rejected(design, 'business/billing/billing.tex', 'Billing`IsDaily：规格里出现了字符串字面量');
+  });
+
+  test('显式体里改状态是实现，不是设计', () => {
+    const design = fixture();
+    edit(design, 'architecture/queue/queue.tex', 'exports\n  operations ', 'exports\n  operations Reset: () ==> (); ');
+    edit(design, 'architecture/queue/queue.tex', 'end Queue', '  -- 清空持有的作业\n  Reset: () ==> ()\n  Reset() == held := {};\nend Queue');
+    rejected(design, 'architecture/queue/queue.tex', 'Queue`Reset：显式体里有赋值语句');
+  });
+
+  test('post 恒为 true 的隐式定义不承诺任何东西', () => {
+    const design = fixture();
+    edit(design, 'business/billing/billing.tex', 'end Billing', '  -- 看一眼\n  Peek(n: nat)\n  post true;\nend Billing');
+    rejected(design, 'business/billing/billing.tex', 'Billing`Peek：隐式定义的 post 恒为 true');
+  });
+
+  test('规格里没人用的定义只是一个名字', () => {
+    const design = fixture();
+    edit(design, 'architecture/queue/queue.tex', '  -- 队列状态', '  -- 一个没人用的类型\n  Orphan = token;\n\n  -- 队列状态');
+    edit(design, 'architecture/queue/queue.tex', 'definitions\n', 'definitions\ntypes\n');
+    rejected(design, 'architecture/queue/queue.tex', 'Queue`Orphan：规格里没有任何地方用到它');
+  });
+
+  test('字段的行尾注释不算下一个定义的说明', () => {
+    const design = fixture();
+    edit(design, 'architecture/jobs.tex', 'command : seq1 of char;  -- 要执行的命令行\n', 'command : seq1 of char;  -- 要执行的命令行\n  Other = token;\n');
+    edit(design, 'architecture/jobs.tex', 'struct Spec', 'struct Spec; Other');
+    rejected(design, 'architecture/jobs.tex', 'Jobs`Other 前面缺少说明');
   });
 });

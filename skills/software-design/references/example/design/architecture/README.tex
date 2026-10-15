@@ -1,0 +1,17 @@
+\section{运行}
+
+负责开始、找回与结束运行，并记下每次尝试的结局；不负责运行内部做什么。
+
+\subsection{依据}
+
+上游在超时之后仍可能已经开始了运行（来源：上游接口说明，证据见附录 \texttt{evidence/upstream-timeout.md}）。所以 \vdmref{Run`StartOutcome} 有结果未知一支，调用方经 \vdmref{Run`Status} 找回运行。
+
+在上游可用的情况下，调用方用同一个请求号重复调用 \vdmref{Run`Start} 时，系统只产生一次运行（来源：示例需求）。所以 \vdmref{Run`Start} 按 \vdmref{Run`RequestNo} 幂等，运行表记下请求号到运行的对应。
+
+\subsection{为什么}
+
+运行表与开始、找回、结束放在同一个模块，因为它们共享“活着的运行都来自某个请求”这条不变量（\vdmref{Run`Runs}）。不让调用方自己记下请求号与运行的对应：结果未知时调用方手里没有运行身份，只有提供方能按请求号找回。
+
+\subsection{语义}
+
+调用方得到结果未知之后，两次调用 \vdmref{Run`Status} 至少相隔 \vdmref{Run`RetrySeconds} 秒。\vdmref{Run} 与 \vdmref{Attempt} 运行在同一进程内；进程崩溃后，新进程按 \vdmref{Run`Runs.byRequest} 接管尚未结束的运行。

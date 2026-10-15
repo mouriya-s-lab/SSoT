@@ -1,0 +1,24 @@
+\subsection{日报接入}
+
+\begin{vdm_al}
+module Report
+imports
+  from Run
+    types RequestNo renamed RequestNo; Started renamed Started
+    operations Start renamed Start; Finish renamed Finish,
+  from Attempt
+    types Entry renamed Entry
+    operations Record renamed Record
+exports
+  operations Daily: RequestNo ==> ()
+definitions
+operations
+  -- 场景：开始当天的日报运行，记下被接受的尝试，再结束它
+  Daily: RequestNo ==> ()
+  Daily(request) ==
+    cases Start(request):
+      mk_Started(run) -> (Record(mk_Entry(run, <Accepted>)); Finish(run)),
+      others -> skip
+    end;
+end Report
+\end{vdm_al}

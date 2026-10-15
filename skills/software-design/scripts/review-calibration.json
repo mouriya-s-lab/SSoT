@@ -1,0 +1,1158 @@
+{
+ "stringly": [
+  {
+   "label": true,
+   "state": {
+    "element": "status : seq of char  -- 运行当前所处的状态",
+    "owner": "record Run`RunInfo"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "element": "kind : seq1 of char  -- 作业的类型",
+    "owner": "record Job`Spec"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "element": "runId : seq1 of char  -- 一次运行的身份",
+    "owner": "state Run`Runs"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "element": "result : seq of char  -- Start 的结果，取值 ok、rejected 或 unknown",
+    "owner": "operation Run`Start result"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "element": "role : seq of char  -- 调用方的角色：admin、operator 或 viewer",
+    "owner": "record Access`Caller"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "element": "command : seq1 of char  -- 要执行的命令行，原样交给操作系统",
+    "owner": "record Job`Spec"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "element": "message : seq of char  -- 给人看的说明文字",
+    "owner": "record Report`Notice"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "element": "body : seq of char  -- 日报正文",
+    "owner": "record Report`Daily"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "element": "prompt : seq1 of char  -- 交给 agent 的提示词原文",
+    "owner": "record Agent`Call"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "element": "path : seq1 of char  -- 用户给出的文件路径，按原样传给存储",
+    "owner": "operation Store`Put parameter"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "element": "venue : seq1 of char  -- 交易所代码，例如 NYSE、HKEX",
+    "owner": "record Order`Target"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "element": "phase : seq of char  -- 单据所处阶段：drafting、awaiting 或 closed",
+    "owner": "state Ticket`Tickets"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "element": "workflowName : seq1 of char  -- 引用的工作流，按名字查找定义",
+    "owner": "record Run`Request"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "element": "error : seq of char  -- 失败原因，调用方据此判断是否重试",
+    "owner": "operation Store`Write result"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "element": "note : seq of char  -- 审批人写的备注，只展示给人看",
+    "owner": "record Ticket`Decision"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "element": "stdout : seq of char  -- 命令的标准输出，原样保存",
+    "owner": "record Exec`Result"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "element": "markdown : seq of char  -- agent 交回的 Markdown 文本，按原样传给下游",
+    "owner": "record Closure`Output"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "element": "raw : seq of char  -- 上游返回的原始负载，只作证据保存",
+    "owner": "record Evidence`Item"
+   }
+  }
+ ],
+ "bool_stack": [
+  {
+   "label": true,
+   "state": {
+    "definition": "Job ::\n  running : bool  -- 正在运行\n  finished : bool  -- 已经结束\n  failed : bool;  -- 失败了"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "definition": "state Session of\n  connected : bool  -- 已连接\n  authenticated : bool  -- 已认证\n  closed : bool  -- 已关闭\nend"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "definition": "Ticket ::\n  approved : bool  -- 已批准\n  rejected : bool  -- 已拒绝\n  pending : bool;  -- 等待中"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "definition": "Order ::\n  sent : bool  -- 已发出\n  acked : bool;  -- 已确认"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "Notice ::\n  urgent : bool  -- 是否加急\n  visible : bool;  -- 是否对外可见"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "Options ::\n  compress : bool  -- 是否压缩\n  encrypt : bool;  -- 是否加密"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "Job ::\n  state : <Waiting> | <Running> | <Finished> | <Failed>  -- 作业所处的状态\n  retryable : bool;  -- 失败后是否允许重试"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "Filter ::\n  includeHidden : bool  -- 是否包含隐藏项\n  recursive : bool;  -- 是否递归子目录"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "definition": "Attempt ::\n  prepared : bool  -- 已准备\n  sent : bool  -- 已发出\n  resolved : bool;  -- 已决议"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "definition": "state Closure of\n  open : bool  -- 闭包已打开\n  closed : bool  -- 闭包已关闭\nend"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "definition": "Run ::\n  halted : bool  -- 已停机\n  finished : bool  -- 已完成\n  paused : bool;  -- 已暂停"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "Subscription ::\n  ordered : bool  -- 是否按序投递\n  lossy : bool;  -- 是否允许丢弃旧消息"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "Rule ::\n  requireApproval : bool  -- 是否需要人工审批\n  bypassLane : bool;  -- 是否允许绕过 lane"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "Export ::\n  withHeader : bool  -- 是否写表头\n  quoteAll : bool;  -- 是否给所有字段加引号"
+   }
+  }
+ ],
+ "comment_shape": [
+  {
+   "label": true,
+   "state": {
+    "comment": "RunId 是一个 token",
+    "definition": "RunId = token;"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "comment": "一个包含 run 字段的记录",
+    "definition": "Started ::\n  run : RunId;"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "comment": "从 RequestNo 到 RunId 的映射和一个 RunId 的集合",
+    "definition": "state Runs of\n  byRequest : map RequestNo to RunId\n  live : set of RunId\nend"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "comment": "接收 RequestNo，返回 StartOutcome 的操作",
+    "definition": "Start(request: RequestNo) r: StartOutcome"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "comment": "一次运行的身份；提供方造出，使用方不读结构",
+    "definition": "RunId = token;"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "comment": "运行已经开始；调用方之后必须用 Finish 结束它",
+    "definition": "Started ::\n  run : RunId;"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "comment": "运行表：同一请求号至多对应一次运行，活着的运行都来自某个请求",
+    "definition": "state Runs of\n  byRequest : map RequestNo to RunId\n  live : set of RunId\nend"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "comment": "开始一次运行；同一请求号重复开始只产生一次运行",
+    "definition": "Start(request: RequestNo) r: StartOutcome"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "comment": "TicketId 类型",
+    "definition": "TicketId = token;"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "comment": "包含 owner 与 basis 两个字段",
+    "definition": "Intent :: owner : Principal  basis : set of Position;"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "comment": "Decision 是 Approve 或 Reject",
+    "definition": "Decision = <Approve> | <Reject>;"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "comment": "一次写意图；单据始终只有一个负责人",
+    "definition": "Intent :: owner : Principal  basis : set of Position;"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "comment": "对单据作决定；Prepared 与 Rejected 都关闭单据",
+    "definition": "Decide(t: TicketId, d: Decision) r: DecideOutcome"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "comment": "一张单据的身份；由核心造出，使用方不读结构",
+    "definition": "TicketId = token;"
+   }
+  }
+ ],
+ "simulation": [
+  {
+   "label": true,
+   "state": {
+    "spec": "module Clock\nexports all\ndefinitions\nstate Time of\n  now : nat  -- 当前时刻，单位秒\n  init t == t = mk_Time(0)\nend\noperations\n  -- 时间前进一秒\n  Tick: () ==> ()\n  Tick() == now := now + 1;\nend Clock"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "spec": "module Proc\nexports all\ndefinitions\nstate Procs of\n  alive : bool  -- 进程是否存活\n  init p == p = mk_Procs(true)\nend\noperations\n  -- 模拟进程崩溃\n  Crash: () ==> ()\n  Crash() == alive := false;\n  -- 模拟进程重启\n  Restart: () ==> ()\n  Restart() == alive := true;\nend Proc"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "spec": "module Run\nexports\n  types RunId; struct RequestNo; struct Started; struct StartOutcome; struct StatusOutcome\n  values RetrySeconds : nat1\n  operations\n    Start: RequestNo ==> StartOutcome;\n    Status: RequestNo ==> StatusOutcome;\n    Finish: RunId ==> ();\n    Recover: RequestNo ==> ()\ndefinitions\nvalues\n  -- 结果未知之后，两次找回之间至少相隔的秒数\n  RetrySeconds : nat1 = 30;\n\ntypes\n  -- 一次运行的身份；提供方造出，使用方不读结构\n  RunId = token;\n\n  -- 调用方给出的请求号，从 1 开始；同一请求号代表同一次请求\n  RequestNo = nat\n  inv r == r > 0;\n\n  -- 运行已经开始；调用方之后必须用 Finish 结束它\n  Started ::\n    run : RunId;  -- 结束时交回的身份\n\n  -- Start 的结局：使用方必须区分已开始、被拒绝与结果未知；结果未知时改用 Status 找回\n  StartOutcome = Started | <Rejected> | <Unknown>;\n\n  -- Status 的结局：按请求号找回的运行，或确认它不存在\n  StatusOutcome = RunId | <Absent>;\n\n  -- 运行表：同一请求号至多对应一次运行，活着的运行都来自某个请求\nstate Runs of\n  byRequest : map RequestNo to RunId  -- 请求号到它产生的运行\n  live : set of RunId  -- 已开始、尚未结束的运行\n  inv mk_Runs(b, l) == l subset rng b\n  init r == r = mk_Runs({|->}, {})\nend\n\noperations\n  -- 开始一次运行；同一请求号重复开始只产生一次运行\n  Start(request: RequestNo) r: StartOutcome\n  ext wr byRequest wr live\n  post (is_Started(r)\n          and (request in set dom byRequest~ => r.run = byRequest~(request))\n          and byRequest = byRequest~ ++ {request |-> r.run}\n          and live = live~ union {r.run})\n       or ((r = <Rejected> or r = <Unknown>) and byRequest = byRequest~ and live = live~);\n\n  -- 按请求号确认运行是否存在；只读，不改变运行表\n  Status(request: RequestNo) r: StatusOutcome\n  ext rd byRequest\n  post (request in set dom byRequest and r = byRequest(request))\n       or (request not in set dom byRequest and r = <Absent>);\n\n  -- 结束一次运行；结束两次与一次效果相同\n  Finish(run: RunId)\n  ext wr live\n  post live = live~ \\ {run};\n\n  -- 场景：开始的结果未知时，按请求号找回运行并结束它\n  Recover: RequestNo ==> ()\n  Recover(request) ==\n    cases Start(request):\n      mk_Started(run) -> Finish(run),\n      <Rejected> -> skip,\n      <Unknown> ->\n        let found = Status(request) in\n          if found <> <Absent> then Finish(found)\n    end;\nend Run"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "spec": "module Sched\nexports all\ndefinitions\nstate Queue of\n  threads : seq of nat  -- 等待调度的线程编号\n  init q == q = mk_Queue([])\nend\noperations\n  -- 调度器选出下一个线程运行一个时间片\n  Schedule: () ==> nat\n  Schedule() == (let t = hd threads in (threads := tl threads ^ [t]; return t))\n  pre threads <> [];\nend Sched"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "spec": "module Ticket\nexports\n  types TicketId; struct Decision\n  operations Open: Intent ==> TicketId; Decide: TicketId * Decision ==> DecideOutcome\ndefinitions\ntypes\n  -- 一张单据的身份；由核心造出\n  TicketId = token;\n  -- 一次写意图；单据始终只有一个负责人\n  Intent :: owner : Principal  -- 负责人\n            basis : set of Position;  -- 依据的观察位置\n  -- 负责人\n  Principal = token;\n  -- 观察位置\n  Position = token;\n  -- 审批人的决定\n  Decision = <Approve> | <Reject>;\n  -- 决定的结局\n  DecideOutcome = <Prepared> | <Rejected> | <Conflict>;\nstate Tickets of\n  open : map TicketId to Intent  -- 尚未关闭的单据\n  closed : set of TicketId  -- 已关闭的单据\n  inv mk_Tickets(o, c) == dom o inter c = {}\n  init t == t = mk_Tickets({|->}, {})\nend\noperations\n  -- 起一张单据\n  Open(i: Intent) t: TicketId\n  ext wr open rd closed\n  post t not in set dom open~ union closed and open = open~ ++ {t |-> i};\n  -- 对单据作决定；Prepared 与 Rejected 都关闭单据\n  Decide(t: TicketId, d: Decision) r: DecideOutcome\n  ext wr open wr closed\n  pre t in set dom open\n  post (r in set {<Prepared>, <Rejected>} and closed = closed~ union {t} and open = {t} <-: open~)\n       or (r = <Conflict> and open = open~ and closed = closed~);\nend Ticket"
+   }
+  }
+ ],
+ "basis": [
+  {
+   "label": true,
+   "state": {
+    "paragraph": "系统要高可用。"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "paragraph": "使用 SQLite 存储运行表。"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "paragraph": "当前代码在 src/run.ts 里先查后插，所以 Start 是幂等的。"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "paragraph": "上游在超时之后仍可能已经开始了运行（来源：上游接口说明）。所以 StartOutcome 有结果未知一支，调用方经 Status 找回运行。"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "paragraph": "在上游可用的情况下，调用方用同一个请求号重复调用 Start 时，系统只产生一次运行（来源：示例需求）。所以 Start 按 RequestNo 幂等。"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "paragraph": "单据要安全可靠。"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "paragraph": "我们用 Rust 实现，所以没有 HKT。"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "paragraph": "上游的写操作可能没有回执（来源：券商接口文档 §4.2）。所以写的结局有 Unknown 一支，永不重试。"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "paragraph": "同一账户上的写必须按顺序到达上游（来源：交易所规则）。所以写按账户排队。"
+   }
+  }
+ ],
+ "prose_restates": [
+  {
+   "label": true,
+   "state": {
+    "spec": "module Run\nexports\n  types RunId; struct RequestNo; struct Started; struct StartOutcome; struct StatusOutcome\n  values RetrySeconds : nat1\n  operations\n    Start: RequestNo ==> StartOutcome;\n    Status: RequestNo ==> StatusOutcome;\n    Finish: RunId ==> ();\n    Recover: RequestNo ==> ()\ndefinitions\nvalues\n  -- 结果未知之后，两次找回之间至少相隔的秒数\n  RetrySeconds : nat1 = 30;\n\ntypes\n  -- 一次运行的身份；提供方造出，使用方不读结构\n  RunId = token;\n\n  -- 调用方给出的请求号，从 1 开始；同一请求号代表同一次请求\n  RequestNo = nat\n  inv r == r > 0;\n\n  -- 运行已经开始；调用方之后必须用 Finish 结束它\n  Started ::\n    run : RunId;  -- 结束时交回的身份\n\n  -- Start 的结局：使用方必须区分已开始、被拒绝与结果未知；结果未知时改用 Status 找回\n  StartOutcome = Started | <Rejected> | <Unknown>;\n\n  -- Status 的结局：按请求号找回的运行，或确认它不存在\n  StatusOutcome = RunId | <Absent>;\n\n  -- 运行表：同一请求号至多对应一次运行，活着的运行都来自某个请求\nstate Runs of\n  byRequest : map RequestNo to RunId  -- 请求号到它产生的运行\n  live : set of RunId  -- 已开始、尚未结束的运行\n  inv mk_Runs(b, l) == l subset rng b\n  init r == r = mk_Runs({|->}, {})\nend\n\noperations\n  -- 开始一次运行；同一请求号重复开始只产生一次运行\n  Start(request: RequestNo) r: StartOutcome\n  ext wr byRequest wr live\n  post (is_Started(r)\n          and (request in set dom byRequest~ => r.run = byRequest~(request))\n          and byRequest = byRequest~ ++ {request |-> r.run}\n          and live = live~ union {r.run})\n       or ((r = <Rejected> or r = <Unknown>) and byRequest = byRequest~ and live = live~);\n\n  -- 按请求号确认运行是否存在；只读，不改变运行表\n  Status(request: RequestNo) r: StatusOutcome\n  ext rd byRequest\n  post (request in set dom byRequest and r = byRequest(request))\n       or (request not in set dom byRequest and r = <Absent>);\n\n  -- 结束一次运行；结束两次与一次效果相同\n  Finish(run: RunId)\n  ext wr live\n  post live = live~ \\ {run};\n\n  -- 场景：开始的结果未知时，按请求号找回运行并结束它\n  Recover: RequestNo ==> ()\n  Recover(request) ==\n    cases Start(request):\n      mk_Started(run) -> Finish(run),\n      <Rejected> -> skip,\n      <Unknown> ->\n        let found = Status(request) in\n          if found <> <Absent> then Finish(found)\n    end;\nend Run",
+    "paragraph": "Start 接收一个 RequestNo，返回 StartOutcome；StartOutcome 是 Started、Rejected 或 Unknown 之一。"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "spec": "module Run\nexports\n  types RunId; struct RequestNo; struct Started; struct StartOutcome; struct StatusOutcome\n  values RetrySeconds : nat1\n  operations\n    Start: RequestNo ==> StartOutcome;\n    Status: RequestNo ==> StatusOutcome;\n    Finish: RunId ==> ();\n    Recover: RequestNo ==> ()\ndefinitions\nvalues\n  -- 结果未知之后，两次找回之间至少相隔的秒数\n  RetrySeconds : nat1 = 30;\n\ntypes\n  -- 一次运行的身份；提供方造出，使用方不读结构\n  RunId = token;\n\n  -- 调用方给出的请求号，从 1 开始；同一请求号代表同一次请求\n  RequestNo = nat\n  inv r == r > 0;\n\n  -- 运行已经开始；调用方之后必须用 Finish 结束它\n  Started ::\n    run : RunId;  -- 结束时交回的身份\n\n  -- Start 的结局：使用方必须区分已开始、被拒绝与结果未知；结果未知时改用 Status 找回\n  StartOutcome = Started | <Rejected> | <Unknown>;\n\n  -- Status 的结局：按请求号找回的运行，或确认它不存在\n  StatusOutcome = RunId | <Absent>;\n\n  -- 运行表：同一请求号至多对应一次运行，活着的运行都来自某个请求\nstate Runs of\n  byRequest : map RequestNo to RunId  -- 请求号到它产生的运行\n  live : set of RunId  -- 已开始、尚未结束的运行\n  inv mk_Runs(b, l) == l subset rng b\n  init r == r = mk_Runs({|->}, {})\nend\n\noperations\n  -- 开始一次运行；同一请求号重复开始只产生一次运行\n  Start(request: RequestNo) r: StartOutcome\n  ext wr byRequest wr live\n  post (is_Started(r)\n          and (request in set dom byRequest~ => r.run = byRequest~(request))\n          and byRequest = byRequest~ ++ {request |-> r.run}\n          and live = live~ union {r.run})\n       or ((r = <Rejected> or r = <Unknown>) and byRequest = byRequest~ and live = live~);\n\n  -- 按请求号确认运行是否存在；只读，不改变运行表\n  Status(request: RequestNo) r: StatusOutcome\n  ext rd byRequest\n  post (request in set dom byRequest and r = byRequest(request))\n       or (request not in set dom byRequest and r = <Absent>);\n\n  -- 结束一次运行；结束两次与一次效果相同\n  Finish(run: RunId)\n  ext wr live\n  post live = live~ \\ {run};\n\n  -- 场景：开始的结果未知时，按请求号找回运行并结束它\n  Recover: RequestNo ==> ()\n  Recover(request) ==\n    cases Start(request):\n      mk_Started(run) -> Finish(run),\n      <Rejected> -> skip,\n      <Unknown> ->\n        let found = Status(request) in\n          if found <> <Absent> then Finish(found)\n    end;\nend Run",
+    "paragraph": "运行表有两个字段：byRequest 是请求号到运行的映射，live 是活着的运行的集合。"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "spec": "module Run\nexports\n  types RunId; struct RequestNo; struct Started; struct StartOutcome; struct StatusOutcome\n  values RetrySeconds : nat1\n  operations\n    Start: RequestNo ==> StartOutcome;\n    Status: RequestNo ==> StatusOutcome;\n    Finish: RunId ==> ();\n    Recover: RequestNo ==> ()\ndefinitions\nvalues\n  -- 结果未知之后，两次找回之间至少相隔的秒数\n  RetrySeconds : nat1 = 30;\n\ntypes\n  -- 一次运行的身份；提供方造出，使用方不读结构\n  RunId = token;\n\n  -- 调用方给出的请求号，从 1 开始；同一请求号代表同一次请求\n  RequestNo = nat\n  inv r == r > 0;\n\n  -- 运行已经开始；调用方之后必须用 Finish 结束它\n  Started ::\n    run : RunId;  -- 结束时交回的身份\n\n  -- Start 的结局：使用方必须区分已开始、被拒绝与结果未知；结果未知时改用 Status 找回\n  StartOutcome = Started | <Rejected> | <Unknown>;\n\n  -- Status 的结局：按请求号找回的运行，或确认它不存在\n  StatusOutcome = RunId | <Absent>;\n\n  -- 运行表：同一请求号至多对应一次运行，活着的运行都来自某个请求\nstate Runs of\n  byRequest : map RequestNo to RunId  -- 请求号到它产生的运行\n  live : set of RunId  -- 已开始、尚未结束的运行\n  inv mk_Runs(b, l) == l subset rng b\n  init r == r = mk_Runs({|->}, {})\nend\n\noperations\n  -- 开始一次运行；同一请求号重复开始只产生一次运行\n  Start(request: RequestNo) r: StartOutcome\n  ext wr byRequest wr live\n  post (is_Started(r)\n          and (request in set dom byRequest~ => r.run = byRequest~(request))\n          and byRequest = byRequest~ ++ {request |-> r.run}\n          and live = live~ union {r.run})\n       or ((r = <Rejected> or r = <Unknown>) and byRequest = byRequest~ and live = live~);\n\n  -- 按请求号确认运行是否存在；只读，不改变运行表\n  Status(request: RequestNo) r: StatusOutcome\n  ext rd byRequest\n  post (request in set dom byRequest and r = byRequest(request))\n       or (request not in set dom byRequest and r = <Absent>);\n\n  -- 结束一次运行；结束两次与一次效果相同\n  Finish(run: RunId)\n  ext wr live\n  post live = live~ \\ {run};\n\n  -- 场景：开始的结果未知时，按请求号找回运行并结束它\n  Recover: RequestNo ==> ()\n  Recover(request) ==\n    cases Start(request):\n      mk_Started(run) -> Finish(run),\n      <Rejected> -> skip,\n      <Unknown> ->\n        let found = Status(request) in\n          if found <> <Absent> then Finish(found)\n    end;\nend Run",
+    "paragraph": "Finish 把运行从 live 中移除。"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "spec": "module Run\nexports\n  types RunId; struct RequestNo; struct Started; struct StartOutcome; struct StatusOutcome\n  values RetrySeconds : nat1\n  operations\n    Start: RequestNo ==> StartOutcome;\n    Status: RequestNo ==> StatusOutcome;\n    Finish: RunId ==> ();\n    Recover: RequestNo ==> ()\ndefinitions\nvalues\n  -- 结果未知之后，两次找回之间至少相隔的秒数\n  RetrySeconds : nat1 = 30;\n\ntypes\n  -- 一次运行的身份；提供方造出，使用方不读结构\n  RunId = token;\n\n  -- 调用方给出的请求号，从 1 开始；同一请求号代表同一次请求\n  RequestNo = nat\n  inv r == r > 0;\n\n  -- 运行已经开始；调用方之后必须用 Finish 结束它\n  Started ::\n    run : RunId;  -- 结束时交回的身份\n\n  -- Start 的结局：使用方必须区分已开始、被拒绝与结果未知；结果未知时改用 Status 找回\n  StartOutcome = Started | <Rejected> | <Unknown>;\n\n  -- Status 的结局：按请求号找回的运行，或确认它不存在\n  StatusOutcome = RunId | <Absent>;\n\n  -- 运行表：同一请求号至多对应一次运行，活着的运行都来自某个请求\nstate Runs of\n  byRequest : map RequestNo to RunId  -- 请求号到它产生的运行\n  live : set of RunId  -- 已开始、尚未结束的运行\n  inv mk_Runs(b, l) == l subset rng b\n  init r == r = mk_Runs({|->}, {})\nend\n\noperations\n  -- 开始一次运行；同一请求号重复开始只产生一次运行\n  Start(request: RequestNo) r: StartOutcome\n  ext wr byRequest wr live\n  post (is_Started(r)\n          and (request in set dom byRequest~ => r.run = byRequest~(request))\n          and byRequest = byRequest~ ++ {request |-> r.run}\n          and live = live~ union {r.run})\n       or ((r = <Rejected> or r = <Unknown>) and byRequest = byRequest~ and live = live~);\n\n  -- 按请求号确认运行是否存在；只读，不改变运行表\n  Status(request: RequestNo) r: StatusOutcome\n  ext rd byRequest\n  post (request in set dom byRequest and r = byRequest(request))\n       or (request not in set dom byRequest and r = <Absent>);\n\n  -- 结束一次运行；结束两次与一次效果相同\n  Finish(run: RunId)\n  ext wr live\n  post live = live~ \\ {run};\n\n  -- 场景：开始的结果未知时，按请求号找回运行并结束它\n  Recover: RequestNo ==> ()\n  Recover(request) ==\n    cases Start(request):\n      mk_Started(run) -> Finish(run),\n      <Rejected> -> skip,\n      <Unknown> ->\n        let found = Status(request) in\n          if found <> <Absent> then Finish(found)\n    end;\nend Run",
+    "paragraph": "调用方得到结果未知之后，两次调用 Status 至少相隔 RetrySeconds 秒。"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "spec": "module Run\nexports\n  types RunId; struct RequestNo; struct Started; struct StartOutcome; struct StatusOutcome\n  values RetrySeconds : nat1\n  operations\n    Start: RequestNo ==> StartOutcome;\n    Status: RequestNo ==> StatusOutcome;\n    Finish: RunId ==> ();\n    Recover: RequestNo ==> ()\ndefinitions\nvalues\n  -- 结果未知之后，两次找回之间至少相隔的秒数\n  RetrySeconds : nat1 = 30;\n\ntypes\n  -- 一次运行的身份；提供方造出，使用方不读结构\n  RunId = token;\n\n  -- 调用方给出的请求号，从 1 开始；同一请求号代表同一次请求\n  RequestNo = nat\n  inv r == r > 0;\n\n  -- 运行已经开始；调用方之后必须用 Finish 结束它\n  Started ::\n    run : RunId;  -- 结束时交回的身份\n\n  -- Start 的结局：使用方必须区分已开始、被拒绝与结果未知；结果未知时改用 Status 找回\n  StartOutcome = Started | <Rejected> | <Unknown>;\n\n  -- Status 的结局：按请求号找回的运行，或确认它不存在\n  StatusOutcome = RunId | <Absent>;\n\n  -- 运行表：同一请求号至多对应一次运行，活着的运行都来自某个请求\nstate Runs of\n  byRequest : map RequestNo to RunId  -- 请求号到它产生的运行\n  live : set of RunId  -- 已开始、尚未结束的运行\n  inv mk_Runs(b, l) == l subset rng b\n  init r == r = mk_Runs({|->}, {})\nend\n\noperations\n  -- 开始一次运行；同一请求号重复开始只产生一次运行\n  Start(request: RequestNo) r: StartOutcome\n  ext wr byRequest wr live\n  post (is_Started(r)\n          and (request in set dom byRequest~ => r.run = byRequest~(request))\n          and byRequest = byRequest~ ++ {request |-> r.run}\n          and live = live~ union {r.run})\n       or ((r = <Rejected> or r = <Unknown>) and byRequest = byRequest~ and live = live~);\n\n  -- 按请求号确认运行是否存在；只读，不改变运行表\n  Status(request: RequestNo) r: StatusOutcome\n  ext rd byRequest\n  post (request in set dom byRequest and r = byRequest(request))\n       or (request not in set dom byRequest and r = <Absent>);\n\n  -- 结束一次运行；结束两次与一次效果相同\n  Finish(run: RunId)\n  ext wr live\n  post live = live~ \\ {run};\n\n  -- 场景：开始的结果未知时，按请求号找回运行并结束它\n  Recover: RequestNo ==> ()\n  Recover(request) ==\n    cases Start(request):\n      mk_Started(run) -> Finish(run),\n      <Rejected> -> skip,\n      <Unknown> ->\n        let found = Status(request) in\n          if found <> <Absent> then Finish(found)\n    end;\nend Run",
+    "paragraph": "Run 与 Attempt 运行在同一进程内；进程崩溃后，新进程按 Runs.byRequest 接管尚未结束的运行。"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "spec": "module Run\nexports\n  types RunId; struct RequestNo; struct Started; struct StartOutcome; struct StatusOutcome\n  values RetrySeconds : nat1\n  operations\n    Start: RequestNo ==> StartOutcome;\n    Status: RequestNo ==> StatusOutcome;\n    Finish: RunId ==> ();\n    Recover: RequestNo ==> ()\ndefinitions\nvalues\n  -- 结果未知之后，两次找回之间至少相隔的秒数\n  RetrySeconds : nat1 = 30;\n\ntypes\n  -- 一次运行的身份；提供方造出，使用方不读结构\n  RunId = token;\n\n  -- 调用方给出的请求号，从 1 开始；同一请求号代表同一次请求\n  RequestNo = nat\n  inv r == r > 0;\n\n  -- 运行已经开始；调用方之后必须用 Finish 结束它\n  Started ::\n    run : RunId;  -- 结束时交回的身份\n\n  -- Start 的结局：使用方必须区分已开始、被拒绝与结果未知；结果未知时改用 Status 找回\n  StartOutcome = Started | <Rejected> | <Unknown>;\n\n  -- Status 的结局：按请求号找回的运行，或确认它不存在\n  StatusOutcome = RunId | <Absent>;\n\n  -- 运行表：同一请求号至多对应一次运行，活着的运行都来自某个请求\nstate Runs of\n  byRequest : map RequestNo to RunId  -- 请求号到它产生的运行\n  live : set of RunId  -- 已开始、尚未结束的运行\n  inv mk_Runs(b, l) == l subset rng b\n  init r == r = mk_Runs({|->}, {})\nend\n\noperations\n  -- 开始一次运行；同一请求号重复开始只产生一次运行\n  Start(request: RequestNo) r: StartOutcome\n  ext wr byRequest wr live\n  post (is_Started(r)\n          and (request in set dom byRequest~ => r.run = byRequest~(request))\n          and byRequest = byRequest~ ++ {request |-> r.run}\n          and live = live~ union {r.run})\n       or ((r = <Rejected> or r = <Unknown>) and byRequest = byRequest~ and live = live~);\n\n  -- 按请求号确认运行是否存在；只读，不改变运行表\n  Status(request: RequestNo) r: StatusOutcome\n  ext rd byRequest\n  post (request in set dom byRequest and r = byRequest(request))\n       or (request not in set dom byRequest and r = <Absent>);\n\n  -- 结束一次运行；结束两次与一次效果相同\n  Finish(run: RunId)\n  ext wr live\n  post live = live~ \\ {run};\n\n  -- 场景：开始的结果未知时，按请求号找回运行并结束它\n  Recover: RequestNo ==> ()\n  Recover(request) ==\n    cases Start(request):\n      mk_Started(run) -> Finish(run),\n      <Rejected> -> skip,\n      <Unknown> ->\n        let found = Status(request) in\n          if found <> <Absent> then Finish(found)\n    end;\nend Run",
+    "paragraph": "上游在超时之后仍可能已经开始了运行（来源：上游接口说明）。所以 StartOutcome 有结果未知一支。"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "spec": "module Ticket\nexports\n  types TicketId; struct Decision\n  operations Open: Intent ==> TicketId; Decide: TicketId * Decision ==> DecideOutcome\ndefinitions\ntypes\n  -- 一张单据的身份；由核心造出\n  TicketId = token;\n  -- 一次写意图；单据始终只有一个负责人\n  Intent :: owner : Principal  -- 负责人\n            basis : set of Position;  -- 依据的观察位置\n  -- 负责人\n  Principal = token;\n  -- 观察位置\n  Position = token;\n  -- 审批人的决定\n  Decision = <Approve> | <Reject>;\n  -- 决定的结局\n  DecideOutcome = <Prepared> | <Rejected> | <Conflict>;\nstate Tickets of\n  open : map TicketId to Intent  -- 尚未关闭的单据\n  closed : set of TicketId  -- 已关闭的单据\n  inv mk_Tickets(o, c) == dom o inter c = {}\n  init t == t = mk_Tickets({|->}, {})\nend\noperations\n  -- 起一张单据\n  Open(i: Intent) t: TicketId\n  ext wr open rd closed\n  post t not in set dom open~ union closed and open = open~ ++ {t |-> i};\n  -- 对单据作决定；Prepared 与 Rejected 都关闭单据\n  Decide(t: TicketId, d: Decision) r: DecideOutcome\n  ext wr open wr closed\n  pre t in set dom open\n  post (r in set {<Prepared>, <Rejected>} and closed = closed~ union {t} and open = {t} <-: open~)\n       or (r = <Conflict> and open = open~ and closed = closed~);\nend Ticket",
+    "paragraph": "Decide 的结果是 Prepared、Rejected 或 Conflict 三者之一。"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "spec": "module Ticket\nexports\n  types TicketId; struct Decision\n  operations Open: Intent ==> TicketId; Decide: TicketId * Decision ==> DecideOutcome\ndefinitions\ntypes\n  -- 一张单据的身份；由核心造出\n  TicketId = token;\n  -- 一次写意图；单据始终只有一个负责人\n  Intent :: owner : Principal  -- 负责人\n            basis : set of Position;  -- 依据的观察位置\n  -- 负责人\n  Principal = token;\n  -- 观察位置\n  Position = token;\n  -- 审批人的决定\n  Decision = <Approve> | <Reject>;\n  -- 决定的结局\n  DecideOutcome = <Prepared> | <Rejected> | <Conflict>;\nstate Tickets of\n  open : map TicketId to Intent  -- 尚未关闭的单据\n  closed : set of TicketId  -- 已关闭的单据\n  inv mk_Tickets(o, c) == dom o inter c = {}\n  init t == t = mk_Tickets({|->}, {})\nend\noperations\n  -- 起一张单据\n  Open(i: Intent) t: TicketId\n  ext wr open rd closed\n  post t not in set dom open~ union closed and open = open~ ++ {t |-> i};\n  -- 对单据作决定；Prepared 与 Rejected 都关闭单据\n  Decide(t: TicketId, d: Decision) r: DecideOutcome\n  ext wr open wr closed\n  pre t in set dom open\n  post (r in set {<Prepared>, <Rejected>} and closed = closed~ union {t} and open = {t} <-: open~)\n       or (r = <Conflict> and open = open~ and closed = closed~);\nend Ticket",
+    "paragraph": "Open 返回一个新的 TicketId，并把单据放进 open。"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "spec": "module Ticket\nexports\n  types TicketId; struct Decision\n  operations Open: Intent ==> TicketId; Decide: TicketId * Decision ==> DecideOutcome\ndefinitions\ntypes\n  -- 一张单据的身份；由核心造出\n  TicketId = token;\n  -- 一次写意图；单据始终只有一个负责人\n  Intent :: owner : Principal  -- 负责人\n            basis : set of Position;  -- 依据的观察位置\n  -- 负责人\n  Principal = token;\n  -- 观察位置\n  Position = token;\n  -- 审批人的决定\n  Decision = <Approve> | <Reject>;\n  -- 决定的结局\n  DecideOutcome = <Prepared> | <Rejected> | <Conflict>;\nstate Tickets of\n  open : map TicketId to Intent  -- 尚未关闭的单据\n  closed : set of TicketId  -- 已关闭的单据\n  inv mk_Tickets(o, c) == dom o inter c = {}\n  init t == t = mk_Tickets({|->}, {})\nend\noperations\n  -- 起一张单据\n  Open(i: Intent) t: TicketId\n  ext wr open rd closed\n  post t not in set dom open~ union closed and open = open~ ++ {t |-> i};\n  -- 对单据作决定；Prepared 与 Rejected 都关闭单据\n  Decide(t: TicketId, d: Decision) r: DecideOutcome\n  ext wr open wr closed\n  pre t in set dom open\n  post (r in set {<Prepared>, <Rejected>} and closed = closed~ union {t} and open = {t} <-: open~)\n       or (r = <Conflict> and open = open~ and closed = closed~);\nend Ticket",
+    "paragraph": "Prepared 写入与单据关闭必须在同一个事务里提交；崩溃之后两者要么都在，要么都不在。"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "spec": "module Ticket\nexports\n  types TicketId; struct Decision\n  operations Open: Intent ==> TicketId; Decide: TicketId * Decision ==> DecideOutcome\ndefinitions\ntypes\n  -- 一张单据的身份；由核心造出\n  TicketId = token;\n  -- 一次写意图；单据始终只有一个负责人\n  Intent :: owner : Principal  -- 负责人\n            basis : set of Position;  -- 依据的观察位置\n  -- 负责人\n  Principal = token;\n  -- 观察位置\n  Position = token;\n  -- 审批人的决定\n  Decision = <Approve> | <Reject>;\n  -- 决定的结局\n  DecideOutcome = <Prepared> | <Rejected> | <Conflict>;\nstate Tickets of\n  open : map TicketId to Intent  -- 尚未关闭的单据\n  closed : set of TicketId  -- 已关闭的单据\n  inv mk_Tickets(o, c) == dom o inter c = {}\n  init t == t = mk_Tickets({|->}, {})\nend\noperations\n  -- 起一张单据\n  Open(i: Intent) t: TicketId\n  ext wr open rd closed\n  post t not in set dom open~ union closed and open = open~ ++ {t |-> i};\n  -- 对单据作决定；Prepared 与 Rejected 都关闭单据\n  Decide(t: TicketId, d: Decision) r: DecideOutcome\n  ext wr open wr closed\n  pre t in set dom open\n  post (r in set {<Prepared>, <Rejected>} and closed = closed~ union {t} and open = {t} <-: open~)\n       or (r = <Conflict> and open = open~ and closed = closed~);\nend Ticket",
+    "paragraph": "审批人的决定只对当时的单据版本有效；单据在审批期间被修改，审批要重做（来源：风控要求）。"
+   }
+  }
+ ],
+ "coined": [
+  {
+   "label": true,
+   "state": {
+    "spec_names": [
+     "Run",
+     "Run`RunId",
+     "Run`RequestNo",
+     "Run`Started",
+     "Run`Started.run",
+     "Run`StartOutcome",
+     "Run`StatusOutcome",
+     "Run`Runs",
+     "Run`Runs.byRequest",
+     "Run`Runs.live",
+     "Run`RetrySeconds",
+     "Run`Start",
+     "Run`Status",
+     "Run`Finish",
+     "Run`Recover",
+     "Attempt",
+     "Attempt`Entry",
+     "Attempt`Entry.run",
+     "Attempt`Entry.outcome",
+     "Attempt`Log",
+     "Attempt`Unresolved",
+     "Attempt`Record",
+     "Report",
+     "Report`Daily"
+    ],
+    "paragraph": "工作者持有 JobLease 时进入热备态；LeaseKeeper 负责续租。"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "spec_names": [
+     "Run",
+     "Run`RunId",
+     "Run`RequestNo",
+     "Run`Started",
+     "Run`Started.run",
+     "Run`StartOutcome",
+     "Run`StatusOutcome",
+     "Run`Runs",
+     "Run`Runs.byRequest",
+     "Run`Runs.live",
+     "Run`RetrySeconds",
+     "Run`Start",
+     "Run`Status",
+     "Run`Finish",
+     "Run`Recover",
+     "Attempt",
+     "Attempt`Entry",
+     "Attempt`Entry.run",
+     "Attempt`Entry.outcome",
+     "Attempt`Log",
+     "Attempt`Unresolved",
+     "Attempt`Record",
+     "Report",
+     "Report`Daily"
+    ],
+    "paragraph": "结果未知时运行进入悬挂区，由回收器定期扫描悬挂区并调用 Status。"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "spec_names": [
+     "Run",
+     "Run`RunId",
+     "Run`RequestNo",
+     "Run`Started",
+     "Run`Started.run",
+     "Run`StartOutcome",
+     "Run`StatusOutcome",
+     "Run`Runs",
+     "Run`Runs.byRequest",
+     "Run`Runs.live",
+     "Run`RetrySeconds",
+     "Run`Start",
+     "Run`Status",
+     "Run`Finish",
+     "Run`Recover",
+     "Attempt",
+     "Attempt`Entry",
+     "Attempt`Entry.run",
+     "Attempt`Entry.outcome",
+     "Attempt`Log",
+     "Attempt`Unresolved",
+     "Attempt`Record",
+     "Report",
+     "Report`Daily"
+    ],
+    "paragraph": "每次 Start 都会生成一张启动凭证，Finish 时核销这张凭证。"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "spec_names": [
+     "Run",
+     "Run`RunId",
+     "Run`RequestNo",
+     "Run`Started",
+     "Run`Started.run",
+     "Run`StartOutcome",
+     "Run`StatusOutcome",
+     "Run`Runs",
+     "Run`Runs.byRequest",
+     "Run`Runs.live",
+     "Run`RetrySeconds",
+     "Run`Start",
+     "Run`Status",
+     "Run`Finish",
+     "Run`Recover",
+     "Attempt",
+     "Attempt`Entry",
+     "Attempt`Entry.run",
+     "Attempt`Entry.outcome",
+     "Attempt`Log",
+     "Attempt`Unresolved",
+     "Attempt`Record",
+     "Report",
+     "Report`Daily"
+    ],
+    "paragraph": "调用方得到结果未知之后，两次调用 Run`Status 至少相隔 Run`RetrySeconds 秒。"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "spec_names": [
+     "Run",
+     "Run`RunId",
+     "Run`RequestNo",
+     "Run`Started",
+     "Run`Started.run",
+     "Run`StartOutcome",
+     "Run`StatusOutcome",
+     "Run`Runs",
+     "Run`Runs.byRequest",
+     "Run`Runs.live",
+     "Run`RetrySeconds",
+     "Run`Start",
+     "Run`Status",
+     "Run`Finish",
+     "Run`Recover",
+     "Attempt",
+     "Attempt`Entry",
+     "Attempt`Entry.run",
+     "Attempt`Entry.outcome",
+     "Attempt`Log",
+     "Attempt`Unresolved",
+     "Attempt`Record",
+     "Report",
+     "Report`Daily"
+    ],
+    "paragraph": "Run 与 Attempt 运行在同一进程内；进程崩溃后，新进程按 Run`Runs.byRequest 接管尚未结束的运行。"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "spec_names": [
+     "Run",
+     "Run`RunId",
+     "Run`RequestNo",
+     "Run`Started",
+     "Run`Started.run",
+     "Run`StartOutcome",
+     "Run`StatusOutcome",
+     "Run`Runs",
+     "Run`Runs.byRequest",
+     "Run`Runs.live",
+     "Run`RetrySeconds",
+     "Run`Start",
+     "Run`Status",
+     "Run`Finish",
+     "Run`Recover",
+     "Attempt",
+     "Attempt`Entry",
+     "Attempt`Entry.run",
+     "Attempt`Entry.outcome",
+     "Attempt`Log",
+     "Attempt`Unresolved",
+     "Attempt`Record",
+     "Report",
+     "Report`Daily"
+    ],
+    "paragraph": "每天生成一份日报（来源：示例需求），由 Report`Daily 走通。"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "spec_names": [
+     "Ticket",
+     "Ticket`TicketId",
+     "Ticket`Intent",
+     "Ticket`Intent.owner",
+     "Ticket`Intent.basis",
+     "Ticket`Principal",
+     "Ticket`Position",
+     "Ticket`Decision",
+     "Ticket`DecideOutcome",
+     "Ticket`Tickets",
+     "Ticket`Tickets.open",
+     "Ticket`Tickets.closed",
+     "Ticket`Open",
+     "Ticket`Decide"
+    ],
+    "paragraph": "单据进入冷冻期后，只有仲裁员能解冻。"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "spec_names": [
+     "Ticket",
+     "Ticket`TicketId",
+     "Ticket`Intent",
+     "Ticket`Intent.owner",
+     "Ticket`Intent.basis",
+     "Ticket`Principal",
+     "Ticket`Position",
+     "Ticket`Decision",
+     "Ticket`DecideOutcome",
+     "Ticket`Tickets",
+     "Ticket`Tickets.open",
+     "Ticket`Tickets.closed",
+     "Ticket`Open",
+     "Ticket`Decide"
+    ],
+    "paragraph": "Decide 之前先申请一把决策锁，拿到锁的审批人才能决定。"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "spec_names": [
+     "Ticket",
+     "Ticket`TicketId",
+     "Ticket`Intent",
+     "Ticket`Intent.owner",
+     "Ticket`Intent.basis",
+     "Ticket`Principal",
+     "Ticket`Position",
+     "Ticket`Decision",
+     "Ticket`DecideOutcome",
+     "Ticket`Tickets",
+     "Ticket`Tickets.open",
+     "Ticket`Tickets.closed",
+     "Ticket`Open",
+     "Ticket`Decide"
+    ],
+    "paragraph": "关闭的单据会被归档器每晚搬进冷库。"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "spec_names": [
+     "Ticket",
+     "Ticket`TicketId",
+     "Ticket`Intent",
+     "Ticket`Intent.owner",
+     "Ticket`Intent.basis",
+     "Ticket`Principal",
+     "Ticket`Position",
+     "Ticket`Decision",
+     "Ticket`DecideOutcome",
+     "Ticket`Tickets",
+     "Ticket`Tickets.open",
+     "Ticket`Tickets.closed",
+     "Ticket`Open",
+     "Ticket`Decide"
+    ],
+    "paragraph": "Ticket`Decide 返回 Conflict 时，审批人重新读取单据再作决定。"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "spec_names": [
+     "Ticket",
+     "Ticket`TicketId",
+     "Ticket`Intent",
+     "Ticket`Intent.owner",
+     "Ticket`Intent.basis",
+     "Ticket`Principal",
+     "Ticket`Position",
+     "Ticket`Decision",
+     "Ticket`DecideOutcome",
+     "Ticket`Tickets",
+     "Ticket`Tickets.open",
+     "Ticket`Tickets.closed",
+     "Ticket`Open",
+     "Ticket`Decide"
+    ],
+    "paragraph": "Ticket`Tickets.closed 里的单据不再被修改；这条记录在进程崩溃后由新进程原样读出。"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "spec_names": [
+     "Ticket",
+     "Ticket`TicketId",
+     "Ticket`Intent",
+     "Ticket`Intent.owner",
+     "Ticket`Intent.basis",
+     "Ticket`Principal",
+     "Ticket`Position",
+     "Ticket`Decision",
+     "Ticket`DecideOutcome",
+     "Ticket`Tickets",
+     "Ticket`Tickets.open",
+     "Ticket`Tickets.closed",
+     "Ticket`Open",
+     "Ticket`Decide"
+    ],
+    "paragraph": "每张单据的负责人由 Ticket`Intent.owner 给出，审批人可以与负责人不同。"
+   }
+  }
+ ],
+ "business_in_arch": [
+  {
+   "label": false,
+   "state": {
+    "definition": "-- 结果未知之后，两次找回之间至少相隔的秒数\n  RetrySeconds : nat1 = 30;\n\ntypes",
+    "business_units": [
+     "Report: 每天生成一份日报",
+     "Billing: 月末出账"
+    ]
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "-- 一次运行的身份；提供方造出，使用方不读结构\n  RunId = token;",
+    "business_units": [
+     "Report: 每天生成一份日报",
+     "Billing: 月末出账"
+    ]
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "-- 调用方给出的请求号，从 1 开始；同一请求号代表同一次请求\n  RequestNo = nat\n  inv r == r > 0;",
+    "business_units": [
+     "Report: 每天生成一份日报",
+     "Billing: 月末出账"
+    ]
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "-- 运行已经开始；调用方之后必须用 Finish 结束它\n  Started ::\n    run : RunId;  -- 结束时交回的身份",
+    "business_units": [
+     "Report: 每天生成一份日报",
+     "Billing: 月末出账"
+    ]
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "-- Start 的结局：使用方必须区分已开始、被拒绝与结果未知；结果未知时改用 Status 找回\n  StartOutcome = Started | <Rejected> | <Unknown>;",
+    "business_units": [
+     "Report: 每天生成一份日报",
+     "Billing: 月末出账"
+    ]
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "-- Status 的结局：按请求号找回的运行，或确认它不存在\n  StatusOutcome = RunId | <Absent>;",
+    "business_units": [
+     "Report: 每天生成一份日报",
+     "Billing: 月末出账"
+    ]
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "-- 运行表：同一请求号至多对应一次运行，活着的运行都来自某个请求\nstate Runs of\n  byRequest : map RequestNo to RunId  -- 请求号到它产生的运行\n  live : set of RunId  -- 已开始、尚未结束的运行\n  inv mk_Runs(b, l) == l subset rng b\n  init r == r = mk_Runs({|->}, {})\nend\n\noperations",
+    "business_units": [
+     "Report: 每天生成一份日报",
+     "Billing: 月末出账"
+    ]
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "-- 开始一次运行；同一请求号重复开始只产生一次运行\n  Start(request: RequestNo) r: StartOutcome\n  ext wr byRequest wr live\n  post (is_Started(r)\n          and (request in set dom byRequest~ => r.run = byRequest~(request))\n          and byRequest = byRequest~ ++ {request |-> r.run}\n          and live = live~ union {r.run})\n       or ((r = <Rejected> or r = <Unknown>) and byRequest = byRequest~ and live = live~);",
+    "business_units": [
+     "Report: 每天生成一份日报",
+     "Billing: 月末出账"
+    ]
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "-- 按请求号确认运行是否存在；只读，不改变运行表\n  Status(request: RequestNo) r: StatusOutcome\n  ext rd byRequest\n  post (request in set dom byRequest and r = byRequest(request))\n       or (request not in set dom byRequest and r = <Absent>);",
+    "business_units": [
+     "Report: 每天生成一份日报",
+     "Billing: 月末出账"
+    ]
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "-- 结束一次运行；结束两次与一次效果相同\n  Finish(run: RunId)\n  ext wr live\n  post live = live~ \\ {run};",
+    "business_units": [
+     "Report: 每天生成一份日报",
+     "Billing: 月末出账"
+    ]
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "-- 场景：开始的结果未知时，按请求号找回运行并结束它\n  Recover: RequestNo ==> ()\n  Recover(request) ==\n    cases Start(request):\n      mk_Started(run) -> Finish(run),\n      <Rejected> -> skip,\n      <Unknown> ->\n        let found = Status(request) in\n          if found <> <Absent> then Finish(found)\n    end;\nend Run",
+    "business_units": [
+     "Report: 每天生成一份日报",
+     "Billing: 月末出账"
+    ]
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "-- 一张单据的身份；由核心造出\n  TicketId = token;",
+    "business_units": [
+     "MonthlyAudit: 每月审计",
+     "Trading: 交易下单"
+    ]
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "-- 一次写意图；单据始终只有一个负责人\n  Intent :: owner : Principal  -- 负责人\n            basis : set of Position;  -- 依据的观察位置",
+    "business_units": [
+     "MonthlyAudit: 每月审计",
+     "Trading: 交易下单"
+    ]
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "-- 负责人\n  Principal = token;",
+    "business_units": [
+     "MonthlyAudit: 每月审计",
+     "Trading: 交易下单"
+    ]
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "-- 观察位置\n  Position = token;",
+    "business_units": [
+     "MonthlyAudit: 每月审计",
+     "Trading: 交易下单"
+    ]
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "-- 审批人的决定\n  Decision = <Approve> | <Reject>;",
+    "business_units": [
+     "MonthlyAudit: 每月审计",
+     "Trading: 交易下单"
+    ]
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "-- 决定的结局\n  DecideOutcome = <Prepared> | <Rejected> | <Conflict>;\nstate Tickets of\n  open : map TicketId to Intent  -- 尚未关闭的单据\n  closed : set of TicketId  -- 已关闭的单据\n  inv mk_Tickets(o, c) == dom o inter c = {}\n  init t == t = mk_Tickets({|->}, {})\nend\noperations",
+    "business_units": [
+     "MonthlyAudit: 每月审计",
+     "Trading: 交易下单"
+    ]
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "-- 起一张单据\n  Open(i: Intent) t: TicketId\n  ext wr open rd closed\n  post t not in set dom open~ union closed and open = open~ ++ {t |-> i};",
+    "business_units": [
+     "MonthlyAudit: 每月审计",
+     "Trading: 交易下单"
+    ]
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "-- 对单据作决定；Prepared 与 Rejected 都关闭单据\n  Decide(t: TicketId, d: Decision) r: DecideOutcome\n  ext wr open wr closed\n  pre t in set dom open\n  post (r in set {<Prepared>, <Rejected>} and closed = closed~ union {t} and open = {t} <-: open~)\n       or (r = <Conflict> and open = open~ and closed = closed~);\nend Ticket",
+    "business_units": [
+     "MonthlyAudit: 每月审计",
+     "Trading: 交易下单"
+    ]
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "definition": "-- 开始当天日报的运行\n  StartDailyReport: () ==> StartOutcome",
+    "business_units": [
+     "Report: 每天生成一份日报",
+     "Billing: 月末出账"
+    ]
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "definition": "-- 日报运行的身份\n  DailyReportRunId = token;",
+    "business_units": [
+     "Report: 每天生成一份日报",
+     "Billing: 月末出账"
+    ]
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "definition": "-- 审批人的决定\n  Decision = <Approve> | <Reject> | <ApproveForMonthlyAudit>;",
+    "business_units": [
+     "MonthlyAudit: 每月审计",
+     "Trading: 交易下单"
+    ]
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "definition": "-- 期权交易专用的行权日\n  ExerciseDate = nat;",
+    "business_units": [
+     "Options: 期权交易",
+     "Stocks: 股票交易"
+    ]
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "definition": "-- 月末出账时使用的税率\n  BillingTaxRate = nat;",
+    "business_units": [
+     "Report: 每天生成一份日报",
+     "Billing: 月末出账"
+    ]
+   }
+  }
+ ],
+ "reasons": [
+  {
+   "label": true,
+   "state": {
+    "definition": "  -- Start 失败的原因\n  FailReason = <QuotaExceeded> | <AuthExpired> | <UpstreamBusy> | <BadRequest> | <Unknown>;"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "definition": "  -- 打开闭包的结局\n  OpenOutcome = Handle | <NoDisk> | <NoMemory> | <ImageMissing> | <PermissionDenied>;"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "definition": "  -- 解析的结局\n  Parsed = Value | <MissingField> | <ExtraField> | <WrongType> | <BadEnum>;"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "definition": "  -- 提交的结局\n  Submitted = <Accepted> | <EmptyCommand> | <CommandTooLong> | <InvalidChars> | <Duplicate>;"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "  -- 写的结局：被拒绝时关闭单据；未发出时可以重新发出；结果未知时开始取证，永不重发\n  WriteOutcome = <Accepted> | <Rejected> | <NotSent> | <Unknown>;"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "  -- 单据所处的阶段\n  Phase = <Drafting> | <AwaitingDecision> | <Prepared> | <Closed>;"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "  -- 消费方式：await-all 等齐全部输入；ordered 按序；latest 只取最新\n  Consumption = <AwaitAll> | <Ordered> | <Latest>;"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "  -- 取证渠道，按这个次序尝试\n  Channel = <ByKey> | <Listing> | <Fills> | <Replay>;"
+   }
+  }
+ ],
+ "registry": [
+  {
+   "label": true,
+   "state": {
+    "spec": "module Engine\nexports all\ndefinitions\ntypes\n  -- 工作流\n  Workflow = token;\n  -- 节点\n  Node = token;\n  -- 边\n  Edge = token;\n  -- 运行\n  Run = token;\n  -- 闭包\n  Closure = token;\n  -- 结局\n  Outcome = token;\nend Engine"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "spec": "module Store\nexports all\ndefinitions\ntypes\n  -- 记录\n  Record = token;\n  -- 位置\n  Position = token;\nvalues\n  -- 存储名\n  StoreName : seq of char = \"store\";\noperations\n  -- 写入\n  Write: Record ==> Position\n  Write(r) == is not yet specified;\n  -- 读取\n  Read: Position ==> Record\n  Read(p) == is not yet specified;\nend Store"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "spec": "module Run\nexports\n  types RunId; struct RequestNo; struct Started; struct StartOutcome; struct StatusOutcome\n  values RetrySeconds : nat1\n  operations\n    Start: RequestNo ==> StartOutcome;\n    Status: RequestNo ==> StatusOutcome;\n    Finish: RunId ==> ();\n    Recover: RequestNo ==> ()\ndefinitions\nvalues\n  -- 结果未知之后，两次找回之间至少相隔的秒数\n  RetrySeconds : nat1 = 30;\n\ntypes\n  -- 一次运行的身份；提供方造出，使用方不读结构\n  RunId = token;\n\n  -- 调用方给出的请求号，从 1 开始；同一请求号代表同一次请求\n  RequestNo = nat\n  inv r == r > 0;\n\n  -- 运行已经开始；调用方之后必须用 Finish 结束它\n  Started ::\n    run : RunId;  -- 结束时交回的身份\n\n  -- Start 的结局：使用方必须区分已开始、被拒绝与结果未知；结果未知时改用 Status 找回\n  StartOutcome = Started | <Rejected> | <Unknown>;\n\n  -- Status 的结局：按请求号找回的运行，或确认它不存在\n  StatusOutcome = RunId | <Absent>;\n\n  -- 运行表：同一请求号至多对应一次运行，活着的运行都来自某个请求\nstate Runs of\n  byRequest : map RequestNo to RunId  -- 请求号到它产生的运行\n  live : set of RunId  -- 已开始、尚未结束的运行\n  inv mk_Runs(b, l) == l subset rng b\n  init r == r = mk_Runs({|->}, {})\nend\n\noperations\n  -- 开始一次运行；同一请求号重复开始只产生一次运行\n  Start(request: RequestNo) r: StartOutcome\n  ext wr byRequest wr live\n  post (is_Started(r)\n          and (request in set dom byRequest~ => r.run = byRequest~(request))\n          and byRequest = byRequest~ ++ {request |-> r.run}\n          and live = live~ union {r.run})\n       or ((r = <Rejected> or r = <Unknown>) and byRequest = byRequest~ and live = live~);\n\n  -- 按请求号确认运行是否存在；只读，不改变运行表\n  Status(request: RequestNo) r: StatusOutcome\n  ext rd byRequest\n  post (request in set dom byRequest and r = byRequest(request))\n       or (request not in set dom byRequest and r = <Absent>);\n\n  -- 结束一次运行；结束两次与一次效果相同\n  Finish(run: RunId)\n  ext wr live\n  post live = live~ \\ {run};\n\n  -- 场景：开始的结果未知时，按请求号找回运行并结束它\n  Recover: RequestNo ==> ()\n  Recover(request) ==\n    cases Start(request):\n      mk_Started(run) -> Finish(run),\n      <Rejected> -> skip,\n      <Unknown> ->\n        let found = Status(request) in\n          if found <> <Absent> then Finish(found)\n    end;\nend Run"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "spec": "module Ticket\nexports\n  types TicketId; struct Decision\n  operations Open: Intent ==> TicketId; Decide: TicketId * Decision ==> DecideOutcome\ndefinitions\ntypes\n  -- 一张单据的身份；由核心造出\n  TicketId = token;\n  -- 一次写意图；单据始终只有一个负责人\n  Intent :: owner : Principal  -- 负责人\n            basis : set of Position;  -- 依据的观察位置\n  -- 负责人\n  Principal = token;\n  -- 观察位置\n  Position = token;\n  -- 审批人的决定\n  Decision = <Approve> | <Reject>;\n  -- 决定的结局\n  DecideOutcome = <Prepared> | <Rejected> | <Conflict>;\nstate Tickets of\n  open : map TicketId to Intent  -- 尚未关闭的单据\n  closed : set of TicketId  -- 已关闭的单据\n  inv mk_Tickets(o, c) == dom o inter c = {}\n  init t == t = mk_Tickets({|->}, {})\nend\noperations\n  -- 起一张单据\n  Open(i: Intent) t: TicketId\n  ext wr open rd closed\n  post t not in set dom open~ union closed and open = open~ ++ {t |-> i};\n  -- 对单据作决定；Prepared 与 Rejected 都关闭单据\n  Decide(t: TicketId, d: Decision) r: DecideOutcome\n  ext wr open wr closed\n  pre t in set dom open\n  post (r in set {<Prepared>, <Rejected>} and closed = closed~ union {t} and open = {t} <-: open~)\n       or (r = <Conflict> and open = open~ and closed = closed~);\nend Ticket"
+   }
+  }
+ ],
+ "impl_body": [
+  {
+   "label": true,
+   "state": {
+    "definition": "-- 开始一次运行\n  Start: RequestNo ==> StartOutcome\n  Start(r) ==\n    if r in set dom byRequest then return mk_Started(byRequest(r))\n    else let id = NewId() in (byRequest := byRequest ++ {r |-> id}; live := live union {id}; return mk_Started(id));"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "definition": "-- 追加一条尝试\n  Record: Entry ==> ()\n  Record(e) == (entries := entries ^ [e]; if len entries > 1000 then entries := tl entries);"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "definition": "-- 找回运行\n  Status: RequestNo ==> StatusOutcome\n  Status(r) == (dcl i : nat := 1; while i <= len cache do (if cache(i).req = r then return cache(i).run; i := i + 1); return <Absent>);"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "-- 场景：开始的结果未知时，按请求号找回运行并结束它\n  Recover: RequestNo ==> ()\n  Recover(request) ==\n    cases Start(request):\n      mk_Started(run) -> Finish(run),\n      <Rejected> -> skip,\n      <Unknown> ->\n        let found = Status(request) in\n          if found <> <Absent> then Finish(found)\n    end;"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "-- 需要找回的运行：最后一条尝试是结果未知的运行；两个实现必须得出同一集合，所以写显式体\n  Unresolved: seq of Entry -> set of RunId\n  Unresolved(log) ==\n    {log(i).run | i in set inds log & log(i).outcome = <Unknown> and not exists j in set inds log & j > i and log(j).run = log(i).run};"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "definition": "-- 场景：开始当天的日报运行，记下被接受的尝试，再结束它\n  Daily: RequestNo ==> ()\n  Daily(request) ==\n    cases Start(request):\n      mk_Started(run) -> (Record(mk_Entry(run, <Accepted>)); Finish(run)),\n      others -> skip\n    end;"
+   }
+  }
+ ]
+}

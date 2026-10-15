@@ -1,64 +1,39 @@
 # 出处
 
-按 SKILL.md 各步骤列出所依据的来源，供核对方法与论据。这里的归组及来源采用的文档形式，不要求设计文档按步骤拆分或另建对应产物。
+按 SKILL.md 各节列出所依据的来源，供核对论据。这里只说明每条规则从哪里来；设计文档不需要引用这些来源，也不按来源组织。
 
 ## 设计是什么
 
-- IEEE Std 1016-2009, *Software Design Descriptions*, §3.1 设计定义；§4.1 SDD 必需内容（stakeholders、concerns、viewpoints、views、overlays、rationale）；§3.2.2 可追溯性与验证。
-- ISO/IEC/IEEE 42010:2022, *Architecture description*：stakeholders / concerns / viewpoints / views / rationale 本体；明确不规定方法与格式。
-- Kruchten, P. (1995). "The 4+1 View Model of Architecture." *IEEE Software* 12(6). `Architecture = {Elements, Forms, Rationale/Constraints}`；场景视图；场景驱动迭代。
-- Brooks, F. *The Mythical Man-Month*, ch. 4–5：概念完整性；"architecture tells what happens, implementation tells how it is made to happen"。
-- Booch, G. (2006). "On Architecture." *IEEE Software*：架构是重要决定的集合，必须保持可见。
+- Brooks, F. *The Mythical Man-Month*, ch. 4：架构说明发生什么，实现说明怎样让它发生（"architecture tells what happens, implementation tells how it is made to happen"）。据此把边界情况与组合成整体划给实现。
+- Lamport, L. (2015). "Who Builds a Skyscraper without Drawing Blueprints?" *CACM* 58(4)：规格写在代码之上的抽象层，省略实现细节。
+- Parnas, D. L., Clements, P. C. (1986). "A Rational Design Process: How and Why to Fake It." *IEEE TSE* SE-12(2)：文档呈现当前的设计，不记录试错过程。
 
-## 贯穿全程的规则
+## 骨架与优先级
 
-- Parnas & Clements (1986)，见步骤 4：文档呈现理想化的理性设计过程（"fake it"），不记录实际走过的试错。
+- Perry, D. E., Wolf, A. L. (1992). "Foundations for the Study of Software Architecture." *ACM SIGSOFT SEN* 17(4)：`Architecture = {Elements, Form, Rationale}`，对应骨架的三问：由什么组成、用什么组成、为什么。
+- Kruchten, P. (1995). "The 4+1 View Model of Architecture." *IEEE Software* 12(6)：沿用同一公式。
+- Booch, G. (2006). "On Architecture." *IEEE Software*：架构是一组重要决定，必须保持可见。据此把骨架与业务分开写。
 
-## 步骤 1 问题域
+## 两条轴
 
-- Jackson, M. (1995/2001). *Software Requirements & Specifications*; *Problem Frames*. 域、机器、共享现象；`机器规格 + 域性质 ⇒ 需求`。MIT 讲义 "Problem Analysis and Problem Structures"。
+- Parnas, D. L. (1972). "On the Criteria To Be Used in Decomposing Systems into Modules." *CACM* 15(12)：按难的或会变的决定划分模块，模块向外只暴露接口。据此划出内部设计、外部连接、核心代码。
+- Parnas, D. L. (1979). "Designing Software for Ease of Extension and Contraction." *IEEE TSE* SE-5(2)：uses 关系必须无环、分层，依赖只指向接口。据此规定 import 方向与无环。
+- Parnas, Clements, Weiss (1985). "The Modular Structure of Complex Systems."：模块指南按层级组织，与抽象层级这条轴对应。
 
-## 步骤 2 驱动
+## 连接
 
-- Barbacci et al. (2003). *Quality Attribute Workshops (QAWs), Third Edition*. CMU/SEI-2003-TR-016. 六要素场景（source / stimulus / artifact / environment / response / response measure）。
-- Wojcik et al. (2006). *Attribute-Driven Design (ADD), Version 2.0*. CMU/SEI-2006-TR-023. 架构驱动 = 功能需求 + 约束 + 质量属性；输入必须已优先级化。
-- Kazman, Klein, Clements (2000). *ATAM: Method for Architecture Evaluation*. CMU/SEI-2000-TR-004. Utility tree 的两维优先级；"vague claims are not operationally refutable"。
+- Parnas, D. L. (1972). "A Technique for Software Module Specification with Examples." *CACM* 15(5)：接口只给出使用者需要的信息。
+- Liskov, B., Wing, J. (1994). "A Behavioral Notion of Subtyping." *ACM TOPLAS* 16(6)：可替换性取决于行为规格，不只取决于签名。据此规定准入规则包含类型强制不了的定律，签名相容不等于可以接入。
 
-## 步骤 3 模型
+## 类型
 
-- Parnas, D. L. (1972). "On the Criteria To Be Used in Decomposing Systems into Modules." *CACM* 15(12). 按"难的或会变的决定"分解；每个模块隐藏一个决定。
-- Evans, E. (2015). *Domain-Driven Design Reference*. Part IV Context Mapping：有界上下文、上下文图、翻译与共享。
-- Brooks，同上，概念完整性。
+- TypeScript Handbook：泛型、条件类型、索引访问类型、`Extract`。
+- Yallop, J., White, L. (2014). "Lightweight Higher-Kinded Polymorphism." *FLOPS*：在没有原生高阶类型的语言中编码类型构造器。
+- Effect 的 `HKT` 模块以 `TypeLambda` 加 `this` 取参的方式编码高阶类型，是本 skill 所用写法的先例。
+- `scripts/design.ts` 用 Babel 解析器（`@babel/parser` 的 TypeScript 插件）读取 import 与注释，用 TypeScript 编译器检查类型。npm 上 TypeScript 7 的包不再提供 JavaScript 编译器 API，所以语法树改由 Babel 提供。
 
-## 步骤 4 结构
+## 依据与理由
 
-- Parnas, D. L., Clements, P. C. (1986). "A Rational Design Process: How and Why to Fake It." *IEEE TSE* SE-12(2). 模块指南（树状）、接口规格（含 undesired events）、uses hierarchy、模块设计文档与验证论证。
-- Parnas, Clements, Weiss (1985). "The Modular Structure of Complex Systems." A-7E 模块指南实例。
-- ADD 2.0，§3.2 输出：roles / responsibilities / properties / relationships；p. 25 接口不只是签名。
-- Brown, S. *C4 Model*：context / container / component / code 四层，只画有价值的层。
-- Kruchten 4+1：逻辑 / 进程 / 开发 / 物理 + 场景。
-
-## 步骤 5 走查
-
-- Kruchten 4+1，"A scenario-driven approach"：挑关键场景、strawman 架构、脚本走查、原型、下一轮。
-- Cockburn, A. *Writing Effective Use Cases*；Jacobson et al. *Use-Case 2.0*：主流程 + 扩展（失败路径）；用例切片连到测试。
-- Lamport, L. (2015). "Who Builds a Skyscraper without Drawing Blueprints?"；Newcombe et al. (2015). "How Amazon Web Services Uses Formal Methods." *CACM* 58(4)：先规格后实现，模型检查找交错与失败。
-- Jackson, D. *Software Abstractions* (Alloy)：模拟 vs 检查，反例。
-
-## 步骤 6 评估
-
-- ATAM，§7：risks / non-risks / sensitivity points / tradeoff points；输出是风险清单不是"通过"。
-- Ubl, M. "Design Docs at Google." industrialempathy.com：`Alternatives considered` 的地位；"an implementation manual with no trade-offs or alternatives is a sign that a design doc may not be worthwhile"；原型与微基准。
-- Rust RFC 模板：`Rationale and alternatives` / `Drawbacks` / `Prior art`。
-- Kubernetes KEP 模板：`Non-Goals` / `Drawbacks` / `Alternatives` / Production Readiness Review。
-- Keeling, M. *Design It!*：设计活动中的选项比较与风险暴露。
-
-## 步骤 7 维护
-
-- Parnas & Clements §VI–VII：文档按问题组织、每个事实一处、失效即更新。
-
-## 行业模板（文档形态）
-
-- Google：Ubl 结构（Context and scope / Goals and non-goals / The actual design / Alternatives considered / Cross-cutting concerns）；*Software Engineering at Google* ch. 10；Ziftci & Greenberg "Improving Design Reviews at Google"（approver 与 action item）。
-- Amazon：PR/FAQ 与 6-pager 叙事，静读后逐行讨论。
-- Lyft tech spec（Summary / Background / Goals / Non-Goals / Measuring Impact）；Oxide RFD；Python PEP 1；Chromium design doc template。
+- Jackson, M. (2001). *Problem Frames*：区分世界中系统不能设计的性质与系统本身。依据中的外部事实沿用这一区分；依据中的给定约束来自用户或环境，不来自 Jackson。
+- Nygard, M. (2011). "Documenting Architecture Decisions."：决定与其背景、后果写在一起。
+- Ubl, M. "Design Docs at Google." industrialempathy.com：可信替代与取舍是设计文档的必要内容。据此规定确实存在可信替代时写一句为什么不选。

@@ -67,10 +67,12 @@ type AstComment = {
   readonly value: string;
 };
 
-const ARCHITECTURE_SECTIONS = ['依据', '组成', '材料', '为什么', '语义'] as const;
-const UNIT_SECTIONS = ['接入', '语义'] as const;
+const ARCHITECTURE_SECTIONS = ['依据', '组成', '范围', '材料', '为什么', '语义'] as const;
+const UNIT_SECTIONS = ['依据', '需求', '接入', '为什么', '语义'] as const;
 const APPENDIX_DIRS = ['examples', 'evidence', 'reference'] as const;
 const NAME = /^[a-z][a-z0-9-]*$/;
+const TYPE_REFERENCE = /^[A-Z][A-Za-z0-9]*(?:\.([A-Za-z_$][\w$]*))?$/;
+const FILE_EXTENSIONS: Record<string, true> = { md: true, ts: true, json: true, js: true, mjs: true };
 const SCRIPT_DIR = import.meta.dir;
 
 const TSCONFIG = `{
@@ -153,9 +155,16 @@ function writeNew(path: string, content: string): void {
   writeFileSync(path, content);
 }
 
-function visibleEntries(dir: string): readonly string[] {
-  return readdirSync(dir)
-    .filter((name) => !name.startsWith('.'))
+/** 只跳过占位用的普通 .gitkeep 文件；隐藏条目不属于模板。 */
+function templateEntries(dir: string, report: Report): readonly string[] {
+  return readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => {
+      if (entry.name === '.gitkeep' && entry.isFile()) return false;
+      if (!entry.name.startsWith('.')) return true;
+      report(join(dir, entry.name), 0, '模板之外的文件或目录');
+      return false;
+    })
+    .map((entry) => entry.name)
     .sort();
 }
 
@@ -211,14 +220,123 @@ function addUnit(design: string, name: string): void {
 
 type Report = (file: string, line: number, message: string) => void;
 
-function checkReadme(file: string, allowed: readonly string[], needsComposition: boolean, report: Report): void {
+/** 结构遍历发现的 README；类型文件全部解析后再解析其中的类型名。 */
+type ReadmeTarget = {
+  /** README 的路径。 */
+  readonly file: string;
+  /** README 所属位置：架构模块记为该模块的 core.ts 角色，业务单元记为其 business.ts 角色；决定哪些导出可见。 */
+  readonly role: FileRole;
+  /** 所属架构模块有子模块，「组成」中必须有 mermaid 图。 */
+  readonly needsComposition: boolean;
+};
+
+function checkConfig(file: string, report: Report): void {
+  let config: unknown;
+  try {
+    config = JSON.parse(readFileSync(file, 'utf8'));
+  } catch (error) {
+    report(file, 0, `无法解析 tsconfig.json JSON：${error instanceof Error ? error.message : String(error)}`);
+    return;
+  }
+  const object = typeof config === 'object' && config !== null && !Array.isArray(config) ? config : undefined;
+  const options = object !== undefined && 'compilerOptions' in object ? object.compilerOptions : undefined;
+  if (typeof options !== 'object' || options === null || !('strict' in options) || options.strict !== true) {
+    report(file, 0, 'tsconfig.json 的 compilerOptions.strict 必须为 true');
+  }
+  if (typeof options !== 'object' || options === null || !('noEmit' in options) || options.noEmit !== true) {
+    report(file, 0, 'tsconfig.json 的 compilerOptions.noEmit 必须为 true');
+  }
+  const include = object !== undefined && 'include' in object ? object.include : undefined;
+  if (!Array.isArray(include) || include.length !== 1 || include[0] !== '**/*.ts') {
+    report(file, 0, 'tsconfig.json 的 include 必须恰好为 ["**/*.ts"]');
+  }
+  for (const key of ['files', 'exclude', 'extends', 'references']) {
+    if (object !== undefined && Object.hasOwn(object, key)) report(file, 0, `tsconfig.json 不得设置 ${key}`);
+  }
+}
+
+function visibleExports(target: ReadmeTarget, sources: readonly SourceFile[]): ReadonlySet<string> {
+  const names = new Set<string>();
+  for (const source of sources) {
+    const directChild =
+      target.role.kind !== 'Business' &&
+      source.role.kind === 'Connections' &&
+      source.role.module.length === target.role.module.length + 1 &&
+      isAncestorOrSelf(target.role.module, source.role.module);
+    if (importRule(target.role, source.role) === undefined || directChild) {
+      for (const name of source.exports) names.add(name);
+    }
+  }
+  return names;
+}
+
+function checkTypeReference(file: string, line: number, name: string, names: ReadonlySet<string>, report: Report): void {
+  if (!TYPE_REFERENCE.test(name) || !names.has(name.split('.')[0] ?? '')) {
+    report(file, line, `类型名 ${name} 没有对应的可见导出声明`);
+  }
+}
+
+function checkReadme(target: ReadmeTarget, names: ReadonlySet<string>, report: Report): void {
+  const { file, role, needsComposition } = target;
+  const allowed: readonly string[] = role.kind === 'Business' ? UNIT_SECTIONS : ARCHITECTURE_SECTIONS;
   const lines = readFileSync(file, 'utf8').split('\n');
-  let fenced = false;
+  let fence: { marker: string; length: number; mermaid: boolean; stage: 'Start' | 'Frontmatter' | 'Body' } | undefined;
   let lastIndex = -1;
   const sections: { name: string; line: number; body: string[] }[] = [];
   lines.forEach((text, index) => {
-    if (text.trimStart().startsWith('```')) fenced = !fenced;
-    const heading = fenced ? null : /^(#{1,2}) (.+)$/.exec(text);
+    if (fence !== undefined) {
+      sections.at(-1)?.body.push(text);
+      const closing = /^\s*(`{3,}|~{3,})\s*$/.exec(text)?.[1];
+      if (closing !== undefined && closing[0] === fence.marker && closing.length >= fence.length) {
+        fence = undefined;
+      } else if (fence.mermaid) {
+        const trimmed = text.trim();
+        if (trimmed === '' || trimmed.startsWith('%%')) return;
+        if (fence.stage === 'Start' && trimmed === '---') {
+          fence.stage = 'Frontmatter';
+          return;
+        }
+        if (fence.stage === 'Frontmatter') {
+          if (trimmed === '---') fence.stage = 'Body';
+          return;
+        }
+        fence.stage = 'Body';
+        if (trimmed === '---') return;
+        for (const edge of text.matchAll(/(-->|-\.->|==>|---)(?:[ \t]*\|([^|]*)\|)?/g)) {
+          if (sections.at(-1)?.name === '范围') {
+            report(file, index + 1, '范围图只画包含，不画连线');
+            break;
+          }
+          if (sections.at(-1)?.name !== '组成') continue;
+          if (edge[2] === undefined) {
+            report(file, index + 1, '组成图的每条连线要标连接的类型名');
+          } else {
+            const label = edge[2].trim().replace(/^"(.*)"$/, '$1');
+            checkTypeReference(file, index + 1, label, names, report);
+          }
+        }
+      }
+      return;
+    }
+    const opening = /^\s*(`{3,}|~{3,})(.*)$/.exec(text);
+    if (opening?.[1] !== undefined) {
+      fence = {
+        marker: opening[1][0] ?? '`',
+        length: opening[1].length,
+        mermaid: opening[2]?.trim() === 'mermaid',
+        stage: 'Start',
+      };
+      sections.at(-1)?.body.push(text);
+      return;
+    }
+    for (const span of text.matchAll(/(?<!`)(`+)(?!`)(.*?)\1(?!`)/g)) {
+      const name = span[2] ?? '';
+      const reference = TYPE_REFERENCE.exec(name);
+      if (reference !== null && FILE_EXTENSIONS[reference[1] ?? ''] !== true) {
+        checkTypeReference(file, index + 1, name, names, report);
+      }
+    }
+    const heading = /^(#{1,2}) (.+)$/.exec(text);
     if (heading?.[1] === '##') {
       const name = (heading[2] ?? '').trim();
       const position = allowed.indexOf(name);
@@ -243,20 +361,20 @@ function checkReadme(file: string, allowed: readonly string[], needsComposition:
   }
   if (needsComposition) {
     const composition = sections.find((section) => section.name === '组成');
-    if (composition === undefined || !composition.body.some((text) => text.trim() === '```mermaid')) {
+    if (composition === undefined || !composition.body.some((text) => /^\s*(?:`{3,}|~{3,})mermaid\s*$/.test(text))) {
       report(file, 0, '有子模块的架构模块要在「组成」中附一张 mermaid 组成图');
     }
   }
 }
 
-function checkModule(dir: string, module: ModulePath, roles: Map<string, FileRole>, report: Report): void {
+function checkModule(dir: string, module: ModulePath, roles: Map<string, FileRole>, readmes: ReadmeTarget[], report: Report): void {
   for (const required of ['README.md', 'core.ts', 'connections.ts']) {
     if (!isFile(join(dir, required))) report(dir, 0, `架构模块缺少 ${required}`);
   }
   roles.set(join(dir, 'core.ts'), { kind: 'Core', module });
   roles.set(join(dir, 'connections.ts'), { kind: 'Connections', module });
   const children: string[] = [];
-  for (const name of visibleEntries(dir)) {
+  for (const name of templateEntries(dir, report)) {
     if (name === 'README.md' || name === 'core.ts' || name === 'connections.ts') continue;
     const path = join(dir, name);
     if (!isDir(path)) {
@@ -265,24 +383,26 @@ function checkModule(dir: string, module: ModulePath, roles: Map<string, FileRol
       report(path, 0, '目录名只用英文小写字母、数字与连字符，且以字母开头');
     } else {
       children.push(name);
-      checkModule(path, [...module, name], roles, report);
+      checkModule(path, [...module, name], roles, readmes, report);
     }
   }
-  if (isFile(join(dir, 'README.md'))) checkReadme(join(dir, 'README.md'), ARCHITECTURE_SECTIONS, children.length > 0, report);
+  if (isFile(join(dir, 'README.md'))) {
+    readmes.push({ file: join(dir, 'README.md'), role: { kind: 'Core', module }, needsComposition: children.length > 0 });
+  }
 }
 
-function checkStructure(design: string, roles: Map<string, FileRole>, report: Report): void {
+function checkStructure(design: string, roles: Map<string, FileRole>, readmes: ReadmeTarget[], report: Report): void {
   for (const name of Object.keys(TOP_ENTRIES)) {
     if (!existsSync(join(design, name))) report(design, 0, `缺少 ${name}`);
   }
-  for (const name of visibleEntries(design)) {
+  for (const name of templateEntries(design, report)) {
     if (TOP_ENTRIES[name] !== true) report(join(design, name), 0, '模板之外的文件');
   }
-  if (isDir(join(design, 'architecture'))) checkModule(join(design, 'architecture'), [], roles, report);
+  if (isDir(join(design, 'architecture'))) checkModule(join(design, 'architecture'), [], roles, readmes, report);
 
   const business = join(design, 'business');
   if (isDir(business)) {
-    for (const unit of visibleEntries(business)) {
+    for (const unit of templateEntries(business, report)) {
       const dir = join(business, unit);
       if (!isDir(dir)) {
         report(dir, 0, '模板之外的文件；business/ 下只有业务单元目录');
@@ -292,19 +412,21 @@ function checkStructure(design: string, roles: Map<string, FileRole>, report: Re
       for (const required of ['README.md', 'business.ts']) {
         if (!isFile(join(dir, required))) report(dir, 0, `业务单元缺少 ${required}`);
       }
-      for (const name of visibleEntries(dir)) {
+      for (const name of templateEntries(dir, report)) {
         if (name !== 'README.md' && name !== 'business.ts') {
           report(join(dir, name), 0, '模板之外的文件；业务单元只有 README.md 与 business.ts');
         }
       }
       roles.set(join(dir, 'business.ts'), { kind: 'Business', unit });
-      if (isFile(join(dir, 'README.md'))) checkReadme(join(dir, 'README.md'), UNIT_SECTIONS, false, report);
+      if (isFile(join(dir, 'README.md'))) {
+        readmes.push({ file: join(dir, 'README.md'), role: { kind: 'Business', unit }, needsComposition: false });
+      }
     }
   }
 
   const appendix = join(design, 'appendix');
   if (isDir(appendix)) {
-    for (const name of visibleEntries(appendix)) {
+    for (const name of templateEntries(appendix, report)) {
       if (!(APPENDIX_DIRS as readonly string[]).includes(name) || !isDir(join(appendix, name))) {
         report(join(appendix, name), 0, `模板之外的文件；appendix/ 下只有 ${APPENDIX_DIRS.join('、')} 三个目录`);
       }
@@ -451,6 +573,7 @@ type SourceFile = {
   readonly file: string;
   readonly role: FileRole;
   readonly imports: readonly { readonly target: string; readonly line: number }[];
+  readonly exports: ReadonlySet<string>;
 };
 
 function checkSource(
@@ -462,6 +585,7 @@ function checkSource(
   report: Report,
 ): SourceFile {
   const imports: { target: string; line: number }[] = [];
+  const exports = new Set<string>();
   let program: AstNode;
   try {
     const ast: unknown = parse(readFileSync(file, 'utf8'), { sourceType: 'module', plugins: ['typescript'] });
@@ -469,11 +593,34 @@ function checkSource(
     program = ast.program;
   } catch (error) {
     report(file, 0, `无法解析：${error instanceof Error ? error.message : String(error)}`);
-    return { file, role, imports };
+    return { file, role, imports, exports };
   }
 
   const body = Array.isArray(program.body) ? program.body.filter(isAstNode) : [];
   for (const statement of body) {
+    if (statement.type === 'ExportNamedDeclaration') {
+      if (isAstNode(statement.declaration)) {
+        const declaration = statement.declaration;
+        if (declaration.type === 'VariableDeclaration' && Array.isArray(declaration.declarations)) {
+          for (const item of declaration.declarations.filter(isAstNode)) {
+            if (isAstNode(item.id) && item.id.type === 'Identifier' && typeof item.id.name === 'string') {
+              exports.add(item.id.name);
+            }
+          }
+        } else if (DECLARATIONS[declaration.type] === true && declaration.type !== 'TSModuleDeclaration') {
+          if (isAstNode(declaration.id) && declaration.id.type === 'Identifier' && typeof declaration.id.name === 'string') {
+            exports.add(declaration.id.name);
+          }
+        }
+      }
+      if (Array.isArray(statement.specifiers)) {
+        for (const specifier of statement.specifiers.filter(isAstNode)) {
+          if (specifier.type !== 'ExportSpecifier' || !isAstNode(specifier.exported)) continue;
+          const name = specifier.exported.type === 'Identifier' ? specifier.exported.name : specifier.exported.value;
+          if (typeof name === 'string') exports.add(name);
+        }
+      }
+    }
     const declaration =
       (statement.type === 'ExportNamedDeclaration' || statement.type === 'ExportDefaultDeclaration') &&
       isAstNode(statement.declaration)
@@ -533,7 +680,7 @@ function checkSource(
     imports.push({ target, line: lineOf(node) });
   });
 
-  return { file, role, imports };
+  return { file, role, imports, exports };
 }
 
 function checkCycles(design: string, sources: readonly SourceFile[], report: Report): void {
@@ -601,11 +748,14 @@ async function check(designArg: string): Promise<void> {
   // 依赖在本目录用 bun install 安装；静态 import 会在缺依赖时先于上面的提示失败，所以在检查依赖之后动态加载。
   const { parse } = await import('@babel/parser');
   const roles = new Map<string, FileRole>();
-  checkStructure(design, roles, report);
+  const readmes: ReadmeTarget[] = [];
+  checkStructure(design, roles, readmes, report);
+  if (isFile(join(design, 'tsconfig.json'))) checkConfig(join(design, 'tsconfig.json'), report);
   const sources: SourceFile[] = [];
   for (const [file, role] of roles) {
     if (isFile(file)) sources.push(checkSource(design, file, role, roles, parse, report));
   }
+  for (const target of readmes) checkReadme(target, visibleExports(target, sources), report);
   checkCycles(design, sources, report);
   await checkTypes(design, report);
 

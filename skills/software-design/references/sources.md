@@ -5,13 +5,14 @@
 ## 设计是什么
 
 - Brooks, F. *The Mythical Man-Month*, ch. 4：架构说明发生什么，实现说明怎样让它发生（"architecture tells what happens, implementation tells how it is made to happen"）。据此把边界情况与组合成整体划给实现。
+- Parnas, D. L. (1972). "On the Criteria To Be Used in Decomposing Systems into Modules." *CACM* 15(12)：模块隐藏的决定可以在接口不变时改变。据此把"在连接不变时可以替换的做法"定为实现。
 - Lamport, L. (2015). "Who Builds a Skyscraper without Drawing Blueprints?" *CACM* 58(4)：规格写在代码之上的抽象层，省略实现细节。
 - Parnas, D. L., Clements, P. C. (1986). "A Rational Design Process: How and Why to Fake It." *IEEE TSE* SE-12(2)：文档呈现当前的设计，不记录试错过程。
 
 ## 骨架与优先级
 
 - Perry, D. E., Wolf, A. L. (1992). "Foundations for the Study of Software Architecture." *ACM SIGSOFT SEN* 17(4)：`Architecture = {Elements, Form, Rationale}`，对应骨架的三问：由什么组成、用什么组成、为什么。
-- Kruchten, P. (1995). "The 4+1 View Model of Architecture." *IEEE Software* 12(6)：沿用同一公式。
+- Kruchten, P. (1995). "The 4+1 View Model of Architecture." *IEEE Software* 12(6)：沿用同一公式；进程视图与物理视图中部件运行在哪里、随谁部署，是与模块分解不同的投影。据此把「范围」与「组成」分开画。
 - Booch, G. (2006). "On Architecture." *IEEE Software*：架构是一组重要决定，必须保持可见。据此把骨架与业务分开写。
 
 ## 两条轴
@@ -23,7 +24,9 @@
 ## 连接
 
 - Parnas, D. L. (1972). "A Technique for Software Module Specification with Examples." *CACM* 15(5)：接口只给出使用者需要的信息。
+- Parnas, D. L., Clements, P. C. (1986)，出处见「设计是什么」：接口规格包含 undesired events，即使用方能观察到的失败。据此要求失败结局写成联合中的一支，并在注释里写明确认方与恢复方。
 - Liskov, B., Wing, J. (1994). "A Behavioral Notion of Subtyping." *ACM TOPLAS* 16(6)：可替换性取决于行为规格，不只取决于签名。据此规定准入规则包含类型强制不了的定律，签名相容不等于可以接入。
+- Minsky, Y. "Effective ML."（"make illegal states unrepresentable"）：用类型排除不可能的组合。据此用句柄类型连接生命周期的两端，用不透明类型表达不承诺。
 
 ## 类型
 
@@ -34,6 +37,7 @@
 
 ## 依据与理由
 
-- Jackson, M. (2001). *Problem Frames*：区分世界中系统不能设计的性质与系统本身。依据中的外部事实沿用这一区分；依据中的给定约束来自用户或环境，不来自 Jackson。
+- Jackson, M. (2001). *Problem Frames*：区分世界中系统不能设计的性质与系统本身；需求是期望在问题域中成立的性质，不是机器的功能列表。依据中的外部事实与业务单元的「需求」沿用这一区分；依据中的给定约束来自用户或环境，不来自 Jackson。
+- Barbacci, M. et al. (2003). *Quality Attribute Workshops (QAWs), Third Edition*. CMU/SEI-2003-TR-016：质量场景由刺激、环境、响应与响应度量等要素组成。依据中的质量要求沿用其中的环境、刺激、响应、度量四项。
 - Nygard, M. (2011). "Documenting Architecture Decisions."：决定与其背景、后果写在一起。
 - Ubl, M. "Design Docs at Google." industrialempathy.com：可信替代与取舍是设计文档的必要内容。据此规定确实存在可信替代时写一句为什么不选。

@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 /**
- * software-design 设计目录的初始化与检查。
+ * software-design 设计目录的初始化与检查；类型文件在 core/、connections/ 或业务单元中按内容命名。
  *
  *   bun design.ts init <仓库根>                 在 <仓库根>/design 建立模板
  *   bun design.ts module <design 目录> <a/b>   在 architecture/a/b 建立子架构模块
  *   bun design.ts unit <design 目录> <名字>     在 business/<名字> 建立业务单元
- *   bun design.ts check <design 目录>          检查结构、README 小节、import、注释与 tsc
+ *   bun design.ts check <design 目录>          检查分类、README/主题文档、类型名、import、注释与 tsc
  *
  * 首次使用前在本目录运行 `bun install --no-save`。
  */
@@ -29,19 +29,19 @@ type ModulePath = readonly string[];
 /** design 中一个类型文件的角色，决定它可以 import 哪些文件。 */
 type FileRole =
   | {
-      /** 架构模块的核心代码 `core.ts`。 */
+      /** 架构模块 core/ 中的核心代码。 */
       readonly kind: 'Core';
       /** 所属架构模块。 */
       readonly module: ModulePath;
     }
   | {
-      /** 架构模块的外部连接 `connections.ts`。 */
+      /** 架构模块 connections/ 中的外部连接。 */
       readonly kind: 'Connections';
       /** 所属架构模块。 */
       readonly module: ModulePath;
     }
   | {
-      /** 业务单元的 `business.ts`。 */
+      /** 业务单元中的类型文件。 */
       readonly kind: 'Business';
       /** 业务单元的目录名。 */
       readonly unit: string;
@@ -71,6 +71,9 @@ const ARCHITECTURE_SECTIONS = ['依据', '组成', '范围', '材料', '为什�
 const UNIT_SECTIONS = ['依据', '需求', '接入', '为什么', '语义'] as const;
 const APPENDIX_DIRS = ['examples', 'evidence', 'reference'] as const;
 const NAME = /^[a-z][a-z0-9-]*$/;
+const TYPE_FILE = /^[a-z][a-z0-9-]*\.ts$/;
+const TOPIC_FILE = /^[a-z][a-z0-9-]*\.md$/;
+const CATEGORIES = ['core', 'connections'] as const;
 const TYPE_REFERENCE = /^[A-Z][A-Za-z0-9]*(?:\.([A-Za-z_$][\w$]*))?$/;
 const FILE_EXTENSIONS: Record<string, true> = { md: true, ts: true, json: true, js: true, mjs: true };
 const SCRIPT_DIR = import.meta.dir;
@@ -181,8 +184,7 @@ function isFile(path: string): boolean {
 
 function createModule(dir: string, title: string): void {
   writeNew(join(dir, 'README.md'), `# ${title}\n`);
-  writeNew(join(dir, 'core.ts'), 'export {};\n');
-  writeNew(join(dir, 'connections.ts'), 'export {};\n');
+  for (const category of CATEGORIES) writeNew(join(dir, category, '.gitkeep'), '');
 }
 
 function init(root: string): void {
@@ -201,8 +203,11 @@ function addModule(design: string, path: string): void {
   if (segments.length === 0 || !segments.every((segment) => NAME.test(segment))) {
     stop(`模块路径的每一段只用英文小写字母、数字与连字符，且以字母开头：${path}`, 2);
   }
+  if (segments.some((segment) => (CATEGORIES as readonly string[]).includes(segment))) {
+    stop(`模块路径不得使用保留目录名 core 或 connections：${path}`, 2);
+  }
   const dir = join(resolve(design), 'architecture', ...segments);
-  if (!isFile(join(dirname(dir), 'core.ts'))) stop(`父模块不存在：${dirname(dir)}`, 2);
+  if (!isFile(join(dirname(dir), 'README.md'))) stop(`父模块不存在：${dirname(dir)}`, 2);
   createModule(dir, segments.join('/'));
   console.log(`已建立 ${dir}`);
 }
@@ -211,7 +216,6 @@ function addUnit(design: string, name: string): void {
   if (!NAME.test(name)) stop(`业务单元名只用英文小写字母、数字与连字符，且以字母开头：${name}`, 2);
   const dir = join(resolve(design), 'business', name);
   writeNew(join(dir, 'README.md'), `# ${name}\n`);
-  writeNew(join(dir, 'business.ts'), 'export {};\n');
   console.log(`已建立 ${dir}`);
 }
 
@@ -220,15 +224,26 @@ function addUnit(design: string, name: string): void {
 
 type Report = (file: string, line: number, message: string) => void;
 
-/** 结构遍历发现的 README；类型文件全部解析后再解析其中的类型名。 */
-type ReadmeTarget = {
-  /** README 的路径。 */
+/** 结构遍历发现的文档；类型文件全部解析后再解析其中的类型名。 */
+type DocumentTarget = {
+  /** 文档的路径。 */
   readonly file: string;
-  /** README 所属位置：架构模块记为该模块的 core.ts 角色，业务单元记为其 business.ts 角色；决定哪些导出可见。 */
+  /** 所属模块或业务单元的角色，决定哪些导出可见。 */
   readonly role: FileRole;
-  /** 所属架构模块有子模块，「组成」中必须有 mermaid 图。 */
-  readonly needsComposition: boolean;
-};
+} & (
+  | {
+      /** 使用固定小节模板的入口文档。 */
+      readonly kind: 'Readme';
+      /** 所属架构模块有子模块，「组成」中必须有 mermaid 图。 */
+      readonly needsComposition: boolean;
+    }
+  | {
+      /** 展开入口文档中某一节的主题文档。 */
+      readonly kind: 'Topic';
+      /** 必须链接此主题的同目录入口文档。 */
+      readonly readme: string;
+    }
+);
 
 function checkConfig(file: string, report: Report): void {
   let config: unknown;
@@ -255,7 +270,7 @@ function checkConfig(file: string, report: Report): void {
   }
 }
 
-function visibleExports(target: ReadmeTarget, sources: readonly SourceFile[]): ReadonlySet<string> {
+function visibleExports(target: DocumentTarget, sources: readonly SourceFile[]): ReadonlySet<string> {
   const names = new Set<string>();
   for (const source of sources) {
     const directChild =
@@ -276,13 +291,53 @@ function checkTypeReference(file: string, line: number, name: string, names: Rea
   }
 }
 
-function checkReadme(target: ReadmeTarget, names: ReadonlySet<string>, report: Report): void {
-  const { file, role, needsComposition } = target;
+/** 提取可作为主题入口的 Markdown 链接；代码中的示例链接不算入口。 */
+function markdownLinks(file: string): ReadonlySet<string> {
+  if (!isFile(file)) return new Set<string>();
+  const lines: string[] = [];
+  let fence: string | undefined;
+  for (const line of readFileSync(file, 'utf8').split('\n')) {
+    const marker = /^\s*(`{3,}|~{3,})/.exec(line)?.[1];
+    if (fence !== undefined) {
+      if (marker !== undefined && marker[0] === fence[0] && marker.length >= fence.length && line.trim() === marker) fence = undefined;
+      continue;
+    }
+    if (marker !== undefined) {
+      fence = marker;
+      continue;
+    }
+    lines.push(line.replace(/(?<!`)(`+)(?!`)(.*?)\1(?!`)/g, ''));
+  }
+  const text = lines.join('\n');
+  const links = new Set<string>();
+  for (const link of text.matchAll(/(?<!!)\[[^\]\n]*\]\(\s*(?:<([^>\n]+)>|([^\s)]+))(?:[ \t]+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)/g)) {
+    const target = link[1] ?? link[2];
+    if (target !== undefined) links.add(target);
+  }
+  const references = new Map<string, string>();
+  for (const definition of text.matchAll(/^\s{0,3}\[([^\]\n]+)\]:\s*(?:<([^>\n]+)>|(\S+))/gm)) {
+    if (definition[1] !== undefined && (definition[2] ?? definition[3]) !== undefined) {
+      references.set(definition[1].trim().toLowerCase(), definition[2] ?? definition[3] ?? '');
+    }
+  }
+  const prose = text.replace(/^\s{0,3}\[[^\]\n]+\]:.*$/gm, '');
+  for (const use of prose.matchAll(/(?<!!)\[([^\]\n]+)\](?:\[([^\]\n]*)\])?(?!\()/g)) {
+    const key = (use[2] || use[1] || '').trim().toLowerCase();
+    const target = references.get(key);
+    if (target !== undefined) links.add(target);
+  }
+  return links;
+}
+
+function checkDocument(target: DocumentTarget, names: ReadonlySet<string>, report: Report): void {
+  const { file, role } = target;
   const allowed: readonly string[] = role.kind === 'Business' ? UNIT_SECTIONS : ARCHITECTURE_SECTIONS;
   const lines = readFileSync(file, 'utf8').split('\n');
   let fence: { marker: string; length: number; mermaid: boolean; stage: 'Start' | 'Frontmatter' | 'Body' } | undefined;
   let lastIndex = -1;
   const sections: { name: string; line: number; body: string[] }[] = [];
+  let beforeSection = true;
+  let hasIntroduction = false;
   lines.forEach((text, index) => {
     if (fence !== undefined) {
       sections.at(-1)?.body.push(text);
@@ -303,13 +358,13 @@ function checkReadme(target: ReadmeTarget, names: ReadonlySet<string>, report: R
         fence.stage = 'Body';
         if (trimmed === '---') return;
         for (const edge of text.matchAll(/(-->|-\.->|==>|---)(?:[ \t]*\|([^|]*)\|)?/g)) {
-          if (sections.at(-1)?.name === '范围') {
+          if (target.kind === 'Readme' && sections.at(-1)?.name === '范围') {
             report(file, index + 1, '范围图只画包含，不画连线');
             break;
           }
-          if (sections.at(-1)?.name !== '组成') continue;
+          if (target.kind === 'Readme' && sections.at(-1)?.name !== '组成') continue;
           if (edge[2] === undefined) {
-            report(file, index + 1, '组成图的每条连线要标连接的类型名');
+            if (target.kind === 'Readme') report(file, index + 1, '组成图的每条连线要标连接的类型名');
           } else {
             const label = edge[2].trim().replace(/^"(.*)"$/, '$1');
             checkTypeReference(file, index + 1, label, names, report);
@@ -337,6 +392,11 @@ function checkReadme(target: ReadmeTarget, names: ReadonlySet<string>, report: R
       }
     }
     const heading = /^(#{1,2}) (.+)$/.exec(text);
+    if (target.kind === 'Topic') {
+      if (heading?.[1] === '##') beforeSection = false;
+      else if (beforeSection && heading?.[1] !== '#' && text.trim() !== '') hasIntroduction = true;
+      return;
+    }
     if (heading?.[1] === '##') {
       const name = (heading[2] ?? '').trim();
       const position = allowed.indexOf(name);
@@ -354,12 +414,22 @@ function checkReadme(target: ReadmeTarget, names: ReadonlySet<string>, report: R
       sections.at(-1)?.body.push(text);
     }
   });
+  if (target.kind === 'Topic') {
+    const name = relative(dirname(file), file);
+    const linked = [...markdownLinks(target.readme)].some((link) => {
+      const path = link.split('#')[0];
+      return path === name || path === `./${name}`;
+    });
+    if (!linked) report(file, 0, '主题文件没有被同目录的 README.md 链接');
+    if (!hasIntroduction) report(file, 0, '主题文件开头要有一段说明它展开 README 哪一节、负责什么');
+    return;
+  }
   for (const section of sections) {
     if (section.name !== '' && section.body.every((text) => text.trim() === '')) {
       report(file, section.line, `小节「${section.name}」是空的；没有内容的小节不写`);
     }
   }
-  if (needsComposition) {
+  if (target.needsComposition) {
     const composition = sections.find((section) => section.name === '组成');
     if (composition === undefined || !composition.body.some((text) => /^\s*(?:`{3,}|~{3,})mermaid\s*$/.test(text))) {
       report(file, 0, '有子模块的架构模块要在「组成」中附一张 mermaid 组成图');
@@ -367,38 +437,48 @@ function checkReadme(target: ReadmeTarget, names: ReadonlySet<string>, report: R
   }
 }
 
-function checkModule(dir: string, module: ModulePath, roles: Map<string, FileRole>, readmes: ReadmeTarget[], report: Report): void {
-  for (const required of ['README.md', 'core.ts', 'connections.ts']) {
-    if (!isFile(join(dir, required))) report(dir, 0, `架构模块缺少 ${required}`);
-  }
-  roles.set(join(dir, 'core.ts'), { kind: 'Core', module });
-  roles.set(join(dir, 'connections.ts'), { kind: 'Connections', module });
-  const children: string[] = [];
+function checkCategory(dir: string, role: FileRole, roles: Map<string, FileRole>, report: Report): void {
   for (const name of templateEntries(dir, report)) {
-    if (name === 'README.md' || name === 'core.ts' || name === 'connections.ts') continue;
-    const path = join(dir, name);
-    if (!isDir(path)) {
-      report(path, 0, '模板之外的文件；架构模块只有 README.md、core.ts、connections.ts 与子模块目录');
-    } else if (!NAME.test(name)) {
-      report(path, 0, '目录名只用英文小写字母、数字与连字符，且以字母开头');
-    } else {
-      children.push(name);
-      checkModule(path, [...module, name], roles, readmes, report);
-    }
-  }
-  if (isFile(join(dir, 'README.md'))) {
-    readmes.push({ file: join(dir, 'README.md'), role: { kind: 'Core', module }, needsComposition: children.length > 0 });
+    const file = join(dir, name);
+    if (TYPE_FILE.test(name) && isFile(file)) roles.set(file, role);
+    else report(file, 0, '模板之外的文件或目录；类型分类目录只放按内容命名的 .ts 文件');
   }
 }
 
-function checkStructure(design: string, roles: Map<string, FileRole>, readmes: ReadmeTarget[], report: Report): void {
+function checkModule(dir: string, module: ModulePath, roles: Map<string, FileRole>, documents: DocumentTarget[], report: Report): void {
+  if (!isFile(join(dir, 'README.md'))) report(dir, 0, '架构模块缺少 README.md');
+  for (const category of CATEGORIES) {
+    const path = join(dir, category);
+    if (!isDir(path)) report(path, 0, `架构模块缺少 ${category}/ 目录；${category} 是保留的分类目录名`);
+    else checkCategory(path, { kind: category === 'core' ? 'Core' : 'Connections', module }, roles, report);
+  }
+  const children: string[] = [];
+  for (const name of templateEntries(dir, report)) {
+    if (name === 'README.md' && isFile(join(dir, name))) continue;
+    if ((CATEGORIES as readonly string[]).includes(name)) continue;
+    const path = join(dir, name);
+    if (TOPIC_FILE.test(name) && isFile(path)) {
+      documents.push({ kind: 'Topic', file: path, role: { kind: 'Core', module }, readme: join(dir, 'README.md') });
+    } else if (isDir(path) && NAME.test(name)) {
+      children.push(name);
+      checkModule(path, [...module, name], roles, documents, report);
+    } else {
+      report(path, 0, '模板之外的文件或目录；架构模块只有 README.md、core/、connections/、按内容命名的主题 .md 文件与子模块目录');
+    }
+  }
+  if (isFile(join(dir, 'README.md'))) {
+    documents.push({ kind: 'Readme', file: join(dir, 'README.md'), role: { kind: 'Core', module }, needsComposition: children.length > 0 });
+  }
+}
+
+function checkStructure(design: string, roles: Map<string, FileRole>, documents: DocumentTarget[], report: Report): void {
   for (const name of Object.keys(TOP_ENTRIES)) {
     if (!existsSync(join(design, name))) report(design, 0, `缺少 ${name}`);
   }
   for (const name of templateEntries(design, report)) {
     if (TOP_ENTRIES[name] !== true) report(join(design, name), 0, '模板之外的文件');
   }
-  if (isDir(join(design, 'architecture'))) checkModule(join(design, 'architecture'), [], roles, readmes, report);
+  if (isDir(join(design, 'architecture'))) checkModule(join(design, 'architecture'), [], roles, documents, report);
 
   const business = join(design, 'business');
   if (isDir(business)) {
@@ -409,17 +489,20 @@ function checkStructure(design: string, roles: Map<string, FileRole>, readmes: R
         continue;
       }
       if (!NAME.test(unit)) report(dir, 0, '目录名只用英文小写字母、数字与连字符，且以字母开头');
-      for (const required of ['README.md', 'business.ts']) {
-        if (!isFile(join(dir, required))) report(dir, 0, `业务单元缺少 ${required}`);
-      }
+      if (!isFile(join(dir, 'README.md'))) report(dir, 0, '业务单元缺少 README.md');
       for (const name of templateEntries(dir, report)) {
-        if (name !== 'README.md' && name !== 'business.ts') {
-          report(join(dir, name), 0, '模板之外的文件；业务单元只有 README.md 与 business.ts');
+        const path = join(dir, name);
+        if (name === 'README.md' && isFile(path)) continue;
+        if (TYPE_FILE.test(name) && isFile(path)) {
+          roles.set(path, { kind: 'Business', unit });
+        } else if (TOPIC_FILE.test(name) && isFile(path)) {
+          documents.push({ kind: 'Topic', file: path, role: { kind: 'Business', unit }, readme: join(dir, 'README.md') });
+        } else {
+          report(path, 0, '模板之外的文件或目录；业务单元只有 README.md、按内容命名的 .ts 与主题 .md 文件');
         }
       }
-      roles.set(join(dir, 'business.ts'), { kind: 'Business', unit });
       if (isFile(join(dir, 'README.md'))) {
-        readmes.push({ file: join(dir, 'README.md'), role: { kind: 'Business', unit }, needsComposition: false });
+        documents.push({ kind: 'Readme', file: join(dir, 'README.md'), role: { kind: 'Business', unit }, needsComposition: false });
       }
     }
   }
@@ -459,14 +542,14 @@ function importRule(from: FileRole, to: FileRole): string | undefined {
           if (isAncestorOrSelf(to.module, from.module)) return undefined;
           return isStrictDescendant(to.module, from.module)
             ? '架构模块不得 import 后代模块的文件'
-            : '除本模块与祖先模块外，不得 import 其他模块的 core.ts';
+            : '除本模块与祖先模块外，不得 import 其他模块 core/ 中的类型文件';
         case 'Connections': {
           if (isAncestorOrSelf(to.module, from.module)) return undefined;
           if (isStrictDescendant(to.module, from.module)) return '架构模块不得 import 后代模块的文件';
           const parent = to.module.slice(0, -1);
           return isAncestorOrSelf(parent, from.module)
             ? undefined
-            : '只能 import 祖先、兄弟与祖先兄弟模块的 connections.ts';
+            : '只能 import 祖先、兄弟与祖先兄弟模块 connections/ 中的类型文件';
         }
         default:
           return assertNever(to);
@@ -672,7 +755,7 @@ function checkSource(
     }
     const targetRole = roles.get(target);
     if (targetRole === undefined) {
-      report(file, lineOf(node), `只能 import core.ts、connections.ts 或 business.ts，并写出 .ts 后缀：${source}`);
+      report(file, lineOf(node), `只能 import core/、connections/ 或业务单元目录中的类型文件，并写出 .ts 后缀：${source}`);
       return;
     }
     const broken = importRule(role, targetRole);
@@ -748,14 +831,14 @@ async function check(designArg: string): Promise<void> {
   // 依赖在本目录用 bun install 安装；静态 import 会在缺依赖时先于上面的提示失败，所以在检查依赖之后动态加载。
   const { parse } = await import('@babel/parser');
   const roles = new Map<string, FileRole>();
-  const readmes: ReadmeTarget[] = [];
-  checkStructure(design, roles, readmes, report);
+  const documents: DocumentTarget[] = [];
+  checkStructure(design, roles, documents, report);
   if (isFile(join(design, 'tsconfig.json'))) checkConfig(join(design, 'tsconfig.json'), report);
   const sources: SourceFile[] = [];
   for (const [file, role] of roles) {
     if (isFile(file)) sources.push(checkSource(design, file, role, roles, parse, report));
   }
-  for (const target of readmes) checkReadme(target, visibleExports(target, sources), report);
+  for (const target of documents) checkDocument(target, visibleExports(target, sources), report);
   checkCycles(design, sources, report);
   await checkTypes(design, report);
 

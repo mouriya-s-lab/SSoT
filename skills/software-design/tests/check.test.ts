@@ -258,6 +258,20 @@ ${FENCE}
     rejected(design, 'architecture/queue/queue.md', '类型 Priority 在 Jobs、Queue 里各展开了一次');
   });
 
+  test('索引地址只核对文件与行号能找到', () => {
+    const design = fixture();
+    writeFileSync(join(design, '..', 'queue.ts'), 'export function release() {\n  return;\n}\n');
+    edit(design, 'architecture/queue/queue.md', '  -- 报告完成\n  Complete(j: JobId)\n  ext wr held\n  pre j in set held\n  post held = held~ \\ {j};', '  -- 报告完成；索引：queue.ts:1-3\n  Complete: JobId ==> ()\n  Complete(j) == is not yet specified;');
+    expect(cli('check', design).code).toBe(0);
+    const missing = fixture();
+    edit(missing, 'architecture/queue/queue.md', '  -- 报告完成', '  -- 报告完成；索引：nowhere.ts:1');
+    rejected(missing, 'architecture/queue/queue.md', '索引：nowhere.ts:1 指向的文件不存在');
+    const outside = fixture();
+    writeFileSync(join(outside, '..', 'queue.ts'), 'export function release() {\n  return;\n}\n');
+    edit(outside, 'architecture/queue/queue.md', '  -- 报告完成', '  -- 报告完成；索引：queue.ts:4');
+    rejected(outside, 'architecture/queue/queue.md', '索引：queue.ts:4 的行号不在 queue.ts 的 1–3 行之内');
+  });
+
   test('规格里没人用的定义只是一个名字', () => {
     const design = fixture();
     edit(design, 'architecture/queue/queue.md', '  -- 队列状态', '  -- 一个没人用的类型\n  Orphan = token;\n\n  -- 队列状态');

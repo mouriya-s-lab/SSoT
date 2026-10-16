@@ -546,9 +546,23 @@ function prose(design: string, places: readonly Place[], modules: readonly Locat
     }
   }
 
+  // 不写进 VDM 的东西在原处留“索引：路径:行号”，路径相对仓库根（设计目录的上一级）；只核对能找到，不核对内容。
+  const repo = dirname(design);
+  const lineCounts = new Map<string, number | null>();
   for (const place of places) {
     const file = readMarkdown(design, place.path);
     for (const { line, raw, in: where } of file.lines) {
+      for (const match of raw.matchAll(/索引[:：]\s*([^\s:：]+):(\d+)(?:-(\d+))?/g)) {
+        const [address, target, from, to] = [match[0]!, match[1]!, Number(match[2]), Number(match[3] ?? match[2])];
+        if (!lineCounts.has(target)) {
+          const path = resolve(repo, target);
+          const text = existsSync(path) && lstatSync(path).isFile() ? readFileSync(path, 'utf8') : null;
+          lineCounts.set(target, text === null ? null : text.split('\n').length - (text.endsWith('\n') ? 1 : 0));
+        }
+        const count = lineCounts.get(target)!;
+        if (count === null) fail(place.path, line, `${address} 指向的文件不存在；路径从仓库根（设计目录的上一级）算起。`);
+        else if (from < 1 || to < from || to > count) fail(place.path, line, `${address} 的行号不在 ${target} 的 1–${count} 行之内。`);
+      }
       if (where !== 'Prose') continue;
       // 文字里用双反引号写的限定名（``Run`Start``）指认规格元素，它必须存在。
       for (const name of codeSpans(raw)) {
@@ -918,7 +932,7 @@ function antipatterns(modules: readonly Located[]): Diagnostic[] {
       case 'implementation':
         return `显式体里有${details}：这是实现。连接写成隐式定义的 post；显式体只用于场景与判定，不改状态、不写循环。`;
       case 'no-promise':
-        return `隐式定义的 ${details}，不承诺任何东西：写出它做到什么。`;
+        return `隐式定义的 ${details}，不承诺任何东西：写出它做到什么；写在代码或文字里的，改成 is not yet specified 并在说明里留“索引：路径:行号”；还没定的，只写 is not yet specified。`;
       default:
         throw new Error(`程序错误：Outline.java 给出了未知的反模式 ${rule}`);
     }

@@ -1,9 +1,0 @@
-{
-  "name": "software-design-scripts",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "@babel/parser": "latest",
-    "typescript": "latest"
-  }
-}

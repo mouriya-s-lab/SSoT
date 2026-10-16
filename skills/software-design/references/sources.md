@@ -9,11 +9,11 @@
 - Lamport, L. (2015). "Who Builds a Skyscraper without Drawing Blueprints?" *CACM* 58(4)：规格写在代码之上的抽象层，省略实现细节；规格是检验实现的参照。
 - Parnas, D. L., Clements, P. C. (1986). "A Rational Design Process: How and Why to Fake It." *IEEE TSE* SE-12(2)：文档呈现当前的设计，不记录试错过程。
 
-## 骨架与优先级
+## 架构与优先级
 
-- Perry, D. E., Wolf, A. L. (1992). "Foundations for the Study of Software Architecture." *ACM SIGSOFT SEN* 17(4)：`Architecture = {Elements, Form, Rationale}`，对应骨架的三问：由什么组成、用什么组成、为什么。
+- Perry, D. E., Wolf, A. L. (1992). "Foundations for the Study of Software Architecture." *ACM SIGSOFT SEN* 17(4)：`Architecture = {Elements, Form, Rationale}`，对应架构的三问：由什么组成、用什么组成、为什么。
 - Kruchten, P. (1995). "The 4+1 View Model of Architecture." *IEEE Software* 12(6)：进程视图与物理视图中部件运行在哪里、随谁部署，是与模块分解不同的投影。据此把包含关系与模块树分开写。
-- Booch, G. (2006). "On Architecture." *IEEE Software*：架构是一组重要决定，必须保持可见。据此把骨架与业务分开写。
+- Booch, G. (2006). "On Architecture." *IEEE Software*：架构是一组重要决定，必须保持可见。据此把架构与业务分开写。
 
 ## 两条轴与依赖方向
 
@@ -38,7 +38,7 @@
 
 ## 场景
 
-- Kruchten, P. (1995)，出处见「骨架与优先级」：以关键场景走查架构，走不通就修改架构。
+- Kruchten, P. (1995)，出处见「架构与优先级」：以关键场景走查架构，走不通就修改架构。
 - Cockburn, A. (2000). *Writing Effective Use Cases*：主流程之外，每个失败分支都是一条扩展。据此要求每种失败结局都有场景。
 
 ## 依据与理由

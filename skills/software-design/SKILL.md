@@ -1,6 +1,7 @@
 ---
 name: software-design
 description: 软件设计文档的写法。上篇讲设计：骨架（由什么组成、用什么组成、为什么）先于业务，业务只经连接接入；业务也有抽象，业务之间点对点或点对面组合；同一样东西在持有它的模块里是细节，在观察者那里是占位符，需要才展开，行为与规则归持有它们的一方；连接、数据、不变量与状态是设计的主体；在连接不变时可以替换的做法属于实现，不写进设计。下篇讲落地：设计写成 Markdown，连接、数据、不变量与状态写成 ```vdm 代码块里的 VDM-SL 规格，规格说不清的语义写成同一文件里的文字；没有编译步骤，验收只看 check 与模型审查；每个上篇的概念都有一份通过检查的 VDM-SL 示例；附 VDM-SL 写法示例、本地 VDM 文档与多 agent 并行编写的指令表。PATH 上的 software-design 命令初始化目录、用 VDMJ 检查类型与反例、核对目录、方向、说明、文字引用、形式与语法树上的反模式，并导出模块图；scripts/review.py 在 omp eval 里用 jev 审查需要理解含义的反模式，防止规格退化成只核对名字的字符串检测器。用于写、审或重组设计文档、架构方案与 RFC；不用于 issue、PR 或实现代码。
+allowed-tools: Bash(command -v *) Bash(bun */scripts/design.ts setup)
 ---
 
 # software-design
@@ -571,7 +572,9 @@ jev 判断不了两件事：说明里的承诺有没有写进 `pre`、`post` 或
 
 ## 脚本与检查
 
-命令 `software-design` 与 `vdmj` 在 PATH 上，直接调用；任一个不在 PATH 上，或命令报告缺少 Java、VDMJ，先按[安装](references/setup.md)装好。
+命令 `software-design` 与 `vdmj` 在 PATH 上，直接调用。加载本 skill 时，下一行自动检查这两个命令，缺了就安装；已经安装时它没有输出，有输出就按输出处理：
+
+!`command -v software-design >/dev/null 2>&1 && command -v vdmj >/dev/null 2>&1 || bun "${CLAUDE_SKILL_DIR}/scripts/design.ts" setup 2>&1 || true`
 
 | 命令 | 作用 |
 |---|---|

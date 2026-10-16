@@ -60,17 +60,12 @@ flowchart TB
 npx skills add mouriya-s-lab/SSoT --skill software-design design-migration --global --agent claude-code codex --yes
 ```
 
-检查依赖 **Java 11+** 与 **Bun**。安装后运行一次 `setup`：它检查 Java，从 Maven Central 拉取 VDMJ 与 QuickCheck 最新正式版到 `${XDG_DATA_HOME:-~/.local/share}/vdmj/`，并把 `software-design` 与 `vdmj` 两个命令装进 `~/.local/bin`（须在 `PATH` 上，否则 `setup` 打印要加入的 `export PATH=…` 并以 1 退出）：
+检查依赖 **Java 11+** 与 **Bun**。不需要另外运行安装命令：首次加载 `software-design` skill 时，`SKILL.md` 里的 `` !`…` `` 行发现 `software-design` 或 `vdmj` 不在 `PATH` 上，就自动从 Maven Central 拉取 VDMJ 与 QuickCheck 最新正式版到 `${XDG_DATA_HOME:-~/.local/share}/vdmj/`，把这两个命令装进 `~/.local/bin`，并把安装结果（缺 Java、`~/.local/bin` 不在 `PATH` 上时的处理办法）放进加载的 skill 正文；已安装时这一行没有输出。Claude Code 在加载 skill 时执行这一行；不执行它的 agent 需手动运行一次 `bun ~/.agents/skills/software-design/scripts/design.ts setup`。细节见 [`references/setup.md`](skills/software-design/references/setup.md)。
 
-```sh
-bun ~/.agents/skills/software-design/scripts/design.ts setup
-```
-
-后续更新 skill 后，再运行一次 `software-design setup` 以取得最新 VDMJ：
+后续更新：
 
 ```sh
 npx skills update software-design design-migration --global
-software-design setup
 ```
 
 ## 使用

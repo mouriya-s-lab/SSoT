@@ -914,11 +914,9 @@ function antipatterns(modules: readonly Located[]): Diagnostic[] {
   const message = (rule: string, details: string): string => {
     switch (rule) {
       case 'string-literal':
-        return '规格里出现了字符串字面量：设计靠类型与谓词表达含义，不比较字符串内容；改用 quote、token 或记录。';
+        return '规格里出现了字符串字面量：设计靠类型与谓词表达含义，不比较字符串内容，两个相同的字符串是不是同一样东西也无从判断；提升为 quote、token 或记录。';
       case 'implementation':
         return `显式体里有${details}：这是实现。连接写成隐式定义的 post；显式体只用于场景与判定，不改状态、不写循环。`;
-      case 'unspecified':
-        return 'is not yet specified 不承诺任何东西：写出 pre 与 post；还没想清楚就不写这个定义。';
       case 'no-promise':
         return `隐式定义的 ${details}，不承诺任何东西：写出它做到什么。`;
       default:

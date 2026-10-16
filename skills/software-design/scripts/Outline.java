@@ -136,8 +136,6 @@ public class Outline {
         hits.add(new Hit("implementation", line, "循环语句"));
       } else if (node instanceof ASTBlockStatement block && block.assignmentDefs != null && !block.assignmentDefs.isEmpty()) {
         hits.add(new Hit("implementation", line, "局部变量声明（dcl）"));
-      } else if (node instanceof ASTNotYetSpecifiedStatement || node instanceof ASTNotYetSpecifiedExpression) {
-        hits.add(new Hit("unspecified", line, "is not yet specified"));
       }
     });
     ASTExpression post = null;

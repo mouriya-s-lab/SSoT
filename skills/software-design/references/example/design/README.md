@@ -6,5 +6,7 @@
 - [architecture/run.md](architecture/run.md)
 - [architecture/attempt/README.md](architecture/attempt/README.md)
 - [architecture/attempt/attempt.md](architecture/attempt/attempt.md)
+- [business/submit/README.md](business/submit/README.md)
+- [business/submit/submit.md](business/submit/submit.md)
 - [business/report/README.md](business/report/README.md)
 - [business/report/report.md](business/report/report.md)

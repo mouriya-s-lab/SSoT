@@ -1,12 +1,16 @@
 #!/usr/bin/env bun
-/** 设计目录的生成、检查与查看。规格语义只由 VDMJ 解释；本脚本只管目录、方向、说明、文字引用、AST 反模式，并为模型审查准备材料。 */
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+/**
+ * 设计目录的生成、检查与查看。设计写成 Markdown：规格在 ```vdm 代码块里，其余是文字、图与文法。
+ * 规格语义只由 VDMJ 解释；本脚本只管目录、方向、说明、文字引用、形式与 AST 反模式，并为模型审查准备材料。
+ * 没有编译步骤：设计的消费者是 VDMJ 与读 Markdown 的人。
+ */
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { delimiter, dirname, join, relative, resolve } from 'node:path';
 
 const SKILL = resolve(import.meta.dir, '..');
 const VENDOR = join(SKILL, 'scripts', '.vdmj');
 const OUTLINE = join(SKILL, 'scripts', 'Outline.java');
-const TEMPLATE = join(SKILL, 'templates', 'design.tex');
+const TEMPLATE = join(SKILL, 'templates', 'README.md');
 const MAVEN = 'https://repo1.maven.org/maven2/dk/au/ece/vdmj';
 const ARTIFACTS = ['vdmj', 'quickcheck'] as const;
 const NAME = /^[a-z0-9][a-z0-9-]*$/;
@@ -54,8 +58,8 @@ type Obligations = {
   readonly maybe: readonly string[];
   readonly unchecked: readonly string[];
 };
-/** 设计正文里各种形式的行数：规格、规格里的说明注释、原文块（literal）、文字。 */
-type Forms = { readonly spec: number; readonly comment: number; readonly literal: number; readonly prose: number };
+/** 设计正文里各种形式的行数：规格、规格里的说明注释、文字、图与文法。 */
+type Forms = { readonly spec: number; readonly comment: number; readonly figure: number; readonly prose: number };
 type Report =
   | { readonly kind: 'Accepted'; readonly modules: number; readonly warnings: readonly string[]; readonly obligations: Obligations; readonly forms: Forms }
   | { readonly kind: 'Rejected'; readonly diagnostics: readonly Diagnostic[]; readonly warnings: readonly string[]; readonly forms: Forms };
@@ -76,9 +80,9 @@ const USAGE = `用法（相对本 skill 目录）：
   bun scripts/design.ts init <仓库根>              生成 <仓库根>/design
   bun scripts/design.ts module <design> <a/b>      建立架构子模块目录
   bun scripts/design.ts unit <design> <名字>       建立业务单元目录
-  bun scripts/design.ts check <design> [--json]    检查目录、说明、方向、文字引用、类型与反例
+  bun scripts/design.ts check <design> [--json]    检查目录、说明、方向、文字引用、形式、类型与反例
   bun scripts/design.ts graph <design> [--json]    输出模块与 import 关系
-  bun scripts/design.ts vdmj <design> [VDMJ 参数]  用全部规格文件运行 VDMJ，例如 -e 或 -i
+  bun scripts/design.ts vdmj <design> [VDMJ 参数]  用全部规格运行 VDMJ，例如 -e 或 -i
   bun scripts/design.ts review <design>            输出模型审查的材料（JSON），由 scripts/review.py 在 omp eval 里交给 jev 判断`;
 
 function assertNever(value: never): never {
@@ -175,8 +179,8 @@ function init(repo: string): void {
   const design = join(repo, 'design');
   if (existsSync(design)) throw new UsageError(`${design} 已存在；init 不覆盖。`);
   mkdirSync(join(design, 'architecture'), { recursive: true });
-  writeFileSync(join(design, 'design.tex'), readFileSync(TEMPLATE, 'utf8'));
-  writeFileSync(join(design, 'architecture', 'README.tex'), readme('架构'));
+  writeFileSync(join(design, 'README.md'), readFileSync(TEMPLATE, 'utf8'));
+  writeFileSync(join(design, 'architecture', 'README.md'), readme('架构'));
   for (const kind of ['examples', 'evidence', 'reference']) {
     mkdirSync(join(design, 'appendix', kind), { recursive: true });
     writeFileSync(join(design, 'appendix', kind, '.gitkeep'), '');
@@ -185,14 +189,14 @@ function init(repo: string): void {
 }
 
 function readme(title: string): string {
-  return `\\section{${title}}\n\n% 先写一段：本模块负责什么、不负责什么。\n`;
+  return `# ${title}\n\n<!-- 先写一段：本模块负责什么、不负责什么。 -->\n`;
 }
 
 function addModule(design: string, path: string): void {
   const segments = path.split('/');
   if (!segments.every((s) => NAME.test(s))) throw new UsageError('模块路径每段只用小写字母、数字与连字符。');
   const parent = join(design, 'architecture', ...segments.slice(0, -1));
-  if (!existsSync(join(parent, 'README.tex'))) throw new UsageError(`父模块 ${relative(design, parent)} 不存在。`);
+  if (!existsSync(join(parent, 'README.md'))) throw new UsageError(`父模块 ${relative(design, parent)} 不存在。`);
   create(design, ['architecture', ...segments], segments.at(-1)!);
 }
 
@@ -202,20 +206,126 @@ function addUnit(design: string, name: string): void {
 }
 
 function create(design: string, segments: readonly string[], title: string): void {
-  const main = join(design, 'design.tex');
+  const main = join(design, 'README.md');
   if (!existsSync(main)) throw new UsageError(`${main} 不存在；先运行 init。`);
   const dir = join(design, ...segments);
   if (existsSync(dir)) throw new UsageError(`${relative(design, dir)} 已存在。`);
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, 'README.tex'), readme(title));
-  const input = `\\input{${[...segments, 'README'].join('/')}}`;
-  const lines = readFileSync(main, 'utf8').split('\n');
-  const last = lines.findLastIndex((line) => line.trim().startsWith('\\input{'));
-  const at = last >= 0 ? last + 1 : lines.findIndex((line) => line.trim() === '\\end{document}');
-  if (at < 0) throw new UsageError('design.tex 缺少 \\end{document}。');
-  lines.splice(at, 0, input);
-  writeFileSync(main, lines.join('\n'));
-  console.log(`已生成 ${relative(design, join(dir, 'README.tex'))}，并在 design.tex 加入 ${input}`);
+  writeFileSync(join(dir, 'README.md'), readme(title));
+  const path = [...segments, 'README.md'].join('/');
+  const entry = `- [${path}](${path})`;
+  const text = readFileSync(main, 'utf8');
+  writeFileSync(main, `${text.endsWith('\n') ? text : `${text}\n`}${entry}\n`);
+  console.log(`已生成 ${path}，并在 README.md 的阅读次序里加入 ${entry}`);
+}
+
+// ---------------------------------------------------------------- Markdown
+
+/** 代码块的种类：```vdm 是规格，```mermaid、```ebnf、```text 是图与文法，其余都不允许出现在正文里。 */
+type FenceKind = 'Spec' | 'Figure' | 'Other';
+type Fence = { readonly kind: FenceKind; readonly info: string; readonly line: number; readonly body: readonly string[] };
+/** Markdown 的一行在哪里：文字、某个代码块的围栏或内容。 */
+type MarkdownLine = { readonly line: number; readonly raw: string; readonly in: 'Prose' | 'Fence' };
+type MarkdownFile = { readonly lines: readonly MarkdownLine[]; readonly fences: readonly Fence[] };
+
+const FIGURES = ['mermaid', 'ebnf', 'text'];
+
+function fenceKind(info: string): FenceKind {
+  if (info === 'vdm') return 'Spec';
+  return FIGURES.includes(info) ? 'Figure' : 'Other';
+}
+
+function markdown(text: string): MarkdownFile {
+  const lines: MarkdownLine[] = [];
+  const fences: Fence[] = [];
+  let open: { marker: string; info: string; line: number; body: string[] } | null = null;
+  text.split('\n').forEach((raw, i) => {
+    const line = i + 1;
+    if (open) {
+      const close = /^\s*(`{3,}|~{3,})\s*$/.exec(raw);
+      if (close && close[1]![0] === open.marker[0] && close[1]!.length >= open.marker.length) {
+        fences.push({ kind: fenceKind(open.info), info: open.info, line: open.line, body: open.body });
+        open = null;
+      } else open.body.push(raw);
+      lines.push({ line, raw, in: 'Fence' });
+      return;
+    }
+    const start = /^\s*(`{3,}|~{3,})\s*([^\s`]*)/.exec(raw);
+    if (start) {
+      open = { marker: start[1]!, info: start[2]!, line, body: [] };
+      lines.push({ line, raw, in: 'Fence' });
+    } else lines.push({ line, raw, in: 'Prose' });
+  });
+  if (open) fences.push({ kind: fenceKind(open.info), info: open.info, line: open.line, body: open.body });
+  return { lines, fences };
+}
+
+function readMarkdown(design: string, path: string): MarkdownFile {
+  return markdown(readFileSync(join(design, path), 'utf8'));
+}
+
+/** 整行都是 HTML 注释的行，例如 init 留下的提示。它不是正文。 */
+function htmlComment(raw: string): boolean {
+  return /^\s*<!--.*-->\s*$/.test(raw);
+}
+
+/** 一行里的行内代码（Markdown 的 code span）：成对的同样长度的反引号串之间的内容。 */
+function codeSpans(raw: string): string[] {
+  const spans: string[] = [];
+  let i = 0;
+  while (i < raw.length) {
+    if (raw[i] !== '`') {
+      i++;
+      continue;
+    }
+    let n = 0;
+    while (raw[i + n] === '`') n++;
+    const ticks = '`'.repeat(n);
+    let j = raw.indexOf(ticks, i + n);
+    while (j >= 0 && (raw[j - 1] === '`' || raw[j + n] === '`')) j = raw.indexOf(ticks, j + 1);
+    if (j < 0) {
+      i += n;
+      continue;
+    }
+    const content = raw.slice(i + n, j);
+    spans.push(content.length > 1 && content.startsWith(' ') && content.endsWith(' ') ? content.slice(1, -1) : content);
+    i = j + n;
+  }
+  return spans;
+}
+
+/**
+ * VDMJ 自带的 Markdown 读取器的行号会偏，所以给每个文件生成一份同样行数的 .vdmsl：```vdm 块里的行原样保留，
+ * 其余行留空。VDMJ 报的行号就是 Markdown 里的行号；路径把 .vdmsl 换回 .md。
+ */
+let shadowRoot: string | null = null;
+
+function shadow(design: string, places: readonly Place[]): string {
+  if (shadowRoot) rmSync(shadowRoot, { recursive: true, force: true });
+  const root = mkdtempSync('/tmp/software-design-');
+  shadowRoot = root;
+  for (const place of places) {
+    const file = readMarkdown(design, place.path);
+    const spec = new Set<number>();
+    for (const fence of file.fences) if (fence.kind === 'Spec') fence.body.forEach((_, k) => spec.add(fence.line + 1 + k));
+    const text = file.lines.map((l) => (spec.has(l.line) ? l.raw : '')).join('\n');
+    const target = join(root, toShadow(place.path));
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, text);
+  }
+  return root;
+}
+
+process.on('exit', () => {
+  if (shadowRoot) rmSync(shadowRoot, { recursive: true, force: true });
+});
+
+function toShadow(path: string): string {
+  return path.replace(/\.md$/, '.vdmsl');
+}
+
+function fromShadow(path: string): string {
+  return path.replace(/\.vdmsl$/, '.md');
 }
 
 // ---------------------------------------------------------------- 布局
@@ -228,17 +338,15 @@ function layout(design: string): { readonly places: readonly Place[]; readonly d
   const entries = (dir: string) => readdirSync(join(design, dir)).filter((name) => !name.startsWith('.')).sort();
   const kind = (path: string) => lstatSync(join(design, path));
 
-  if (!existsSync(join(design, 'design.tex'))) fail('design.tex', '缺少 design.tex；先运行 init。');
-  if (!existsSync(join(design, 'architecture', 'README.tex'))) fail('architecture/README.tex', '缺少根模块 README.tex。');
+  if (!existsSync(join(design, 'README.md'))) fail('README.md', '缺少 README.md（阅读次序）；先运行 init。');
+  if (!existsSync(join(design, 'architecture', 'README.md'))) fail('architecture/README.md', '缺少根模块 README.md。');
   for (const name of entries('.')) {
-    // 编译 design.tex 的产物是派生视图，不是设计内容。
-    if (/^design\.(pdf|aux|log|toc|out|synctex\.gz)$/.test(name)) continue;
-    if (!['design.tex', 'architecture', 'business', 'appendix'].includes(name)) fail(name, '设计目录只放 design.tex、architecture、business、appendix。');
+    if (!['README.md', 'architecture', 'business', 'appendix'].includes(name)) fail(name, '设计目录只放 README.md、architecture、business、appendix。');
     else if (kind(name).isSymbolicLink()) fail(name, '不接受符号链接。');
   }
 
   const walk = (dir: string, layer: Layer, nested: boolean) => {
-    if (!existsSync(join(design, dir, 'README.tex'))) fail(dir, '每个模块或业务单元目录都要有 README.tex。');
+    if (!existsSync(join(design, dir, 'README.md'))) fail(dir, '每个模块或业务单元目录都要有 README.md。');
     for (const name of entries(dir)) {
       const path = `${dir}/${name}`;
       const stat = kind(path);
@@ -247,9 +355,9 @@ function layout(design: string): { readonly places: readonly Place[]; readonly d
         if (!nested) fail(path, '业务单元不嵌套。');
         else if (!NAME.test(name)) fail(path, '目录名只用小写字母、数字与连字符。');
         else walk(path, layer, nested);
-      } else if (name === 'README.tex' || (name.endsWith('.tex') && NAME.test(name.slice(0, -4)))) {
-        places.push({ path, layer, dir, readme: name === 'README.tex' });
-      } else fail(path, '只放 README.tex 与按内容命名的 <小写名>.tex。');
+      } else if (name === 'README.md' || (name.endsWith('.md') && NAME.test(name.slice(0, -3)))) {
+        places.push({ path, layer, dir, readme: name === 'README.md' });
+      } else fail(path, '只放 README.md 与按内容命名的 <小写名>.md。');
     }
   };
   if (existsSync(join(design, 'architecture'))) walk('architecture', 'architecture', true);
@@ -272,15 +380,18 @@ function layout(design: string): { readonly places: readonly Place[]; readonly d
 
 function outline(design: string, places: readonly Place[]): readonly ParsedFile[] {
   if (places.length === 0) return [];
-  const run = java(['-cp', classpath(), OUTLINE, ...places.map((p) => p.path)], design);
+  const root = shadow(design, places);
+  const run = java(['-cp', classpath(), OUTLINE, ...places.map((p) => toShadow(p.path))], root);
   const json = run.lines.find((line) => line.startsWith('['));
   if (run.code !== 0 || !json) throw new Error(`VDMJ 解析器没有给出结果：\n${run.lines.join('\n')}`);
   type Raw = Omit<Definition, 'commented' | 'commentLine' | 'comment'>;
   type RawFile = Omit<ParsedFile, 'modules'> & { readonly modules: readonly (Omit<Module, 'definitions'> & { readonly definitions: readonly Raw[] })[] };
   return (JSON.parse(json) as RawFile[]).map((file) => {
-    const lines = readFileSync(join(design, file.path), 'utf8').split('\n');
+    const path = fromShadow(file.path);
+    const lines = readFileSync(join(design, path), 'utf8').split('\n');
     return {
       ...file,
+      path,
       modules: file.modules.map((module) => ({ ...module, definitions: module.definitions.map((d) => ({ ...d, ...leadingComment(lines, d.line) })) })),
     };
   });
@@ -405,24 +516,6 @@ function cycles(edges: ReadonlyMap<string, ReadonlyMap<string, unknown>>): strin
 
 // ---------------------------------------------------------------- 文字
 
-type ProseLine = { readonly line: number; readonly text: string; readonly inSpec: boolean };
-
-function proseLines(text: string): ProseLine[] {
-  let inSpec = false;
-  return text.split('\n').map((raw, i) => {
-    const trimmed = raw.trim();
-    if (trimmed.startsWith('\\begin{vdm_al}')) {
-      inSpec = true;
-      return { line: i + 1, text: '', inSpec: true };
-    }
-    if (trimmed.startsWith('\\end{vdm_al}')) {
-      inSpec = false;
-      return { line: i + 1, text: '', inSpec: true };
-    }
-    return { line: i + 1, text: inSpec ? raw : raw.replace(/(^|[^\\])%.*$/, '$1').trim(), inSpec };
-  });
-}
-
 function prose(design: string, places: readonly Place[], modules: readonly Located[]): readonly Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   const fail = (path: string, line: number, message: string) => diagnostics.push({ stage: 'prose', path, line, message });
@@ -436,29 +529,31 @@ function prose(design: string, places: readonly Place[], modules: readonly Locat
   }
 
   for (const place of places) {
-    const lines = proseLines(readFileSync(join(design, place.path), 'utf8'));
-    for (const { line, text, inSpec } of lines) {
-      if (inSpec) continue;
-      for (const match of text.matchAll(/\\vdmref\{([^}]*)\}/g)) {
-        if (!known.has(match[1]!)) fail(place.path, line, `\\vdmref{${match[1]}} 指向的规格元素不存在；只引用规格里已有的模块、定义或字段，不造新词。`);
+    const file = readMarkdown(design, place.path);
+    for (const { line, raw, in: where } of file.lines) {
+      if (where !== 'Prose') continue;
+      // 文字里用双反引号写的限定名（``Run`Start``）指认规格元素，它必须存在。
+      for (const name of codeSpans(raw)) {
+        if (name.includes('`') && !known.has(name)) fail(place.path, line, `\`\`${name}\`\` 指向的规格元素不存在；只引用规格里已有的模块、定义或字段，不造新词。`);
       }
     }
-    if (place.readme) diagnostics.push(...readmeShape(place, lines));
+    if (place.readme) diagnostics.push(...readmeShape(place, file));
   }
 
-  const main = join(design, 'design.tex');
+  const main = join(design, 'README.md');
   if (existsSync(main)) {
-    const inputs = new Map<string, number>();
-    for (const { line, text } of proseLines(readFileSync(main, 'utf8'))) {
-      for (const match of text.matchAll(/\\input\{([^}]*)\}/g)) {
-        const path = match[1]!.endsWith('.tex') ? match[1]! : `${match[1]}.tex`;
-        if (inputs.has(path)) fail('design.tex', line, `${path} 重复 \\input。`);
-        else if (!existsSync(join(design, path))) fail('design.tex', line, `\\input 的 ${path} 不存在。`);
-        inputs.set(path, line);
+    const listed = new Map<string, number>();
+    for (const { line, raw, in: where } of markdown(readFileSync(main, 'utf8')).lines) {
+      if (where !== 'Prose') continue;
+      for (const match of raw.matchAll(/\]\(([^)\s]+)\)/g)) {
+        const path = match[1]!.replace(/^\.\//, '');
+        if (listed.has(path)) fail('README.md', line, `${path} 在阅读次序里出现了两次。`);
+        else if (!existsSync(join(design, path))) fail('README.md', line, `阅读次序里的 ${path} 不存在。`);
+        listed.set(path, line);
       }
     }
     for (const place of places) {
-      if (!inputs.has(place.path)) fail('design.tex', 1, `${place.path} 不在阅读次序里；在 design.tex 加入 \\input{${place.path.slice(0, -4)}}。`);
+      if (!listed.has(place.path)) fail('README.md', 1, `${place.path} 不在阅读次序里；在 README.md 的列表里加入 - [${place.path}](${place.path})。`);
     }
   }
   return diagnostics;
@@ -466,8 +561,6 @@ function prose(design: string, places: readonly Place[], modules: readonly Locat
 
 // ---------------------------------------------------------------- 形式
 
-/** 原样排版的 LaTeX 环境。正文里只允许 literal，并且只用来放图与文法。 */
-const VERBATIM_ENVIRONMENTS = ['verbatim', 'verbatim*', 'Verbatim', 'BVerbatim', 'LVerbatim', 'lstlisting', 'alltt', 'minted'];
 const TYPESCRIPT = new Bun.Transpiler({ loader: 'ts' });
 const JAVASCRIPT = new Bun.Transpiler({ loader: 'js' });
 
@@ -485,78 +578,65 @@ function typescriptOnly(code: string): boolean {
 }
 
 /**
- * 规格写成 VDM-SL，文字写规格说不清的语义。原样排版的代码块会让设计退化成包在 LaTeX 里的旧文档：
- * 正文里不允许 verbatim 一类的环境；literal 只放图与文法，里面与文字段落里都不能出现 TypeScript 声明。
+ * 规格写成 VDM-SL，文字写规格说不清的语义。正文里的代码块只有 ```vdm（规格）与 ```mermaid、```ebnf、```text（图与文法）；
+ * 图与文法块、文字段落里都不能出现 TypeScript 声明，否则设计就退化成了换了格式的旧文档。
  */
 function form(design: string, places: readonly Place[]): { readonly diagnostics: readonly Diagnostic[]; readonly forms: Forms } {
   const diagnostics: Diagnostic[] = [];
   const fail = (path: string, line: number, message: string) => diagnostics.push({ stage: 'form', path, line, message });
-  const counts = { spec: 0, comment: 0, literal: 0, prose: 0 };
+  const counts = { spec: 0, comment: 0, figure: 0, prose: 0 };
   for (const place of places) {
-    type Mode = { readonly kind: 'Prose' } | { readonly kind: 'Spec' } | { readonly kind: 'Literal'; readonly line: number; readonly body: string[] };
-    let mode: Mode = { kind: 'Prose' };
+    const file = readMarkdown(design, place.path);
+    for (const fence of file.fences) {
+      switch (fence.kind) {
+        case 'Spec':
+          for (const raw of fence.body) {
+            if (raw.trim().startsWith('--')) counts.comment++;
+            else if (raw.trim() !== '') counts.spec++;
+          }
+          break;
+        case 'Figure':
+          counts.figure += fence.body.filter((raw) => raw.trim() !== '').length;
+          if (typescriptOnly(fence.body.join('\n'))) {
+            fail(place.path, fence.line, `${fence.info} 块里是 TypeScript 声明：图与文法块只放图与文法；类型、接口与签名写成 \`\`\`vdm 规格。`);
+          }
+          break;
+        case 'Other':
+          fail(place.path, fence.line, `正文里的代码块只用 vdm、${FIGURES.join('、')}，这里是「${fence.info === '' ? '没有标注' : fence.info}」：规格写成 \`\`\`vdm，图与文法用 ${FIGURES.join('、')}，其余写成文字。`);
+          break;
+        default:
+          assertNever(fence.kind);
+      }
+    }
     let paragraph: { line: number; body: string[] } | null = null;
     const endParagraph = () => {
       if (paragraph && typescriptOnly(paragraph.body.join('\n'))) {
-        fail(place.path, paragraph.line, '这段文字是 TypeScript 声明：类型、接口与签名写成 VDM-SL 规格，不放进文字。');
+        fail(place.path, paragraph.line, '这段文字是 TypeScript 声明：类型、接口与签名写成 ```vdm 规格，不放进文字。');
       }
       paragraph = null;
     };
-    readFileSync(join(design, place.path), 'utf8').split('\n').forEach((raw, i) => {
-      const line = i + 1;
-      const trimmed = raw.trim();
-      const begin = /^\\begin\{([^}]*)\}/.exec(trimmed)?.[1];
-      const end = /^\\end\{([^}]*)\}/.exec(trimmed)?.[1];
-      switch (mode.kind) {
-        case 'Spec':
-          if (end === 'vdm_al') mode = { kind: 'Prose' };
-          else if (trimmed.startsWith('--')) counts.comment++;
-          else if (trimmed !== '') counts.spec++;
-          return;
-        case 'Literal':
-          if (end === 'literal') {
-            if (typescriptOnly(mode.body.join('\n'))) {
-              fail(place.path, mode.line, 'literal 里是 TypeScript 声明：literal 只放图与文法；类型、接口与签名写成 VDM-SL 规格。');
-            }
-            mode = { kind: 'Prose' };
-          } else {
-            mode.body.push(raw);
-            if (trimmed !== '') counts.literal++;
-          }
-          return;
-        case 'Prose':
-          if (begin === 'vdm_al' || begin === 'literal') {
-            endParagraph();
-            mode = begin === 'vdm_al' ? { kind: 'Spec' } : { kind: 'Literal', line, body: [] };
-            return;
-          }
-          if (begin !== undefined && VERBATIM_ENVIRONMENTS.includes(begin)) {
-            fail(place.path, line, `正文里不用 ${begin} 环境：规格写进 vdm_al，图与文法写进 literal，其余写成文字。`);
-          }
-          if (trimmed === '' || /^\\(sub)*section\{/.test(trimmed)) endParagraph();
-          else if (!trimmed.startsWith('%')) {
-            counts.prose++;
-            if (paragraph) paragraph.body.push(raw);
-            else paragraph = { line, body: [raw] };
-          }
-          return;
-        default:
-          assertNever(mode);
+    for (const { line, raw, in: where } of file.lines) {
+      if (where === 'Fence' || raw.trim() === '' || /^#{1,6}\s/.test(raw.trim()) || htmlComment(raw)) {
+        endParagraph();
+        continue;
       }
-    });
+      counts.prose++;
+      if (paragraph) paragraph.body.push(raw);
+      else paragraph = { line, body: [raw] };
+    }
     endParagraph();
   }
   return { diagnostics, forms: counts };
 }
 
-function readmeShape(place: Place, lines: readonly ProseLine[]): Diagnostic[] {
+function readmeShape(place: Place, file: MarkdownFile): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   const fail = (line: number, message: string) => diagnostics.push({ stage: 'prose', path: place.path, line, message });
   const allowed: readonly string[] = SECTIONS[place.layer];
-  const content = lines.filter((l) => l.inSpec || l.text !== '');
+  const content = file.lines.filter((l) => l.raw.trim() !== '' && !htmlComment(l.raw));
   const head = content[0];
-  if (!head || !/^\\section\{/.test(head.text)) {
-    fail(head?.line ?? 1, 'README.tex 以 \\section{模块名} 开头。');
+  if (!head || head.in !== 'Prose' || !/^#\s/.test(head.raw)) {
+    fail(head?.line ?? 1, 'README.md 以「# 模块名」开头。');
     return diagnostics;
   }
   let order = -1;
@@ -567,17 +647,17 @@ function readmeShape(place: Place, lines: readonly ProseLine[]): Diagnostic[] {
     }
   };
   for (const entry of content.slice(1)) {
-    const subsection = /^\\subsection\{([^}]*)\}/.exec(entry.text);
-    if (/^\\section\{/.test(entry.text)) fail(entry.line, 'README.tex 只有一个 \\section。');
-    else if (subsection) {
+    const section = entry.in === 'Prose' ? /^##\s+(.*)$/.exec(entry.raw.trim()) : null;
+    if (entry.in === 'Prose' && /^#\s/.test(entry.raw)) fail(entry.line, 'README.md 只有一个一级标题。');
+    else if (section) {
       close();
-      const title = subsection[1]!.trim();
+      const title = section[1]!.trim();
       const at = allowed.indexOf(title);
-      if (at < 0) fail(entry.line, `README.tex 的小节只用 ${allowed.join('、')}；其余内容放进按内容命名的主题文件。`);
-      else if (at <= order) fail(entry.line, `小节按 ${allowed.join('、')} 的次序排列。`);
+      if (at < 0) fail(entry.line, `README.md 的二级标题只用 ${allowed.join('、')}；其余内容放进按内容命名的主题文件。`);
+      else if (at <= order) fail(entry.line, `二级标题按 ${allowed.join('、')} 的次序排列。`);
       order = Math.max(order, at);
       current = { title, line: entry.line, body: false };
-    } else if (current.title === '' && entry.inSpec) {
+    } else if (current.title === '' && entry.in === 'Fence') {
       close();
       current = { title: '规格', line: entry.line, body: true };
     } else current.body = true;
@@ -607,52 +687,38 @@ type ReviewQuestion =
   | 'prose_restates'
   | 'coined'
   | 'basis'
-  | 'literal_code';
+  | 'figure_code';
 type Paragraph = { readonly path: string; readonly line: number; readonly section: string; readonly text: string };
-type Literal = { readonly path: string; readonly line: number; readonly text: string };
+type Figure = { readonly path: string; readonly line: number; readonly text: string };
 
-/** 把文字里的 LaTeX 引用写法还原成读者看到的名字。 */
+/** 把文字里的行内代码还原成读者看到的名字：``Run`Start`` 读作 Run`Start。 */
 function plain(text: string): string {
-  return text.replace(/\\(?:vdmref|texttt)\{([^}]*)\}/g, '$1');
+  return text.replace(/(`+)\s?(.*?)\s?\1/g, '$2');
 }
 
-/** 文字段落与 literal 块分开取：literal 是图与文法，不按文字审查。 */
-function paragraphs(design: string, place: Place): { readonly paragraphs: readonly Paragraph[]; readonly literals: readonly Literal[] } {
+/** 文字段落与图、文法块分开取：图与文法不按文字审查。段落所在的二级标题记为它的小节。 */
+function paragraphs(design: string, place: Place): { readonly paragraphs: readonly Paragraph[]; readonly figures: readonly Figure[] } {
+  const file = readMarkdown(design, place.path);
   const result: Paragraph[] = [];
-  const literals: Literal[] = [];
   let section = '';
   let current: { line: number; lines: string[] } | null = null;
-  let literal: { line: number; lines: string[] } | null = null;
   const flush = () => {
-    if (current) result.push({ path: place.path, line: current.line, section, text: plain(current.lines.join('')) });
+    if (current) result.push({ path: place.path, line: current.line, section, text: plain(current.lines.join(' ')) });
     current = null;
   };
-  const raw = readFileSync(join(design, place.path), 'utf8').split('\n');
-  for (const { line, text, inSpec } of proseLines(raw.join('\n'))) {
-    const source = raw[line - 1]!;
-    if (literal) {
-      if (/^\s*\\end\{literal\}/.test(source)) {
-        literals.push({ path: place.path, line: literal.line, text: literal.lines.join('\n') });
-        literal = null;
-      } else literal.lines.push(source);
-      continue;
-    }
-    if (/^\s*\\begin\{literal\}/.test(source)) {
+  for (const { line, raw, in: where } of file.lines) {
+    const heading = where === 'Prose' ? /^(#{1,6})\s+(.*)$/.exec(raw.trim()) : null;
+    if (where === 'Fence' || raw.trim() === '' || htmlComment(raw) || heading) {
       flush();
-      literal = { line, lines: [] };
+      if (heading && heading[1]!.length <= 2) section = heading[1]!.length === 2 ? heading[2]!.trim() : '';
       continue;
     }
-    const heading = /^\\(sub)?section\{([^}]*)\}/.exec(text);
-    if (inSpec || text === '' || heading) {
-      flush();
-      if (heading) section = heading[1] ? heading[2]!.trim() : '';
-      continue;
-    }
-    if (current) current.lines.push(text);
-    else current = { line, lines: [text] };
+    if (current) current.lines.push(raw.trim());
+    else current = { line, lines: [raw.trim()] };
   }
   flush();
-  return { paragraphs: result, literals };
+  const figures = file.fences.filter((f) => f.kind === 'Figure').map((f) => ({ path: place.path, line: f.line, text: f.body.join('\n') }));
+  return { paragraphs: result, figures };
 }
 
 /** 每个定义的源码：从它的说明注释开始，到下一个定义的说明之前。 */
@@ -690,7 +756,7 @@ function review(design: string): readonly ReviewItem[] {
   const readmes = loaded.places.filter((p) => p.readme);
   const units = readmes
     .filter((p) => p.layer === 'business')
-    .map((p) => `${p.dir.slice('business/'.length)}: ${paragraphs(design, p).find((para) => para.section === '')?.text ?? ''}`);
+    .map((p) => `${p.dir.slice('business/'.length)}: ${paragraphs(design, p).paragraphs.find((para) => para.section === '')?.text ?? ''}`);
   const specsByDir = new Map<string, string[]>();
 
   for (const module of loaded.modules) {
@@ -734,7 +800,7 @@ function review(design: string): readonly ReviewItem[] {
       if (spec !== '' && para.section !== '') items.push({ question: 'prose_restates', path: para.path, line: para.line, state: { spec, paragraph: para.text } });
       if (para.section === '依据') items.push({ question: 'basis', path: para.path, line: para.line, state: { paragraph: para.text } });
     }
-    for (const literal of text.literals) items.push({ question: 'literal_code', path: literal.path, line: literal.line, state: { block: literal.text } });
+    for (const figure of text.figures) items.push({ question: 'figure_code', path: figure.path, line: figure.line, state: { block: figure.text } });
   }
   return items;
 }
@@ -744,10 +810,10 @@ function review(design: string): readonly ReviewItem[] {
 const LOCATION = /in '[^']*' \(([^)]+)\) at line (\d+):\d+/;
 
 function vdmj(design: string, modules: readonly Located[]): { readonly diagnostics: readonly Diagnostic[]; readonly warnings: readonly string[]; readonly obligations: Obligations } {
-  const files = [...new Set(modules.map((m) => m.place.path))].sort();
-  // qc 默认只看当前模块；模式 .* 覆盖全部模块。
-  const run = java(['-cp', classpath(), 'com.fujitsu.vdmj.plugins.VDMJ', '-vdmsl', '-q', '-i', ...files], design, 'pog\nqc .*\nquit\n');
-  const lines = run.lines.map((line) => line.replace(/^(> )+/, ''));
+  const files = [...new Set(modules.map((m) => toShadow(m.place.path)))].sort();
+  // qc 默认只看当前模块；模式 .* 覆盖全部模块。VDMJ 读的是与 Markdown 同行号的 .vdmsl 影子文件。
+  const run = java(['-cp', classpath(), 'com.fujitsu.vdmj.plugins.VDMJ', '-vdmsl', '-q', '-i', ...files], shadow(design, modules.map((m) => m.place)), 'pog\nqc .*\nquit\n');
+  const lines = run.lines.map((line) => line.replace(/^(> )+/, '').replaceAll('.vdmsl)', '.md)').replaceAll(".vdmsl'", ".md'"));
   const diagnostics: Diagnostic[] = [];
   const warnings: string[] = [];
   const seen = new Set<string>();
@@ -764,11 +830,11 @@ function vdmj(design: string, modules: readonly Located[]): { readonly diagnosti
       const key = `${at?.[1]}:${at?.[2]}:${/^Error (\d+)/.exec(line)![1]}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      diagnostics.push({ stage: 'typecheck', path: at?.[1] ?? 'design.tex', line: Number(at?.[2] ?? 1), message });
+      diagnostics.push({ stage: 'typecheck', path: at?.[1] ?? 'README.md', line: Number(at?.[2] ?? 1), message });
     } else if (/^Warning \d+:/.test(line)) warnings.push(line);
   }
   if (diagnostics.length > 0 || run.code !== 0) {
-    if (diagnostics.length === 0) diagnostics.push({ stage: 'typecheck', path: 'design.tex', line: 1, message: lines.join('\n').trim() });
+    if (diagnostics.length === 0) diagnostics.push({ stage: 'typecheck', path: 'README.md', line: 1, message: lines.join('\n').trim() });
     return { diagnostics, warnings, obligations: { total: 0, provable: 0, maybe: [], unchecked: [] } };
   }
 
@@ -796,7 +862,7 @@ function vdmj(design: string, modules: readonly Located[]): { readonly diagnosti
       const where = block.find((l) => LOCATION.test(l)) ?? titles.get(number) ?? '';
       const at = LOCATION.exec(where);
       const witness = block.filter((l) => l.includes('-->')).map((l) => l.trim()).join(' ');
-      diagnostics.push({ stage: 'quickcheck', path: at?.[1] ?? 'design.tex', line: Number(at?.[2] ?? 1), message: `证明义务有反例：${where.trim()} ${witness}`.trim() });
+      diagnostics.push({ stage: 'quickcheck', path: at?.[1] ?? 'README.md', line: Number(at?.[2] ?? 1), message: `证明义务有反例：${where.trim()} ${witness}`.trim() });
     }
   }
   const pick = (predicate: (s: string | undefined) => boolean) =>
@@ -899,7 +965,7 @@ function printDiagnostics(diagnostics: readonly Diagnostic[]): void {
 function printReport(report: Report): void {
   for (const warning of report.warnings) console.log(`提示：${warning}`);
   const f = report.forms;
-  const form = `正文：规格 ${f.spec} 行，说明注释 ${f.comment} 行，文字 ${f.prose} 行，literal ${f.literal} 行。`;
+  const form = `正文：规格 ${f.spec} 行，说明注释 ${f.comment} 行，文字 ${f.prose} 行，图与文法 ${f.figure} 行。`;
   switch (report.kind) {
     case 'Rejected':
       printDiagnostics(report.diagnostics);
@@ -958,9 +1024,10 @@ function passthrough(design: string, args: readonly string[]): number {
     printDiagnostics(blocking);
     return 1;
   }
-  const files = [...new Set(loaded.modules.map((m) => m.place.path))].sort();
+  const places = [...new Map(loaded.modules.map((m) => [m.place.path, m.place])).values()];
+  const files = places.map((p) => toShadow(p.path)).sort();
   const run = Bun.spawnSync(['java', '-cp', classpath(), 'com.fujitsu.vdmj.plugins.VDMJ', '-vdmsl', '-q', ...args, ...files], {
-    cwd: design,
+    cwd: shadow(design, places),
     stdin: 'inherit',
     stdout: 'inherit',
     stderr: 'inherit',

@@ -1,7 +1,6 @@
 /** 用真实 VDMJ 跑 CLI：每个用例在自有 /tmp 工作区里改一处，看 check 是否接受或在正确位置拒绝。 */
 import { afterAll, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const CLI = resolve(import.meta.dir, '..', 'scripts', 'design.ts');
@@ -9,10 +8,11 @@ const roots: string[] = [];
 // 每个用例都要启动几次 JVM 跑 VDMJ，默认的 5 秒不够。
 setDefaultTimeout(60_000);
 
-// 不用 String.raw：Bun 会把模板里的非 ASCII 字符转写成 \u 转义，raw 文本因此不再是原文。
-const SHARED = `\\subsection{共用材料}
+const FENCE = '```';
 
-\\begin{vdm_al}
+const SHARED = `# 共用材料
+
+${FENCE}vdm
 module Jobs
 exports types JobId; struct Spec
 definitions
@@ -24,12 +24,12 @@ types
   Spec ::
     command : seq1 of char;  -- 要执行的命令行
 end Jobs
-\\end{vdm_al}
+${FENCE}
 `;
 
-const QUEUE = `\\subsection{队列连接}
+const QUEUE = `# 队列连接
 
-\\begin{vdm_al}
+${FENCE}vdm
 module Queue
 imports from Jobs types JobId renamed JobId; Spec renamed Spec
 exports
@@ -53,12 +53,12 @@ operations
   pre j in set held
   post held = held~ \\ {j};
 end Queue
-\\end{vdm_al}
+${FENCE}
 `;
 
-const BILLING = `\\subsection{出账接入}
+const BILLING = `# 出账接入
 
-\\begin{vdm_al}
+${FENCE}vdm
 module Billing
 imports from Jobs types Spec renamed Spec, from Queue operations Submit renamed Submit
 exports all
@@ -68,7 +68,7 @@ operations
   Bill: Spec ==> ()
   Bill(s) == let - = Submit(s) in skip;
 end Billing
-\\end{vdm_al}
+${FENCE}
 `;
 
 function cli(...args: string[]): { readonly code: number; readonly out: string } {
@@ -78,23 +78,23 @@ function cli(...args: string[]): { readonly code: number; readonly out: string }
 
 /** 一份通过检查的最小设计：根模块、一个子模块、一个业务单元。 */
 function fixture(): string {
-  const root = mkdtempSync(join(tmpdir(), 'software-design-check-'));
+  const root = mkdtempSync('/tmp/software-design-check-');
   roots.push(root);
   const design = join(root, 'design');
   expect(cli('init', root).code).toBe(0);
   expect(cli('module', design, 'queue').code).toBe(0);
   expect(cli('unit', design, 'billing').code).toBe(0);
-  write(design, 'architecture/README.tex', '\\section{作业系统}\n\n负责接受作业；不负责执行命令。\n\n\\subsection{语义}\n\n完成之前作业由 \\vdmref{Queue`Queues.held} 记录。\n');
-  write(design, 'architecture/jobs.tex', SHARED);
-  write(design, 'architecture/queue/README.tex', '\\section{队列}\n\n负责持有作业；不负责执行。\n');
-  write(design, 'architecture/queue/queue.tex', QUEUE);
-  write(design, 'business/billing/README.tex', '\\section{出账}\n\n负责月末出账。\n\n\\subsection{需求}\n\n每月提交一次，经 \\vdmref{Queue`Submit} 接入。\n');
-  write(design, 'business/billing/billing.tex', BILLING);
-  const main = readFileSync(join(design, 'design.tex'), 'utf8')
-    .replace('\\input{architecture/README}', '\\input{architecture/README}\n\\input{architecture/jobs}')
-    .replace('\\input{architecture/queue/README}', '\\input{architecture/queue/README}\n\\input{architecture/queue/queue}')
-    .replace('\\input{business/billing/README}', '\\input{business/billing/README}\n\\input{business/billing/billing}');
-  writeFileSync(join(design, 'design.tex'), main);
+  write(design, 'architecture/README.md', '# 作业系统\n\n负责接受作业；不负责执行命令。\n\n## 语义\n\n完成之前作业由 ``Queue`Queues.held`` 记录。\n');
+  write(design, 'architecture/jobs.md', SHARED);
+  write(design, 'architecture/queue/README.md', '# 队列\n\n负责持有作业；不负责执行。\n');
+  write(design, 'architecture/queue/queue.md', QUEUE);
+  write(design, 'business/billing/README.md', '# 出账\n\n负责月末出账。\n\n## 需求\n\n每月提交一次，经 ``Queue`Submit`` 接入。\n');
+  write(design, 'business/billing/billing.md', BILLING);
+  const main = readFileSync(join(design, 'README.md'), 'utf8')
+    .replace('- [architecture/README.md](architecture/README.md)\n', '- [architecture/README.md](architecture/README.md)\n- [architecture/jobs.md](architecture/jobs.md)\n')
+    .replace('- [architecture/queue/README.md](architecture/queue/README.md)\n', '- [architecture/queue/README.md](architecture/queue/README.md)\n- [architecture/queue/queue.md](architecture/queue/queue.md)\n')
+    .replace('- [business/billing/README.md](business/billing/README.md)\n', '- [business/billing/README.md](business/billing/README.md)\n- [business/billing/billing.md](business/billing/billing.md)\n');
+  writeFileSync(join(design, 'README.md'), main);
   return design;
 }
 
@@ -131,31 +131,34 @@ describe('check', () => {
     expect(run.out).toMatch(/证明义务 \d+ 条/);
   });
 
-  test('类型错误由 VDMJ 定位到文学式文件的行', () => {
+  test('类型错误由 VDMJ 定位到 Markdown 文件的行', () => {
     const design = fixture();
-    edit(design, 'architecture/queue/queue.tex', 'post r not in set held;', 'post r not in set held and r + 1 = 2;');
-    rejected(design, 'architecture/queue/queue.tex', 'Error');
+    edit(design, 'architecture/queue/queue.md', 'post r not in set held;', 'post r not in set held and r + 1 = 2;');
+    // 这一行在 queue.md 的第 19 行：VDMJ 的行号就是 Markdown 的行号。
+    const run = cli('check', design);
+    expect(run.code).toBe(1);
+    expect(run.out).toContain('architecture/queue/queue.md:19: [typecheck] Error');
   });
 
   test('架构模块不得引用业务模块', () => {
     const design = fixture();
-    edit(design, 'architecture/queue/queue.tex', 'imports from Jobs types JobId renamed JobId; Spec renamed Spec', 'imports from Jobs types JobId renamed JobId; Spec renamed Spec, from Billing operations Bill renamed Bill');
-    rejected(design, 'architecture/queue/queue.tex', '不得引用业务模块 Billing');
+    edit(design, 'architecture/queue/queue.md', 'imports from Jobs types JobId renamed JobId; Spec renamed Spec', 'imports from Jobs types JobId renamed JobId; Spec renamed Spec, from Billing operations Bill renamed Bill');
+    rejected(design, 'architecture/queue/queue.md', '不得引用业务模块 Billing');
   });
 
   test('父模块不得依赖子模块', () => {
     const design = fixture();
-    edit(design, 'architecture/jobs.tex', 'module Jobs\n', 'module Jobs\nimports from Queue operations Complete renamed Complete\n');
-    rejected(design, 'architecture/jobs.tex', '父模块 Jobs 不得依赖子模块 Queue');
+    edit(design, 'architecture/jobs.md', 'module Jobs\n', 'module Jobs\nimports from Queue operations Complete renamed Complete\n');
+    rejected(design, 'architecture/jobs.md', '父模块 Jobs 不得依赖子模块 Queue');
   });
 
   test('业务单元之间的依赖不成环', () => {
     const design = fixture();
     expect(cli('unit', design, 'ledger').code).toBe(0);
-    write(design, 'business/ledger/README.tex', '\\section{账本}\n\n负责记账。\n');
-    write(design, 'business/ledger/ledger.tex', `\\subsection{账本}
+    write(design, 'business/ledger/README.md', '# 账本\n\n负责记账。\n');
+    write(design, 'business/ledger/ledger.md', `# 账本
 
-\\begin{vdm_al}
+${FENCE}vdm
 module Ledger
 imports from Billing operations Bill renamed Bill
 exports all
@@ -164,127 +167,127 @@ values
   -- 账本的版本
   Version : nat = 1;
 end Ledger
-\\end{vdm_al}
+${FENCE}
 `);
-    edit(design, 'design.tex', '\\input{business/ledger/README}', '\\input{business/ledger/README}\n\\input{business/ledger/ledger}');
-    edit(design, 'business/billing/billing.tex', 'from Queue operations Submit renamed Submit', 'from Queue operations Submit renamed Submit, from Ledger values Version renamed Version');
-    rejected(design, 'business/billing/billing.tex', '依赖成环');
+    edit(design, 'README.md', '- [business/ledger/README.md](business/ledger/README.md)\n', '- [business/ledger/README.md](business/ledger/README.md)\n- [business/ledger/ledger.md](business/ledger/ledger.md)\n');
+    edit(design, 'business/billing/billing.md', 'from Queue operations Submit renamed Submit', 'from Queue operations Submit renamed Submit, from Ledger values Version renamed Version');
+    rejected(design, 'business/billing/billing.md', '依赖成环');
   });
 
   test('每个定义都要有说明注释', () => {
     const design = fixture();
-    edit(design, 'architecture/queue/queue.tex', '  -- 报告完成\n', '');
-    rejected(design, 'architecture/queue/queue.tex', 'Queue`Complete 前面缺少说明');
+    edit(design, 'architecture/queue/queue.md', '  -- 报告完成\n', '');
+    rejected(design, 'architecture/queue/queue.md', 'Queue`Complete 前面缺少说明');
   });
 
   test('记录与状态的每个字段都要有说明注释', () => {
     const design = fixture();
-    edit(design, 'architecture/jobs.tex', 'command : seq1 of char;  -- 要执行的命令行', 'command : seq1 of char;');
-    rejected(design, 'architecture/jobs.tex', 'Jobs`Spec.command 缺少说明');
+    edit(design, 'architecture/jobs.md', 'command : seq1 of char;  -- 要执行的命令行', 'command : seq1 of char;');
+    rejected(design, 'architecture/jobs.md', 'Jobs`Spec.command 缺少说明');
   });
 
   test('文字只能引用规格里存在的名字', () => {
     const design = fixture();
-    edit(design, 'business/billing/README.tex', '\\vdmref{Queue`Submit}', '\\vdmref{Queue`Enqueue}');
-    rejected(design, 'business/billing/README.tex', 'Queue`Enqueue\\} 指向的规格元素不存在');
+    edit(design, 'business/billing/README.md', '``Queue`Submit``', '``Queue`Enqueue``');
+    rejected(design, 'business/billing/README.md', 'Queue`Enqueue`` 指向的规格元素不存在');
   });
 
   test('README 标题后先写负责范围', () => {
     const design = fixture();
-    write(design, 'architecture/queue/README.tex', '\\section{队列}\n\n\\subsection{依据}\n\n来源：示例。\n');
-    rejected(design, 'architecture/queue/README.tex', '先写一段');
+    write(design, 'architecture/queue/README.md', '# 队列\n\n## 依据\n\n来源：示例。\n');
+    rejected(design, 'architecture/queue/README.md', '先写一段');
   });
 
-  test('README 小节按固定次序且不另起小节', () => {
+  test('README 的二级标题按固定次序且不另起', () => {
     const design = fixture();
-    write(design, 'architecture/queue/README.tex', '\\section{队列}\n\n负责持有作业。\n\n\\subsection{语义}\n\n一句。\n\n\\subsection{依据}\n\n来源。\n\n\\subsection{实现}\n\n一句。\n');
+    write(design, 'architecture/queue/README.md', '# 队列\n\n负责持有作业。\n\n## 语义\n\n一句。\n\n## 依据\n\n来源。\n\n## 实现\n\n一句。\n');
     const run = cli('check', design);
     expect(run.code).toBe(1);
-    expect(run.out).toContain('小节按 依据、为什么、语义 的次序排列');
+    expect(run.out).toContain('二级标题按 依据、为什么、语义 的次序排列');
     expect(run.out).toContain('其余内容放进按内容命名的主题文件');
   });
 
-  test('每个文件都在 design.tex 的阅读次序里', () => {
+  test('每个文件都在 README.md 的阅读次序里', () => {
     const design = fixture();
-    edit(design, 'design.tex', '\\input{architecture/jobs}\n', '');
-    rejected(design, 'design.tex', 'architecture/jobs.tex 不在阅读次序里');
+    edit(design, 'README.md', '- [architecture/jobs.md](architecture/jobs.md)\n', '');
+    rejected(design, 'README.md', 'architecture/jobs.md 不在阅读次序里');
   });
 
   test('规格必须写在具名模块里，一个文件一个模块', () => {
     const design = fixture();
-    write(design, 'architecture/flat.tex', '\\subsection{散落}\n\n\\begin{vdm_al}\nvalues\n  -- 一个值\n  X : nat = 1;\n\\end{vdm_al}\n');
-    edit(design, 'design.tex', '\\input{architecture/jobs}', '\\input{architecture/jobs}\n\\input{architecture/flat}');
-    rejected(design, 'architecture/flat.tex', '具名的 module');
+    write(design, 'architecture/flat.md', `# 散落\n\n${FENCE}vdm\nvalues\n  -- 一个值\n  X : nat = 1;\n${FENCE}\n`);
+    edit(design, 'README.md', '- [architecture/jobs.md](architecture/jobs.md)\n', '- [architecture/jobs.md](architecture/jobs.md)\n- [architecture/flat.md](architecture/flat.md)\n');
+    rejected(design, 'architecture/flat.md', '具名的 module');
   });
 
   test('QuickCheck 的反例使检查失败', () => {
     const design = fixture();
-    edit(design, 'business/billing/billing.tex', 'operations\n', 'functions\n  -- 前一个数\n  Prev: nat -> nat\n  Prev(x) == x - 1;\n\noperations\n');
-    rejected(design, 'business/billing/billing.tex', '证明义务有反例');
+    edit(design, 'business/billing/billing.md', 'operations\n', 'functions\n  -- 前一个数\n  Prev: nat -> nat\n  Prev(x) == x - 1;\n\noperations\n');
+    rejected(design, 'business/billing/billing.md', '证明义务有反例');
   });
 
   test('目录只放约定的文件', () => {
     const design = fixture();
-    write(design, 'architecture/Notes.md', '随手笔记');
-    rejected(design, 'architecture/Notes.md', '只放 README.tex');
+    write(design, 'architecture/Notes.txt', '随手笔记');
+    rejected(design, 'architecture/Notes.txt', '只放 README.md');
   });
 
   test('规格里比较字符串内容是反模式', () => {
     const design = fixture();
-    edit(design, 'business/billing/billing.tex', 'operations\n', 'functions\n  -- 是不是日报\n  IsDaily: seq of char -> bool\n  IsDaily(k) == k = "daily";\n\noperations\n');
-    rejected(design, 'business/billing/billing.tex', 'Billing`IsDaily：规格里出现了字符串字面量');
+    edit(design, 'business/billing/billing.md', 'operations\n', 'functions\n  -- 是不是日报\n  IsDaily: seq of char -> bool\n  IsDaily(k) == k = "daily";\n\noperations\n');
+    rejected(design, 'business/billing/billing.md', 'Billing`IsDaily：规格里出现了字符串字面量');
   });
 
   test('显式体里改状态是实现，不是设计', () => {
     const design = fixture();
-    edit(design, 'architecture/queue/queue.tex', 'exports\n  operations ', 'exports\n  operations Reset: () ==> (); ');
-    edit(design, 'architecture/queue/queue.tex', 'end Queue', '  -- 清空持有的作业\n  Reset: () ==> ()\n  Reset() == held := {};\nend Queue');
-    rejected(design, 'architecture/queue/queue.tex', 'Queue`Reset：显式体里有赋值语句');
+    edit(design, 'architecture/queue/queue.md', 'exports\n  operations ', 'exports\n  operations Reset: () ==> (); ');
+    edit(design, 'architecture/queue/queue.md', 'end Queue', '  -- 清空持有的作业\n  Reset: () ==> ()\n  Reset() == held := {};\nend Queue');
+    rejected(design, 'architecture/queue/queue.md', 'Queue`Reset：显式体里有赋值语句');
   });
 
   test('post 恒为 true 的隐式定义不承诺任何东西', () => {
     const design = fixture();
-    edit(design, 'business/billing/billing.tex', 'end Billing', '  -- 看一眼\n  Peek(n: nat)\n  post true;\nend Billing');
-    rejected(design, 'business/billing/billing.tex', 'Billing`Peek：隐式定义的 post 恒为 true');
+    edit(design, 'business/billing/billing.md', 'end Billing', '  -- 看一眼\n  Peek(n: nat)\n  post true;\nend Billing');
+    rejected(design, 'business/billing/billing.md', 'Billing`Peek：隐式定义的 post 恒为 true');
   });
 
   test('规格里没人用的定义只是一个名字', () => {
     const design = fixture();
-    edit(design, 'architecture/queue/queue.tex', '  -- 队列状态', '  -- 一个没人用的类型\n  Orphan = token;\n\n  -- 队列状态');
-    edit(design, 'architecture/queue/queue.tex', 'definitions\n', 'definitions\ntypes\n');
-    rejected(design, 'architecture/queue/queue.tex', 'Queue`Orphan：规格里没有任何地方用到它');
+    edit(design, 'architecture/queue/queue.md', '  -- 队列状态', '  -- 一个没人用的类型\n  Orphan = token;\n\n  -- 队列状态');
+    edit(design, 'architecture/queue/queue.md', 'definitions\n', 'definitions\ntypes\n');
+    rejected(design, 'architecture/queue/queue.md', 'Queue`Orphan：规格里没有任何地方用到它');
   });
 
   test('字段的行尾注释不算下一个定义的说明', () => {
     const design = fixture();
-    edit(design, 'architecture/jobs.tex', 'command : seq1 of char;  -- 要执行的命令行\n', 'command : seq1 of char;  -- 要执行的命令行\n  Other = token;\n');
-    edit(design, 'architecture/jobs.tex', 'struct Spec', 'struct Spec; Other');
-    rejected(design, 'architecture/jobs.tex', 'Jobs`Other 前面缺少说明');
+    edit(design, 'architecture/jobs.md', 'command : seq1 of char;  -- 要执行的命令行\n', 'command : seq1 of char;  -- 要执行的命令行\n  Other = token;\n');
+    edit(design, 'architecture/jobs.md', 'struct Spec', 'struct Spec; Other');
+    rejected(design, 'architecture/jobs.md', 'Jobs`Other 前面缺少说明');
   });
 
-  test('正文里不用 verbatim', () => {
+  test('正文里的代码块只用 vdm 与图、文法', () => {
     const design = fixture();
-    edit(design, 'architecture/queue/README.tex', '负责持有作业；不负责执行。\n', '负责持有作业；不负责执行。\n\n\\begin{verbatim}\nqueue\n\\end{verbatim}\n');
-    rejected(design, 'architecture/queue/README.tex', '正文里不用 verbatim 环境');
+    edit(design, 'architecture/queue/README.md', '负责持有作业；不负责执行。\n', `负责持有作业；不负责执行。\n\n${FENCE}ts\nconst queue = 1;\n${FENCE}\n`);
+    rejected(design, 'architecture/queue/README.md', '代码块只用 vdm、mermaid、ebnf、text，这里是「ts」');
   });
 
-  test('literal 里的 TypeScript 声明要写成规格', () => {
+  test('图与文法块里的 TypeScript 声明要写成规格', () => {
     const design = fixture();
-    edit(design, 'architecture/queue/README.tex', '负责持有作业；不负责执行。\n', '负责持有作业；不负责执行。\n\n\\begin{literal}\nexport type Held = { readonly id: JobId };\n\\end{literal}\n');
-    rejected(design, 'architecture/queue/README.tex', 'literal 里是 TypeScript 声明');
+    edit(design, 'architecture/queue/README.md', '负责持有作业；不负责执行。\n', `负责持有作业；不负责执行。\n\n${FENCE}text\nexport type Held = { readonly id: JobId };\n${FENCE}\n`);
+    rejected(design, 'architecture/queue/README.md', 'text 块里是 TypeScript 声明');
   });
 
   test('文字段落里的 TypeScript 声明要写成规格', () => {
     const design = fixture();
-    edit(design, 'architecture/queue/README.tex', '负责持有作业；不负责执行。\n', '负责持有作业；不负责执行。\n\ninterface Holder { hold(id: JobId): void }\n');
-    rejected(design, 'architecture/queue/README.tex', '这段文字是 TypeScript 声明');
+    edit(design, 'architecture/queue/README.md', '负责持有作业；不负责执行。\n', '负责持有作业；不负责执行。\n\ninterface Holder { hold(id: JobId): void }\n');
+    rejected(design, 'architecture/queue/README.md', '这段文字是 TypeScript 声明');
   });
 
-  test('literal 里的图可以通过，并计入形式统计', () => {
+  test('Mermaid 图可以通过，并计入形式统计', () => {
     const design = fixture();
-    edit(design, 'architecture/queue/README.tex', '负责持有作业；不负责执行。\n', '负责持有作业；不负责执行。\n\n\\begin{literal}\nflowchart TB\n  Submit --> Held\n  Held --> Done\n\\end{literal}\n');
+    edit(design, 'architecture/queue/README.md', '负责持有作业；不负责执行。\n', `负责持有作业；不负责执行。\n\n${FENCE}mermaid\nflowchart TB\n  Submit --> Held\n  Held --> Done\n${FENCE}\n`);
     const run = cli('check', design);
     expect(run.code).toBe(0);
-    expect(run.out).toContain('literal 3 行');
+    expect(run.out).toContain('图与文法 3 行');
   });
 });

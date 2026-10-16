@@ -33,9 +33,8 @@
 
 ## 文字与文学式规格
 
-- Knuth, D. E. (1984). "Literate Programming." *The Computer Journal* 27(2)：程序与解释它的文字写在同一份文档里。据此把规格块与文字放在同一个 `.tex` 文件里。
-- Overture, *Overture VDM-10 Tool Support: User Guide* 与 [VDM-VSCode Translation](https://github.com/overturetool/vdm-vscode/wiki/Translation)：`vdm_al` 环境里的内容是规格，其余是 LaTeX 文字，VDM 解析器只读规格块。
-- [CTAN vdmlisting](https://ctan.org/pkg/vdmlisting)：排版 VDM ASCII 语法的 LaTeX 宏包，定义 `vdm_al` 环境。
+- Knuth, D. E. (1984). "Literate Programming." *The Computer Journal* 27(2)：程序与解释它的文字写在同一份文档里。据此把规格块与文字放在同一个 Markdown 文件里。
+- Battle, N. *VDMJ Tool Support: User Guide*（本地版 [`vdm/vdmj-user-guide.md`](vdm/vdmj-user-guide.md)）：文学式源文件里规格块之外的行按空行处理，报错的行号因此与原文件一致。`check` 照这个办法从 Markdown 生成同样行数的 `.vdmsl` 文件交给 VDMJ。
 
 ## 场景
 

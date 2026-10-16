@@ -104,13 +104,13 @@ QUESTIONS = {
         0.5,
         "这条依据没有来源，或拿实现与技术选型当理由：写出外部事实、来源与“所以”。",
     ),
-    "literal_code": (
-        "The state is one `block` placed in a design document's literal environment, which is reserved for diagrams "
-        "(Mermaid, ASCII art) and grammars (EBNF/BNF). Answer yes if the block is instead source code in any programming "
-        "language: type, struct, enum, class, interface or trait declarations, function signatures, or function bodies. "
+    "figure_code": (
+        "The state is one `block` placed in a design document's figure code block (```mermaid, ```ebnf or ```text), which is "
+        "reserved for diagrams (Mermaid, ASCII art) and grammars (EBNF/BNF). Answer yes if the block is instead source code in any "
+        "programming language: type, struct, enum, class, interface or trait declarations, function signatures, or function bodies. "
         "Answer no if it is a diagram or a grammar.",
         0.5,
-        "literal 里是代码：类型、接口与签名写成 VDM-SL 规格；实现放进 appendix/reference/。",
+        "图与文法块里是代码：类型、接口与签名写成 ```vdm 规格；实现放进 appendix/reference/。",
     ),
 }
 

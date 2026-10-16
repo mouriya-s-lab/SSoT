@@ -1,6 +1,6 @@
-\subsection{尝试的记录}
+# 尝试的记录
 
-\begin{vdm_al}
+```vdm
 module Attempt
 imports from Run types RunId renamed RunId
 exports
@@ -34,4 +34,4 @@ operations
   ext wr entries
   post entries = entries~ ^ [e];
 end Attempt
-\end{vdm_al}
+```

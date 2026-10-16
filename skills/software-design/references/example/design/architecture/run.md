@@ -1,6 +1,6 @@
-\subsection{运行连接}
+# 运行连接
 
-\begin{vdm_al}
+```vdm
 module Run
 exports
   types RunId; struct RequestNo; struct Started; struct StartOutcome; struct StatusOutcome
@@ -73,4 +73,4 @@ operations
           if found <> <Absent> then Finish(found)
     end;
 end Run
-\end{vdm_al}
+```

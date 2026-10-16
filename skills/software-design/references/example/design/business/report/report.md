@@ -1,6 +1,6 @@
-\subsection{日报接入}
+# 日报接入
 
-\begin{vdm_al}
+```vdm
 module Report
 imports
   from Run
@@ -21,4 +21,4 @@ operations
       others -> skip
     end;
 end Report
-\end{vdm_al}
+```

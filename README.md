@@ -42,7 +42,7 @@ flowchart TB
 
 为防止 AI 用“合法但空洞”的规格敷衍（例如把规格写成空名字登记表、用字符串装一切状态、写 `post true`），验收由三层组成：
 
-1. **确定性检查与形式化验证（`design.ts check`）**
+1. **确定性检查与形式化验证（`software-design check`）**
    - **布局与文字（`layout` / `form` / `prose`）**：核对目录与 `README.md` 小节次序、根 `README.md` 阅读次序完整性；正文只允许 `vdm` 与图/文法代码块（`mermaid`、`ebnf`、`text`），并用转译器拦截混入文字或图表块的 TypeScript 声明；校验双反引号引用的限定名全部存在；校验“索引：路径:行号”指向的文件与行存在（不写进 VDM 的内容要么留索引，要么写 `is not yet specified` 表示未定义）。
    - **结构与依赖（`structure`）**：强制一文件至多一个具名 VDM-SL 模块、每个定义与字段必有 `--` 说明注释、同名类型只在一个模块展开、模块依赖单向无环。
    - **AST 反模式（`antipattern`）**：拒绝规格中的字符串字面量（必须提升为类型）、显式体里的局部变量/循环/赋值、恒真后置条件 `post true`，以及规格内无处使用的顶层定义。
@@ -60,42 +60,42 @@ flowchart TB
 npx skills add mouriya-s-lab/SSoT --skill software-design design-migration --global --agent claude-code codex --yes
 ```
 
-检查依赖 **Java 11+** 与 **Bun**。安装后运行一次 `setup`，从 Maven Central 拉取 VDMJ 与 QuickCheck 最新正式版：
+检查依赖 **Java 11+** 与 **Bun**。安装后运行一次 `setup`：它检查 Java，从 Maven Central 拉取 VDMJ 与 QuickCheck 最新正式版到 `${XDG_DATA_HOME:-~/.local/share}/vdmj/`，并把 `software-design` 与 `vdmj` 两个命令装进 `~/.local/bin`（须在 `PATH` 上，否则 `setup` 打印要加入的 `export PATH=…` 并以 1 退出）：
 
 ```sh
 bun ~/.agents/skills/software-design/scripts/design.ts setup
 ```
 
-后续更新：
+后续更新 skill 后，再运行一次 `software-design setup` 以取得最新 VDMJ：
 
 ```sh
 npx skills update software-design design-migration --global
+software-design setup
 ```
 
 ## 使用
 
-以下脚本路径以本仓库根目录为例（全局安装时替换为 `~/.agents/skills/software-design/scripts/...`）：
-
 | 命令 | 用途 |
 |---|---|
-| `bun skills/software-design/scripts/design.ts setup` | 下载或更新 VDMJ 与 QuickCheck 到 `scripts/.vdmj/` |
-| `bun skills/software-design/scripts/design.ts init <repo>` | 初始化 `<repo>/design`（生成阅读次序 `README.md`、`architecture/README.md` 与 `appendix/` 三类子目录） |
-| `bun skills/software-design/scripts/design.ts module <design> <a/b>` | 新建架构子模块目录与 `README.md`，并追加到阅读次序 |
-| `bun skills/software-design/scripts/design.ts unit <design> <name>` | 新建业务单元目录与 `README.md`，并追加到阅读次序 |
-| `bun skills/software-design/scripts/design.ts check <design> [--json]` | 运行全部确定性检查、VDMJ 类型检查与 QuickCheck 反例搜索 |
-| `bun skills/software-design/scripts/design.ts graph <design> [--json]` | 导出目录、模块与 `imports` 依赖关系的 Mermaid 图或 JSON |
-| `bun skills/software-design/scripts/design.ts vdmj <design> [args...]` | 以全部规格文件直接运行 VDMJ（如 `-i` 进入解释器、`-e` 求值） |
+| `software-design setup` | 检查 Java，下载或更新 VDMJ 与 QuickCheck，把 `software-design` 与 `vdmj` 装进 `~/.local/bin` |
+| `software-design init <repo>` | 初始化 `<repo>/design`（生成阅读次序 `README.md`、`architecture/README.md` 与 `appendix/` 三类子目录） |
+| `software-design module <design> <a/b>` | 新建架构子模块目录与 `README.md`，并追加到阅读次序 |
+| `software-design unit <design> <name>` | 新建业务单元目录与 `README.md`，并追加到阅读次序 |
+| `software-design check <design> [--json]` | 运行全部确定性检查、VDMJ 类型检查与 QuickCheck 反例搜索 |
+| `software-design graph <design> [--json]` | 导出目录、模块与 `imports` 依赖关系的 Mermaid 图或 JSON |
+| `software-design vdmj <design> [args...]` | 以设计里的全部规格直接运行 VDMJ（如 `-i` 进入解释器、`-e` 求值） |
+| `vdmj [args...] <files>` | VDMJ 本身（带 QuickCheck 插件），读 `.vdmsl` 文件 |
 
 在 omp 的 Python `eval` 中运行语义反模式审查：
 
 ```python
-%load skills/software-design/scripts/review.py
+%load skill://software-design/scripts/review.py
 await review("/path/to/repo/design")
 ```
 
 ## 开发自测
 
-修改本仓库的检查脚本或审查校准集后，运行以下自测：
+修改本仓库的检查脚本或审查校准集后，运行以下自测（需已完成 `setup`；在仓库根运行 `bun skills/software-design/scripts/design.ts setup`，PATH 上的 `software-design` 就指向本仓库的脚本）：
 
 ```sh
 # 用真实 VDMJ 跑 CLI 回归测试（仅在自有 /tmp/software-design-check-* 临时目录读写夹具）

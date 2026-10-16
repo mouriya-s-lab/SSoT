@@ -1,16 +1,17 @@
-"""模型审查：把 design.ts review 准备的材料交给 jev（omp 的 judge），找出程序判不了的反模式。
+"""模型审查：把 software-design review 准备的材料交给 jev（omp 的 judge），找出程序判不了的反模式。
 
 在 omp 的 eval（Python）里使用：
 
-    %load ~/.agents/skills/software-design/scripts/review.py
+    %load skill://software-design/scripts/review.py
     findings = await review("/path/to/repo/design")
 
 问题的措辞与阈值用 review-calibration.json 里的正反样本校准过；改动措辞或阈值之后运行
 `await calibrate()`，每个问题都要零误判才算校准通过。
-judge 只在 omp 的 eval 里存在，所以这一步不在 design.ts check 里。
+judge 只在 omp 的 eval 里存在，所以这一步不在 software-design check 里。
 """
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -115,15 +116,17 @@ QUESTIONS = {
 }
 
 
-def materials(design: str, skill: Path = SKILL) -> list[dict]:
-    """运行 design.ts review，取得审查材料。"""
+def materials(design: str) -> list[dict]:
+    """运行 PATH 上的 software-design review，取得审查材料。"""
+    if shutil.which("software-design") is None:
+        raise RuntimeError("PATH 上没有 software-design：先按本 skill 的 references/setup.md 安装。")
     run = subprocess.run(
-        ["bun", str(skill / "scripts" / "design.ts"), "review", design],
+        ["software-design", "review", design],
         capture_output=True,
         text=True,
     )
     if run.returncode != 0:
-        raise RuntimeError(f"design.ts review 失败：\n{run.stdout}{run.stderr}")
+        raise RuntimeError(f"software-design review 失败：\n{run.stdout}{run.stderr}")
     return json.loads(run.stdout)["items"]
 
 
@@ -149,9 +152,9 @@ async def _probabilities(question: str, states: list) -> list[float]:
     return [answered[str(i)] for i in range(len(states))]
 
 
-async def review(design: str, skill: Path = SKILL, show: bool = True) -> list[dict]:
+async def review(design: str, show: bool = True) -> list[dict]:
     """对每类材料各跑一批 judge，返回超过阈值的反模式，按文件与行排序。"""
-    items = materials(design, skill)
+    items = materials(design)
     findings = []
     for question, (_, threshold, advice) in QUESTIONS.items():
         group = [item for item in items if item["question"] == question]

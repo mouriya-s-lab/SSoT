@@ -1,6 +1,6 @@
 ---
 name: software-design
-description: 软件设计文档的写法。上篇讲设计：骨架（由什么组成、用什么组成、为什么）先于业务，业务只经连接接入；业务也有抽象，业务之间点对点或点对面组合；同一样东西在持有它的模块里是细节，在观察者那里是占位符，需要才展开，行为与规则归持有它们的一方；连接、数据、不变量与状态是设计的主体；在连接不变时可以替换的做法属于实现，不写进设计。下篇讲落地：设计写成 Markdown，连接、数据、不变量与状态写成 ```vdm 代码块里的 VDM-SL 规格，规格说不清的语义写成同一文件里的文字；没有编译步骤，验收只看 check 与模型审查；每个上篇的概念都有一份通过检查的 VDM-SL 示例；附 VDM-SL 写法示例、本地 VDM 文档与多 agent 并行编写的指令表。scripts/design.ts 初始化目录、用 VDMJ 检查类型与反例、核对目录、方向、说明、文字引用、形式与语法树上的反模式，并导出模块图；scripts/review.py 在 omp eval 里用 jev 审查需要理解含义的反模式，防止规格退化成只核对名字的字符串检测器。用于写、审或重组设计文档、架构方案与 RFC；不用于 issue、PR 或实现代码。
+description: 软件设计文档的写法。上篇讲设计：骨架（由什么组成、用什么组成、为什么）先于业务，业务只经连接接入；业务也有抽象，业务之间点对点或点对面组合；同一样东西在持有它的模块里是细节，在观察者那里是占位符，需要才展开，行为与规则归持有它们的一方；连接、数据、不变量与状态是设计的主体；在连接不变时可以替换的做法属于实现，不写进设计。下篇讲落地：设计写成 Markdown，连接、数据、不变量与状态写成 ```vdm 代码块里的 VDM-SL 规格，规格说不清的语义写成同一文件里的文字；没有编译步骤，验收只看 check 与模型审查；每个上篇的概念都有一份通过检查的 VDM-SL 示例；附 VDM-SL 写法示例、本地 VDM 文档与多 agent 并行编写的指令表。PATH 上的 software-design 命令初始化目录、用 VDMJ 检查类型与反例、核对目录、方向、说明、文字引用、形式与语法树上的反模式，并导出模块图；scripts/review.py 在 omp eval 里用 jev 审查需要理解含义的反模式，防止规格退化成只核对名字的字符串检测器。用于写、审或重组设计文档、架构方案与 RFC；不用于 issue、PR 或实现代码。
 ---
 
 # software-design
@@ -536,11 +536,11 @@ architecture/bad.md:38: [antipattern] Bad`Always：隐式定义的 post 恒为 t
 在 omp 的 eval（Python）里运行：
 
 ```python
-%load ~/.agents/skills/software-design/scripts/review.py
+%load skill://software-design/scripts/review.py
 findings = await review("/path/to/repo/design")
 ```
 
-`review` 先运行 `bun scripts/design.ts review <design>` 取得判断对象，再交给 jev，输出格式与 `check` 相同。例如在示例设计的一个副本里加入这些反例：
+`review` 先运行 `software-design review <design>` 取得判断对象，再交给 jev，输出格式与 `check` 相同。例如在示例设计的一个副本里加入这些反例：
 
 ```vdm
   -- 运行的信息
@@ -571,17 +571,18 @@ jev 判断不了两件事：说明里的承诺有没有写进 `pre`、`post` 或
 
 ## 脚本与检查
 
-需要 Java 11 以上与 Bun。首次使用前在本 skill 目录运行一次 `bun scripts/design.ts setup`，它从 Maven Central 取 VDMJ 与 QuickCheck 的最新正式版，放在 `scripts/.vdmj/`；想换到更新的版本时再运行一次。
+命令 `software-design` 与 `vdmj` 在 PATH 上，直接调用；任一个不在 PATH 上，或命令报告缺少 Java、VDMJ，先按[安装](references/setup.md)装好。
 
-| 命令（相对本 skill 目录） | 作用 |
+| 命令 | 作用 |
 |---|---|
-| `bun scripts/design.ts init <仓库根>` | 生成 `<仓库根>/design`：`README.md`（阅读次序）、根模块 `README.md`、三类附录目录 |
-| `bun scripts/design.ts module <design> <a/b>` | 建立架构子模块目录与 `README.md`，并加入阅读次序；父模块必须已存在 |
-| `bun scripts/design.ts unit <design> <名字>` | 建立业务单元目录与 `README.md`，并加入阅读次序 |
-| `bun scripts/design.ts check <design> [--json]` | 检查全部规则，逐条列出违规，有违规时退出码为 1 |
-| `bun scripts/design.ts graph <design> [--json]` | 输出目录、模块与 import 关系的 Mermaid 图或 JSON |
-| `bun scripts/design.ts vdmj <design> [参数]` | 用全部规格文件运行 VDMJ，例如 `-i` 进解释器、`-e` 求值 |
-| `bun scripts/design.ts review <design>` | 输出模型审查的判断对象（JSON），由 `scripts/review.py` 交给 jev，见「反模式」 |
+| `software-design init <仓库根>` | 生成 `<仓库根>/design`：`README.md`（阅读次序）、根模块 `README.md`、三类附录目录 |
+| `software-design module <design> <a/b>` | 建立架构子模块目录与 `README.md`，并加入阅读次序；父模块必须已存在 |
+| `software-design unit <design> <名字>` | 建立业务单元目录与 `README.md`，并加入阅读次序 |
+| `software-design check <design> [--json]` | 检查全部规则，逐条列出违规，有违规时退出码为 1 |
+| `software-design graph <design> [--json]` | 输出目录、模块与 import 关系的 Mermaid 图或 JSON |
+| `software-design vdmj <design> [参数]` | 用设计里的全部规格运行 VDMJ，例如 `-i` 进解释器、`-e` 求值 |
+| `software-design review <design>` | 输出模型审查的判断对象（JSON），由 `scripts/review.py` 交给 jev，见「反模式」 |
+| `vdmj [参数] <文件>` | VDMJ 本身，带 QuickCheck 插件，读 `.vdmsl` 文件；设计目录里的 Markdown 用 `software-design vdmj` |
 
 `check` 依次检查：
 

@@ -4,11 +4,17 @@
  * 规格语义只由 VDMJ 解释；本脚本只管目录、方向、说明、文字引用、形式与 AST 反模式，并为模型审查准备材料。
  * 没有编译步骤：设计的消费者是 VDMJ 与读 Markdown 的人。
  */
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { delimiter, dirname, join, relative, resolve } from 'node:path';
 
 const SKILL = resolve(import.meta.dir, '..');
-const VENDOR = join(SKILL, 'scripts', '.vdmj');
+/** setup 把命令装进这个目录；它必须在 PATH 上，命令才能直接调用。 */
+const BIN = join(homedir(), '.local', 'bin');
+/** VDMJ 与 QuickCheck 的 jar：setup 写入，本脚本的 Java 调用与 PATH 上的 vdmj 都从这里读。不放在 skill 目录里，更新 skill 时不会被冲掉。 */
+const LIB = join(process.env.XDG_DATA_HOME || join(homedir(), '.local', 'share'), 'vdmj');
+/** setup 装进 BIN 的命令：本脚本，以及连同 QuickCheck 插件的 VDMJ。 */
+const COMMANDS = ['software-design', 'vdmj'] as const;
 const OUTLINE = join(SKILL, 'scripts', 'Outline.java');
 const TEMPLATE = join(SKILL, 'templates', 'README.md');
 const MAVEN = 'https://repo1.maven.org/maven2/dk/au/ece/vdmj';
@@ -74,16 +80,20 @@ type Command =
   | { readonly kind: 'Review'; readonly design: string };
 
 class UsageError extends Error {}
+/** 缺少 Java 或 VDMJ：报告缺什么、怎样装，不附用法。 */
+class MissingDependency extends Error {}
+/** 缺依赖时让读者去看的安装说明。 */
+const SETUP_GUIDE = join(SKILL, 'references', 'setup.md');
 
-const USAGE = `用法（相对本 skill 目录）：
-  bun scripts/design.ts setup                     获取最新 VDMJ 与 QuickCheck
-  bun scripts/design.ts init <仓库根>              生成 <仓库根>/design
-  bun scripts/design.ts module <design> <a/b>      建立架构子模块目录
-  bun scripts/design.ts unit <design> <名字>       建立业务单元目录
-  bun scripts/design.ts check <design> [--json]    检查目录、说明、方向、文字引用、形式、类型与反例
-  bun scripts/design.ts graph <design> [--json]    输出模块与 import 关系
-  bun scripts/design.ts vdmj <design> [VDMJ 参数]  用全部规格运行 VDMJ，例如 -e 或 -i
-  bun scripts/design.ts review <design>            输出模型审查的材料（JSON），由 scripts/review.py 在 omp eval 里交给 jev 判断`;
+const USAGE = `用法：
+  software-design setup                     检查 Java，取最新 VDMJ 与 QuickCheck，把 software-design 与 vdmj 装进 ~/.local/bin
+  software-design init <仓库根>              生成 <仓库根>/design
+  software-design module <design> <a/b>      建立架构子模块目录
+  software-design unit <design> <名字>       建立业务单元目录
+  software-design check <design> [--json]    检查目录、说明、方向、文字引用、形式、类型与反例
+  software-design graph <design> [--json]    输出模块与 import 关系
+  software-design vdmj <design> [VDMJ 参数]  用全部规格运行 VDMJ，例如 -e 或 -i
+  software-design review <design>            输出模型审查的材料（JSON），由 scripts/review.py 在 omp eval 里交给 jev 判断`;
 
 function assertNever(value: never): never {
   throw new Error(`程序错误：未处理的 variant ${String(value)}`);
@@ -135,9 +145,10 @@ function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-async function setup(): Promise<void> {
+/** 检查 Java，下载 jar，把 COMMANDS 装进 BIN，再确认 PATH 上的这两个名字解析到刚装的文件。 */
+async function setup(): Promise<number> {
   requireJava();
-  mkdirSync(VENDOR, { recursive: true });
+  mkdirSync(LIB, { recursive: true });
   for (const artifact of ARTIFACTS) {
     const metadata = await fetchText(`${MAVEN}/${artifact}/maven-metadata.xml`);
     const versions = [...metadata.matchAll(/<version>([0-9.]+)<\/version>/g)].map((m) => m[1]!);
@@ -145,9 +156,25 @@ async function setup(): Promise<void> {
     if (!latest) throw new Error(`Maven 上没有 ${artifact} 的正式版本。`);
     const response = await fetch(`${MAVEN}/${artifact}/${latest}/${artifact}-${latest}.jar`);
     if (!response.ok) throw new Error(`下载 ${artifact} ${latest} 失败：HTTP ${response.status}`);
-    writeFileSync(join(VENDOR, `${artifact}.jar`), new Uint8Array(await response.arrayBuffer()));
-    console.log(`${artifact} ${latest} -> ${relative(SKILL, join(VENDOR, `${artifact}.jar`))}`);
+    writeFileSync(join(LIB, `${artifact}.jar`), new Uint8Array(await response.arrayBuffer()));
+    console.log(`${artifact} ${latest} -> ${join(LIB, `${artifact}.jar`)}`);
   }
+  mkdirSync(BIN, { recursive: true });
+  const design = join(BIN, 'software-design');
+  rmSync(design, { force: true });
+  symlinkSync(import.meta.path, design);
+  const vdmj = join(BIN, 'vdmj');
+  const quote = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`;
+  writeFileSync(vdmj, `#!/bin/sh\n# 由 software-design setup 生成：VDMJ 连同 QuickCheck 插件。\nexec java -cp ${quote(classpath())} com.fujitsu.vdmj.plugins.VDMJ "$@"\n`);
+  chmodSync(vdmj, 0o755);
+  const wrong = COMMANDS.filter((name) => Bun.which(name) !== join(BIN, name));
+  if (wrong.length > 0) {
+    for (const name of wrong) console.error(`${name}：PATH 上解析到 ${Bun.which(name) ?? '（找不到）'}，应为 ${join(BIN, name)}。`);
+    console.error(`把 ${BIN} 放到 PATH 里其他同名命令之前，例如在 shell 启动文件里加入：export PATH="${BIN}:$PATH"`);
+    return 1;
+  }
+  console.log(`${COMMANDS.join('、')} 已在 PATH 上：${BIN}`);
+  return 0;
 }
 
 async function fetchText(url: string): Promise<string> {
@@ -156,13 +183,21 @@ async function fetchText(url: string): Promise<string> {
   return response.text();
 }
 
+/** PATH 上的 java 必须是 11 或更高版本；`java -version` 的版本号在旧版是 "1.8.0_…"，新版是 "11"、"27" 这样的主版本号。 */
 function requireJava(): void {
-  if (Bun.spawnSync(['java', '-version']).exitCode !== 0) throw new UsageError('需要 Java 11 或更高版本的 java 命令。');
+  const found = Bun.which('java');
+  if (!found) throw new MissingDependency(`PATH 上没有 java：需要 Java 11 或更高版本，安装方法见 ${SETUP_GUIDE}。`);
+  const run = Bun.spawnSync([found, '-version']);
+  const version = /version "(\d+)(?:\.(\d+))?/.exec(`${run.stderr.toString()}${run.stdout.toString()}`);
+  const major = version ? Number(version[1] === '1' ? version[2] : version[1]) : 0;
+  if (run.exitCode !== 0 || major < 11) {
+    throw new MissingDependency(`PATH 上的 java（${found}）${version ? `是 Java ${major}` : '报不出版本'}：需要 Java 11 或更高版本，安装方法见 ${SETUP_GUIDE}。`);
+  }
 }
 
 function classpath(): string {
-  const jars = ARTIFACTS.map((artifact) => join(VENDOR, `${artifact}.jar`));
-  if (!jars.every(existsSync)) throw new UsageError('VDMJ 尚未就绪：先运行 bun scripts/design.ts setup。');
+  const jars = ARTIFACTS.map((artifact) => join(LIB, `${artifact}.jar`));
+  if (!jars.every(existsSync)) throw new MissingDependency(`VDMJ 尚未安装到 ${LIB}：先运行 software-design setup，见 ${SETUP_GUIDE}。`);
   return jars.join(delimiter);
 }
 
@@ -1069,8 +1104,7 @@ async function main(): Promise<number> {
   const command = parseArguments(Bun.argv.slice(2));
   switch (command.kind) {
     case 'Setup':
-      await setup();
-      return 0;
+      return setup();
     case 'Init':
       init(command.repo);
       return 0;
@@ -1107,6 +1141,9 @@ try {
 } catch (error) {
   if (error instanceof UsageError) {
     console.error(`${error.message}\n\n${USAGE}`);
+    process.exitCode = 2;
+  } else if (error instanceof MissingDependency) {
+    console.error(error.message);
     process.exitCode = 2;
   } else throw error;
 }

@@ -251,6 +251,42 @@ ${FENCE}
     rejected(design, 'business/billing/billing.md', 'Billing`Peek：隐式定义的 post 恒为 true');
   });
 
+  test('post 两边相同的恒真写法同样是反模式', () => {
+    const design = fixture();
+    edit(design, 'business/billing/billing.md', 'end Billing', '  -- 看一眼作业\n  Count() r: nat\n  post r = r;\nend Billing');
+    rejected(design, 'business/billing/billing.md', 'Billing`Count：post 的两边相同（e = e），恒真');
+  });
+
+  test('post 恒不可满足是反模式', () => {
+    const design = fixture();
+    edit(design, 'business/billing/billing.md', 'end Billing', '  -- 看一眼作业\n  Count() r: nat\n  post false;\nend Billing');
+    rejected(design, 'business/billing/billing.md', 'Billing`Count：post 恒为 false，恒不可满足');
+  });
+
+  test('post 是 not true 的恒不可满足写法是反模式', () => {
+    const design = fixture();
+    edit(design, 'business/billing/billing.md', 'end Billing', '  -- 看一眼作业\n  Count() r: nat\n  post not true;\nend Billing');
+    rejected(design, 'business/billing/billing.md', 'Billing`Count：post 是 not true，恒不可满足');
+  });
+
+  test('恒真条件包在 or 里也算反模式', () => {
+    const design = fixture();
+    edit(design, 'business/billing/billing.md', 'end Billing', '  -- 看一眼作业\n  Count() r: nat\n  post r = 0 or r = r;\nend Billing');
+    rejected(design, 'business/billing/billing.md', 'Billing`Count：post 有一支的两边相同（e = e），恒真');
+  });
+
+  test('不变式恒为 true 是反模式', () => {
+    const design = fixture();
+    edit(design, 'architecture/queue/queue.md', '  init q == q = mk_Queues({})', '  inv mk_Queues(h) == true\n  init q == q = mk_Queues({})');
+    rejected(design, 'architecture/queue/queue.md', 'Queue`Queues：inv 恒为 true，恒真');
+  });
+
+  test('业务单元的需求要指出由哪个场景走通', () => {
+    const design = fixture();
+    write(design, 'business/billing/README.md', '# 出账\n\n负责月末出账。\n\n## 需求\n\n每月提交一次。\n');
+    rejected(design, 'business/billing/README.md', '这条需求没有指出由哪个场景走通它');
+  });
+
   test('同一个类型在两个模块里各展开一次，它就有两种解释', () => {
     const design = fixture();
     edit(design, 'architecture/jobs.md', 'command : seq1 of char;  -- 要执行的命令行\n', 'command : seq1 of char;  -- 要执行的命令行\n\n  -- 作业的优先级\n  Priority = <High> | <Low>;\n');

@@ -1,4 +1,19 @@
 {
+ "_note": "下标进 _holdout 的样本是留出集：只用来报误报与漏报，不用来调措辞与阈值；改动样本集或把留出集里的情形移进调参集时，一起改这个表。规则见 review.py 的 calibrate 与 SKILL.md 的「反模式」一节。",
+ "_holdout": {
+  "stringly": [1, 3, 6, 8, 10, 12, 14, 16],
+  "bool_stack": [1, 3, 5, 7, 9, 12],
+  "comment_shape": [1, 3, 5, 7, 9, 12],
+  "simulation": [1, 4],
+  "basis": [1, 4, 5, 8],
+  "prose_restates": [1, 4, 6, 8],
+  "coined": [1, 4, 6, 8, 10, 11],
+  "business_in_arch": [1, 3, 5, 7, 9, 11, 13, 15, 17, 20, 22],
+  "reasons": [1, 3, 5, 7],
+  "registry": [1, 3],
+  "impl_body": [1, 4],
+  "figure_code": [1, 3, 5, 7, 9, 11, 13]
+ },
  "stringly": [
   {
    "label": true,

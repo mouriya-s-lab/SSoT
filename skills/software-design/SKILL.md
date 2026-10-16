@@ -140,7 +140,7 @@ SignalColour = <Red> | <Amber> | <FlashingAmber> | <Green>
 - 影响整个系统的依据写在根模块；只影响一个模块的写在该模块；只约束一个业务单元的写在该单元。篇幅大的证据放进附录，依据只引用它。
 - 不编号，不建追溯矩阵。
 
-**需求**属于业务单元：需求是必须在问题域中成立、可以被观察到的结果，例如用户或外部系统看到什么，不是机器的功能列表。每条写出来源，并至少由一个场景走通。
+**需求**属于业务单元：需求是必须在问题域中成立、可以被观察到的结果，例如用户或外部系统看到什么，不是机器的功能列表。每条写出来源，并至少由一个场景走通；每条用双反引号指出走通它的那个操作，`check` 核对这个引用指向的元素存在。
 
 **理由**写为什么：
 
@@ -267,14 +267,20 @@ end
 **隐式操作。** 只写 `ext`（读写哪些状态分量）、`pre` 与 `post`，不写过程；`post` 里 `byRequest~` 是调用前的值，`++` 覆盖映射，`is_Started` 判断记录类型：
 
 ```vdm
-  -- 开始一次运行；同一请求号重复开始只产生一次运行
+  -- 开始一次运行；同一请求号重复开始只产生一次运行；结果未知时提供方可能已经开始了运行，运行表因此可能多出这个请求号的记录，调用方按请求号找回
   Start(request: RequestNo) r: StartOutcome
   ext wr byRequest wr live
   post (is_Started(r)
           and (request in set dom byRequest~ => r.run = byRequest~(request))
           and byRequest = byRequest~ ++ {request |-> r.run}
           and live = live~ union {r.run})
-       or ((r = <Rejected> or r = <Unknown>) and byRequest = byRequest~ and live = live~);
+       or (r = <Rejected> and byRequest = byRequest~ and live = live~)
+       or (r = <Unknown> and byRequest = byRequest~ and live = live~)
+       or (r = <Unknown>
+            and request not in set dom byRequest~
+            and exists run in set live \ live~ &
+                  byRequest = byRequest~ ++ {request |-> run}
+                  and live = live~ union {run});
 ```
 
 **显式函数。** 写出计算；这里用集合推导式、`inds`（序列下标）与 `exists`：
@@ -440,13 +446,13 @@ end
 - **索引与未定义。** 示例设计的内容都写进了规格，没有索引。反例：在 `Finish` 的说明末尾加上“索引：src/run.ts:40”，仓库里没有这个文件，`check` 输出：
 
   ```text
-  architecture/run.md:60: [prose] 索引：src/run.ts:40 指向的文件不存在；路径从仓库根（设计目录的上一级）算起。
+  architecture/run.md:66: [prose] 索引：src/run.ts:40 指向的文件不存在；路径从仓库根（设计目录的上一级）算起。
   ```
 
 - **说明跟着类型。** 反例：删掉 `Finish` 前面的说明，`check` 输出：
 
   ```text
-  architecture/run.md:60: [structure] Run`Finish 前面缺少说明它是什么、承诺什么的 -- 注释。
+  architecture/run.md:66: [structure] Run`Finish 前面缺少说明它是什么、承诺什么的 -- 注释。
   ```
 
 - **名字就是词汇。** 反例：根模块依据里把 ``` ``Run`Status`` ``` 写成规格里没有的 ``` ``Run`Lookup`` ```，`check` 输出：
@@ -493,12 +499,19 @@ end
 |---|---|
 | 字符串字面量 | 含义靠比较字符串内容，类型与谓词什么也没说；两个相同的字符串是不是同一样东西也无从判断。提升为类型（quote、token 或记录）。VDM 在这里是文档，不写测试数据 |
 | 显式体里有赋值、循环或 `dcl` | 写的是怎样做，不是做到什么 |
-| 隐式定义的 `post` 恒为 `true` | 不承诺任何东西 |
+| 隐式定义没有 `post`，或 `post` 恒为 `true` | 不承诺任何东西 |
+| 约束恒真 | `post` 或 `inv` 写出条件却排除不了任何情形：`post r = r`、`inv … == true`、`e <= e`、`not false`、`P or not P`。形式上写了条件，实际上什么也没说 |
+| 约束恒不可满足 | `post` 或 `inv` 恒不成立：`post false`、`e <> e`、`e < e`、`not true`、`P and not P`。这条连接永远无法满足，或这个类型永远没有合法的值 |
 | 规格里没人用的顶层定义 | 只是一个名字，只为文字引用而存在（来自 VDMJ 的 Warning 5000） |
 
 反例：
 
 ```vdm
+  -- 一项作业
+  Job ::
+    status : seq of char  -- 作业的状态
+  inv mk_Job(s) == true;
+
   -- 是否完成
   Done: Job -> bool
   Done(j) == j.status = "done";
@@ -511,12 +524,23 @@ end
   Always(n: nat)
   ext rd jobs
   post true;
+
+  -- 恒真的等价写法
+  Same(n: nat) r: nat
+  post r = r;
+
+  -- 恒不可满足
+  Never(n: nat)
+  post false;
 ```
 
 ```text
-architecture/bad.md:25: [antipattern] Bad`Done：规格里出现了字符串字面量：设计靠类型与谓词表达含义，不比较字符串内容，两个相同的字符串是不是同一样东西也无从判断；提升为 quote、token 或记录。
-architecture/bad.md:34: [antipattern] Bad`Add：显式体里有局部变量声明（dcl）、循环语句、赋值语句：这是实现。连接写成隐式定义的 post；显式体只用于场景与判定，不改状态、不写循环。
-architecture/bad.md:38: [antipattern] Bad`Always：隐式定义的 post 恒为 true，不承诺任何东西：写出它做到什么；写在代码或文字里的，改成 is not yet specified 并在说明里留“索引：路径:行号”；还没定的，只写 is not yet specified。
+architecture/bad.md:11: [antipattern] Bad`Job：inv 恒为 true，恒真，等于什么也没说：约束要排除一些情形才算承诺；写出它排除什么，写不出就说明这条连接或这个类型还没有内容。
+architecture/bad.md:22: [antipattern] Bad`Done：规格里出现了字符串字面量：设计靠类型与谓词表达含义，不比较字符串内容，两个相同的字符串是不是同一样东西也无从判断；提升为 quote、token 或记录。
+architecture/bad.md:27: [antipattern] Bad`Add：显式体里有局部变量声明（dcl）、循环语句、赋值语句：这是实现。连接写成隐式定义的 post；显式体只用于场景与判定，不改状态、不写循环。
+architecture/bad.md:30: [antipattern] Bad`Always：隐式定义的 post 恒为 true，不承诺任何东西：写出它做到什么；写在代码或文字里的，改成 is not yet specified 并在说明里留“索引：路径:行号”；还没定的，只写 is not yet specified。
+architecture/bad.md:36: [antipattern] Bad`Same：post 的两边相同（e = e），恒真，等于什么也没说：约束要排除一些情形才算承诺；写出它排除什么，写不出就说明这条连接或这个类型还没有内容。
+architecture/bad.md:40: [antipattern] Bad`Never：post 恒为 false，恒不可满足，什么也不允许：写出它允许什么、这个类型可以有哪些值。
 ```
 
 ### 模型判断（jev）
@@ -564,7 +588,7 @@ architecture/run.md:29: [review:reasons] 结局逐项列出了失败或拒绝的
 
 示例设计本身的模型审查结果是 0 处。
 
-问题的措辞与阈值用 [`scripts/review-calibration.json`](scripts/review-calibration.json) 里的正反样本校准过，每个问题在样本上零误判。改动措辞或阈值之后，在 eval 里运行 `await calibrate()`，零误判才算校准通过；遇到误判的新情形，把它加进样本再校准。
+问题的措辞与阈值用 [`scripts/review-calibration.json`](scripts/review-calibration.json) 里的正反样本校准。样本分两组：**调参集**用来改措辞与阈值，必须零误判；**留出集**（`_holdout` 里的下标）只报误报与漏报，不用来调参——否则零误判只说明拟合了这批样本。改动措辞或阈值之后，在 eval 里运行 `await calibrate()`：它先报调参集的误判，再报留出集的误报与漏报。留出集报了误报或漏报就把那一条从 `_holdout` 里删掉（移进调参集），改完再重跑。样本追加在末尾，拆分按位置；改动样本集之后两组都要重看。现在的阈值是在全部样本上定的，所以这批留出数字偏乐观。
 
 jev 判断不了两件事：说明里的承诺有没有写进 `pre`、`post` 或 `inv`，场景有没有走通需求的每一步。实验里这两类问题的正反样本分不开，所以它们留在「审查清单」由人判断。
 
@@ -596,9 +620,9 @@ jev 判断不了两件事：说明里的承诺有没有写进 `pre`、`post` 或
 | layout | 只有约定的目录与文件，名字合规，每个模块与业务单元目录有 `README.md` |
 | parse | VDMJ 能解析每个文件的规格块 |
 | structure | 一个文件至多一个具名模块；每个定义与字段有说明；同名类型只在一个模块展开；依赖方向与无环 |
-| antipattern | 语法树上的反模式：字符串字面量、显式体里的赋值与循环、`post` 恒为 `true`、没人用的顶层定义 |
+| antipattern | 语法树上的反模式：字符串字面量、显式体里的赋值与循环、`post` 恒为 `true`、恒真或恒不可满足的 `post` 与 `inv`、没人用的顶层定义 |
 | form | 正文的代码块只有 `vdm` 与 `mermaid`、`ebnf`、`text`；图与文法块、文字段落里没有 TypeScript 声明 |
-| prose | 双反引号里的限定名都指向存在的元素；“索引：路径:行号”指向的文件与行存在；`README.md` 的开头段与二级标题次序；根上的 `README.md` 恰好列出每个文件 |
+| prose | 双反引号里的限定名都指向存在的元素；业务单元「需求」的每条都引用一个规格元素；“索引：路径:行号”指向的文件与行存在；`README.md` 的开头段与二级标题次序；根上的 `README.md` 恰好列出每个文件 |
 | typecheck | VDMJ 类型检查全部模块 |
 | quickcheck | 生成证明义务，QuickCheck 没有找到反例 |
 
@@ -607,7 +631,7 @@ jev 判断不了两件事：说明里的承诺有没有写进 `pre`、`post` 或
 通过表示规格类型正确、结构与方向成立、文字引用的名字都存在、QuickCheck 没有找到反例。它不表示证明义务都成立：输出列出“未定”“未评估”的义务，例如示例设计里的这一条：
 
 ```text
-  未定：Recover: subtype obligation in 'Run' (architecture/run.md) at line 73:44
+  未定：Recover: subtype obligation in 'Run' (architecture/run.md) at line 79:44
 ```
 
 它要求 `Finish(found)` 的参数是 `RunId`；`found <> <Absent>` 保证了这一点，所以这条义务成立。未定的义务与说明、依据、理由一样靠审查清单判断。诊断编号的含义查[诊断信息](references/vdm/messages.md)。

@@ -605,6 +605,31 @@ function prose(design: string, places: readonly Place[], modules: readonly Locat
       }
     }
     if (place.readme) diagnostics.push(...readmeShape(place, file));
+    // 业务单元的需求要指出由哪个场景走通：每条需求（一个段落或一个列表项）至少引用一个规格元素。
+    if (place.layer === 'business' && place.readme) {
+      let section = '';
+      let block: { readonly line: number; readonly text: string } | null = null;
+      const flush = () => {
+        if (block !== null && !codeSpans(block.text).some((name) => name.includes('`'))) {
+          fail(place.path, block.line, '这条需求没有指出由哪个场景走通它；写出规格里走通它的那个操作，例如 ``Report`Daily``。');
+        }
+        block = null;
+      };
+      for (const { line, raw, in: where } of file.lines) {
+        if (where !== 'Prose') continue;
+        const heading = /^##\s+(.*)$/.exec(raw.trim());
+        if (heading) {
+          flush();
+          section = heading[1]!.trim();
+        } else if (section !== '需求') continue;
+        else if (raw.trim() === '') flush();
+        else {
+          if (/^\s*[-*]\s+/.test(raw)) flush();
+          block = { line: block?.line ?? line, text: `${block?.text ?? ''}${raw}\n` };
+        }
+      }
+      flush();
+    }
   }
 
   const main = join(design, 'README.md');
@@ -968,6 +993,10 @@ function antipatterns(modules: readonly Located[]): Diagnostic[] {
         return `显式体里有${details}：这是实现。连接写成隐式定义的 post；显式体只用于场景与判定，不改状态、不写循环。`;
       case 'no-promise':
         return `隐式定义的 ${details}，不承诺任何东西：写出它做到什么；写在代码或文字里的，改成 is not yet specified 并在说明里留“索引：路径:行号”；还没定的，只写 is not yet specified。`;
+      case 'tautology':
+        return `${details}，恒真，等于什么也没说：约束要排除一些情形才算承诺；写出它排除什么，写不出就说明这条连接或这个类型还没有内容。`;
+      case 'contradiction':
+        return `${details}，恒不可满足，什么也不允许：写出它允许什么、这个类型可以有哪些值。`;
       default:
         throw new Error(`程序错误：Outline.java 给出了未知的反模式 ${rule}`);
     }

@@ -42,14 +42,20 @@ state Runs of
 end
 
 operations
-  -- 开始一次运行；同一请求号重复开始只产生一次运行
+  -- 开始一次运行；同一请求号重复开始只产生一次运行；结果未知时提供方可能已经开始了运行，运行表因此可能多出这个请求号的记录，调用方按请求号找回
   Start(request: RequestNo) r: StartOutcome
   ext wr byRequest wr live
   post (is_Started(r)
           and (request in set dom byRequest~ => r.run = byRequest~(request))
           and byRequest = byRequest~ ++ {request |-> r.run}
           and live = live~ union {r.run})
-       or ((r = <Rejected> or r = <Unknown>) and byRequest = byRequest~ and live = live~);
+       or (r = <Rejected> and byRequest = byRequest~ and live = live~)
+       or (r = <Unknown> and byRequest = byRequest~ and live = live~)
+       or (r = <Unknown>
+            and request not in set dom byRequest~
+            and exists run in set live \ live~ &
+                  byRequest = byRequest~ ++ {request |-> run}
+                  and live = live~ union {run});
 
   -- 按请求号确认运行是否存在；只读，不改变运行表
   Status(request: RequestNo) r: StatusOutcome

@@ -7,9 +7,19 @@ import com.fujitsu.vdmj.ast.definitions.ASTImplicitOperationDefinition;
 import com.fujitsu.vdmj.ast.definitions.ASTStateDefinition;
 import com.fujitsu.vdmj.ast.definitions.ASTTypeDefinition;
 import com.fujitsu.vdmj.ast.definitions.ASTValueDefinition;
+import com.fujitsu.vdmj.ast.expressions.ASTAndExpression;
 import com.fujitsu.vdmj.ast.expressions.ASTBooleanLiteralExpression;
+import com.fujitsu.vdmj.ast.expressions.ASTEqualsExpression;
 import com.fujitsu.vdmj.ast.expressions.ASTExpression;
+import com.fujitsu.vdmj.ast.expressions.ASTGreaterEqualExpression;
+import com.fujitsu.vdmj.ast.expressions.ASTGreaterExpression;
+import com.fujitsu.vdmj.ast.expressions.ASTImpliesExpression;
+import com.fujitsu.vdmj.ast.expressions.ASTLessEqualExpression;
+import com.fujitsu.vdmj.ast.expressions.ASTLessExpression;
+import com.fujitsu.vdmj.ast.expressions.ASTNotEqualExpression;
+import com.fujitsu.vdmj.ast.expressions.ASTNotExpression;
 import com.fujitsu.vdmj.ast.expressions.ASTNotYetSpecifiedExpression;
+import com.fujitsu.vdmj.ast.expressions.ASTOrExpression;
 import com.fujitsu.vdmj.ast.expressions.ASTStringLiteralExpression;
 import com.fujitsu.vdmj.ast.modules.ASTImportFromModule;
 import com.fujitsu.vdmj.ast.modules.ASTModule;
@@ -145,7 +155,79 @@ public class Outline {
     if (implicit && (post == null || (post instanceof ASTBooleanLiteralExpression b && b.value.value))) {
       hits.add(new Hit("no-promise", def.location.startLine, post == null ? "没有 post" : "post 恒为 true"));
     }
+    // 约束的强度：post 与不变式恒真就什么也没说，恒不可满足就什么也不允许。字面 true 的 post 由 no-promise 报。
+    if (post != null) constraintStrength("post", post, true, def, hits);
+    if (def instanceof ASTExplicitOperationDefinition explicit) constraintStrength("post", explicit.postcondition, true, def, hits);
+    if (def instanceof ASTExplicitFunctionDefinition function && !function.isTypeInvariant) constraintStrength("post", function.postcondition, true, def, hits);
+    if (def instanceof ASTTypeDefinition type) constraintStrength("inv", type.invExpression, false, def, hits);
+    if (def instanceof ASTStateDefinition state) constraintStrength("inv", state.invExpression, false, def, hits);
     return new ArrayList<>(hits);
+  }
+
+  /**
+   * 恒真或恒不可满足的约束。写出条件却排除不了任何情形（或排除了全部情形）时，规格空转：读的人与检查器都核不出承诺。
+   * 两边是否相同按表达式的可打印形式判断——那仍然是语法树上的判断，不是比对源码文本。
+   */
+  private static void constraintStrength(String kind, ASTExpression expr, boolean literalTrueReportedElsewhere, ASTDefinition def, Set<Hit> hits) {
+    if (expr == null) return;
+    Trivial trivial = trivial(expr);
+    if (trivial == null) return;
+    if (literalTrueReportedElsewhere && trivial.reason().equals("恒为 true")) return;
+    hits.add(new Hit(trivial.verdict(), lineOf(expr, def), kind + " " + trivial.reason()));
+  }
+
+  /** 约束里恒真或恒不可满足的部分，以及它是哪一种：`tautology` 恒真，`contradiction` 恒不成立。 */
+  private record Trivial(String verdict, String reason) {}
+
+  /** 只看语法树上确定的部分：字面真假、同一表达式的自比较、否定、`P or not P` 与它们的或、与组合。 */
+  private static Trivial trivial(ASTExpression expr) {
+    if (expr instanceof ASTBooleanLiteralExpression literal) {
+      return literal.value.value ? new Trivial("tautology", "恒为 true") : new Trivial("contradiction", "恒为 false");
+    }
+    if (expr instanceof ASTNotExpression not) {
+      if (not.exp instanceof ASTBooleanLiteralExpression inner) {
+        return inner.value.value ? new Trivial("contradiction", "是 not true") : new Trivial("tautology", "是 not false");
+      }
+      Trivial inside = trivial(not.exp);
+      if (inside == null) return null;
+      boolean tautology = inside.verdict().equals("tautology");
+      return new Trivial(tautology ? "contradiction" : "tautology", "否定了" + (tautology ? "一个恒真的条件" : "一个恒不成立的条件"));
+    }
+    if (expr instanceof ASTOrExpression either) {
+      if (negationOf(either.left, either.right) || negationOf(either.right, either.left)) return new Trivial("tautology", "是 P or not P");
+      return side(either.left, either.right, "tautology", "有一支");
+    }
+    if (expr instanceof ASTAndExpression both) {
+      if (negationOf(both.left, both.right) || negationOf(both.right, both.left)) return new Trivial("contradiction", "是 P and not P");
+      return side(both.left, both.right, "contradiction", "有一支");
+    }
+    if (expr instanceof ASTEqualsExpression equal && same(equal.left, equal.right)) return new Trivial("tautology", "的两边相同（e = e）");
+    if (expr instanceof ASTNotEqualExpression unequal && same(unequal.left, unequal.right)) return new Trivial("contradiction", "的两边相同（e <> e）");
+    if (expr instanceof ASTLessExpression less && same(less.left, less.right)) return new Trivial("contradiction", "的两边相同（e < e）");
+    if (expr instanceof ASTGreaterExpression greater && same(greater.left, greater.right)) return new Trivial("contradiction", "的两边相同（e > e）");
+    if (expr instanceof ASTLessEqualExpression atMost && same(atMost.left, atMost.right)) return new Trivial("tautology", "的两边相同（e <= e）");
+    if (expr instanceof ASTGreaterEqualExpression atLeast && same(atLeast.left, atLeast.right)) return new Trivial("tautology", "的两边相同（e >= e）");
+    if (expr instanceof ASTImpliesExpression implies && same(implies.left, implies.right)) return new Trivial("tautology", "是 P => P");
+    return null;
+  }
+
+  /** 或、与的一支（或两支）已经恒真或恒不成立时，整个表达式也恒真或恒不成立。 */
+  private static Trivial side(ASTExpression left, ASTExpression right, String verdict, String where) {
+    for (ASTExpression operand : List.of(left, right)) {
+      Trivial part = trivial(operand);
+      if (part != null && part.verdict().equals(verdict)) return new Trivial(verdict, where + part.reason());
+    }
+    return null;
+  }
+
+  /** 两个表达式相同：可打印形式一致，例如 `r` 与 `r`、`x + 1` 与 `x + 1`。 */
+  private static boolean same(ASTExpression left, ASTExpression right) {
+    return left != null && right != null && left.toString().equals(right.toString());
+  }
+
+  /** `other` 是 `expr` 的否定。 */
+  private static boolean negationOf(ASTExpression expr, ASTExpression other) {
+    return other instanceof ASTNotExpression not && same(not.exp, expr);
   }
 
   /** Shapes that are anti-patterns only in some contexts; the model-based review decides each one. */

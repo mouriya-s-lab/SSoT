@@ -25,7 +25,7 @@
 - **种类只用 VDM-SL 的关键字**：`types`、`values`、`functions`、`operations`、`state`。
 - **签名写成 VDM-SL**，与 `exports` 里的写法一致，例如 `Start: RequestNo ==> StartOutcome`。
 - **文件写成相对 `design/` 的路径**，例如 `architecture/run.md`。
-- **诊断原样转发** `check` 输出的整行，例如 `architecture/run.md:60: [structure] …`，不改写、不概括。
+- **诊断原样转发** `check` 输出的整行，例如 `architecture/run.md:66: [structure] …`，不改写、不概括。
 - 一条消息只发一条指令。
 - 每条 `需要` 恰好得到一条回复：`已导出` 或 `不归我`。同一个名字换了签名再发 `需要`，也要再回复一次。
 

@@ -15,7 +15,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-SKILL = Path("~/.agents/skills/software-design").expanduser()
+SKILL = Path(__file__).resolve().parent.parent if "__file__" in globals() else Path("~/.agents/skills/software-design").expanduser()
 
 # 每个问题：判断说明、阈值（P(yes) 不低于它就算反模式）、给作者的修改说明。
 QUESTIONS = {
@@ -117,16 +117,20 @@ QUESTIONS = {
 
 
 def materials(design: str) -> list[dict]:
-    """运行 PATH 上的 software-design review，取得审查材料。"""
-    if shutil.which("software-design") is None:
-        raise RuntimeError("PATH 上没有 software-design：先按本 skill 的 references/setup.md 安装。")
+    """用本 skill 自己的 design.ts 取审查材料：材料与校准来自同一份脚本，不看 PATH 上装的是哪一份。"""
+    script = SKILL / "scripts" / "design.ts"
+    if not script.exists():
+        raise RuntimeError(f"找不到 {script}：review.py 与 scripts/design.ts 要在同一个 skill 目录里。")
+    bun = shutil.which("bun")
+    if bun is None:
+        raise RuntimeError("PATH 上没有 bun：先按本 skill 的 references/setup.md 安装。")
     run = subprocess.run(
-        ["software-design", "review", design],
+        [bun, str(script), "review", design],
         capture_output=True,
         text=True,
     )
     if run.returncode != 0:
-        raise RuntimeError(f"software-design review 失败：\n{run.stdout}{run.stderr}")
+        raise RuntimeError(f"{script} review 失败：\n{run.stdout}{run.stderr}")
     return json.loads(run.stdout)["items"]
 
 
@@ -172,16 +176,32 @@ async def review(design: str, show: bool = True) -> list[dict]:
 
 
 async def calibrate(skill: Path = SKILL) -> bool:
-    """用带标签的正反样本检查每个问题：阈值以上必须恰好是正样本。返回是否全部零误判。"""
+    """调参集上必须零误判；留出集只报误报与漏报，不用来调措辞与阈值。返回调参集是否通过。
+
+    校准集里 _holdout 列出的下标是留出集：正样本与反样本各自按原次序隔一条取一条。
+    留出集报出误报或漏报时，先把那条情形移进调参集（删掉 _holdout 里的下标），改完措辞或阈值再重跑。
+    """
     corpus = json.loads((skill / "scripts" / "review-calibration.json").read_text())
+    holdout = corpus.get("_holdout", {})
     passed = True
     for question, (_, threshold, _) in QUESTIONS.items():
         rows = corpus[question]
+        held_indices = set(holdout.get(question, []))
         probabilities = await _probabilities(question, [row["state"] for row in rows])
-        errors = sum(1 for row, p in zip(rows, probabilities) if (p >= threshold) != row["label"])
-        positive = [p for row, p in zip(rows, probabilities) if row["label"]]
-        negative = [p for row, p in zip(rows, probabilities) if not row["label"]]
-        passed = passed and errors == 0
-        print(f"{question:18s} 阈值 {threshold:.2f}  误判 {errors}/{len(rows)}  正样本最低 {min(positive):.2f}  反样本最高 {max(negative):.2f}")
-    print("校准通过" if passed else "校准未通过：调整措辞或阈值后重跑")
+        scored = [(row, p, i in held_indices) for i, (row, p) in enumerate(zip(rows, probabilities))]
+        tune = [(row, p) for row, p, held in scored if not held]
+        withheld = [(row, p) for row, p, held in scored if held]
+        wrong = sum(1 for row, p in tune if (p >= threshold) != row["label"])
+        positive = [p for row, p in tune if row["label"]]
+        negative = [p for row, p in tune if not row["label"]]
+        passed = passed and wrong == 0
+        line = f"{question:18s} 阈值 {threshold:.2f}  调参 {len(tune)} 条误判 {wrong}  正样本最低 {min(positive):.2f}  反样本最高 {max(negative):.2f}"
+        if withheld:
+            false_alarm = sum(1 for row, p in withheld if not row["label"] and p >= threshold)
+            missed = sum(1 for row, p in withheld if row["label"] and p < threshold)
+            line += f"  留出 {len(withheld)} 条误报 {false_alarm} 漏报 {missed}"
+        else:
+            line += "  没有留出样本"
+        print(line)
+    print("调参集通过" if passed else "调参集未通过：调整措辞或阈值后重跑")
     return passed

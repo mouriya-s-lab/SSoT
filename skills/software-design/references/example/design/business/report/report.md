@@ -4,21 +4,21 @@
 module Report
 imports
   from Run
-    types RequestNo renamed RequestNo
-    operations Finish renamed Finish,
-  from Submit
-    types Submitted renamed Submitted
-    operations Submit renamed Submit
+    types RequestNo renamed RequestNo; Started renamed Started
+    operations Start renamed Start; Finish renamed Finish,
+  from Attempt
+    types Entry renamed Entry
+    operations Record renamed Record
 exports
   operations Daily: RequestNo ==> ()
 definitions
 operations
-  -- 场景：提交当天的日报，落到运行上就结束它
+  -- 场景：开始当天的日报运行，记下被接受的尝试，再结束它
   Daily: RequestNo ==> ()
   Daily(request) ==
-    cases Submit(request):
-      mk_Submitted(run) -> Finish(run),
-      <Rejected> -> skip
+    cases Start(request):
+      mk_Started(run) -> (Record(mk_Entry(run, <Accepted>)); Finish(run)),
+      others -> skip
     end;
 end Report
 ```

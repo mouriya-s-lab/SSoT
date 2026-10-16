@@ -14,29 +14,28 @@
 
 ## 为什么分成 `architecture`、`business`、`appendix` 三个桶
 
-设计真正要锚定的是 `architecture/`（架构骨架与连接）：一样东西没有它就有两样东西接不上，它才进架构。业务建在骨架导出的连接之上、随需求变动；业务也有自己的抽象，业务单元之间同样点对点（调用一个连接点）或点对面（接入一个连接面）组合。
+设计真正要锚定的是 `architecture/`（架构骨架与连接）；业务建在骨架导出的连接之上、随需求自由变动，不需要靠重型文档解释，也不应大量落入形式化规格。
 
 但存量项目的旧文档往往把**架构承诺、业务逻辑、实现做法与过程计划**混写在同一段话里。如果直接让 AI“只提取架构”，AI 要么会擅自丢弃有价值的业务规则与上下文，要么会把业务分支和实现细节硬塞进架构层。为此，设计目录划分为三个职责与依赖方向严格隔离的桶：
 
 ```mermaid
 flowchart TB
     G["依据：外部事实 · 约束 · 系统级需求与质量要求"] --> A["architecture/<br/>架构骨架 · 连接 · 核心状态与不变量"]
-    A -->|"点对点 · 点对面"| B["business/<br/>业务单元：自己的类型、连接点与场景"]
-    B -->|"点对点 · 点对面"| B
+    A -->|"只经导出的操作与类型接入"| B["business/<br/>从旧文档剥离的业务需求与接入场景"]
     A -.->|"引用证据 / 存放实现参考"| X["appendix/<br/>examples/ · evidence/ · reference/"]
 ```
 
 | 目录 | 角色 | 约束规则 |
 |---|---|---|
-| `architecture/` | **设计核心**：模块树、对外连接（`exports`）、核心类型、状态与不变量；只收决定能否组合的定律 | 禁止引用 `business/`；父模块不依赖子模块；不得包含只服务单一业务单元的定义或分支 |
-| `business/` | **业务单元**：业务需求、业务自己的抽象与接入场景；下层单元可以把几个架构连接收成一个连接点交给上层 | 单向 import `architecture/` 导出的连接；业务单元之间只经导出的连接协作，不成环 |
+| `architecture/` | **设计核心**：模块树、对外连接（`exports`）、核心类型、状态与不变量 | 禁止引用 `business/`；父模块不依赖子模块；不得包含只服务单一业务单元的定义或分支 |
+| `business/` | **业务隔离区与连接探针**：承接旧文档剥离出的业务需求，或用轻量场景验证骨架连接可走通 | 单向 import `architecture/` 导出的连接；业务单元之间只经导出操作协作 |
 | `appendix/` | **实现与材料安置区**：示例（`examples/`）、调研与历史证据（`evidence/`）、实现参考（`reference/`） | 不出现在阅读次序中，不设立设计规则 |
 
 ## 仓库构成
 
 | 目录 | 说明 |
 |---|---|
-| [`skills/software-design`](skills/software-design/SKILL.md) | 从零编写、审查或重组设计文档的 skill。分思路（写不写、写在哪一层、关系词汇）、做事方法（九步，每步写明谁做、写在哪、怎么做、做完的标志）与要点（审查清单）；附目录与 VDM-SL 写法、CLI 检查与模型审查脚本、通过检查的[示例设计](skills/software-design/references/example/design/)、[本地 VDM 手册](skills/software-design/references/vdm/README.md)及[多 Agent 并行编写指令表](skills/software-design/references/commands.md) |
+| [`skills/software-design`](skills/software-design/SKILL.md) | 从零编写、审查或重组设计文档的 skill。包含设计判据、目录与 VDM-SL 写法、CLI 检查与模型审查脚本、通过检查的[示例设计](skills/software-design/references/example/design/)、[本地 VDM 手册](skills/software-design/references/vdm/README.md)及[多 Agent 并行编写指令表](skills/software-design/references/commands.md) |
 | [`skills/design-migration`](skills/design-migration/SKILL.md) | 将混杂的存量设计文档无损迁入三桶目录的 skill。遵循“只搬运、不判断对错、不改原意”：先勘察概念定义处与设计中心，搬完骨架后按区域把每条陈述拆层归入 `architecture/`、`business/` 或 `appendix/`，合并重复并统一有原文证据的叫法；搬完一条从旧文档删一条，旧文档清空即迁移完成 |
 
 ## 三层检验机制
@@ -46,12 +45,12 @@ flowchart TB
 1. **确定性检查与形式化验证（`design.ts check`）**
    - **布局与文字（`layout` / `form` / `prose`）**：核对目录与 `README.md` 小节次序、根 `README.md` 阅读次序完整性；正文只允许 `vdm` 与图/文法代码块（`mermaid`、`ebnf`、`text`），并用转译器拦截混入文字或图表块的 TypeScript 声明；校验双反引号引用的限定名全部存在。
    - **结构与依赖（`structure`）**：强制一文件至多一个具名 VDM-SL 模块、每个定义与字段必有 `--` 说明注释、模块依赖单向无环。
-   - **AST 反模式（`antipattern`）**：拒绝规格中的字符串字面量、显式体里的局部变量/循环/赋值、`is not yet specified`、恒真后置条件（`post true`，或只断言结果属于它的并类型里的某一支，如 `post is_A(r) or is_B(r)`），以及规格内无处使用的顶层定义。
+   - **AST 反模式（`antipattern`）**：拒绝规格中的字符串字面量、显式体里的局部变量/循环/赋值、`is not yet specified`、恒真后置条件 `post true`，以及规格内无处使用的顶层定义。
    - **VDMJ + QuickCheck（`parse` / `typecheck` / `quickcheck`）**：调用 VDMJ 完成语法与类型检查，生成证明义务并用 QuickCheck 搜索反例；末尾输出规格、注释、图与文字的行数占比，暴露向纯文字退化的苗头。
 2. **语义反模式模型审查（`review.py`）**
    - 在 omp 的 `eval` 中调用 `jev`，对程序无法单凭语法判定的 12 类反模式做概率审查（问题与阈值经 [`review-calibration.json`](skills/software-design/scripts/review-calibration.json) 零误判校准）：用 `seq of char` 偷藏状态/身份、多 `bool` 字段堆叠互斥状态、逐项枚举失败原因、说明注释只复述类型形状、显式体写实现过程、空名字登记表、模拟时钟/进程等运行机制、把单一业务塞进架构、文字复述规格、文字自造词、依据无来源或拿技术选型当理由、图表块里塞其他语言代码。
 3. **人工审查清单**
-   - 核对 QuickCheck 标为“未定”的证明义务、说明注释里的承诺是否全部写进了 `pre`/`post`/`inv`、场景是否走通对应需求，以及设想增删一个连接点时改动是否只落在拥有它的模块。
+   - 核对 QuickCheck 标为“未定”的证明义务、说明注释里的承诺是否全部写进了 `pre`/`post`/`inv`，以及场景是否走通对应需求。
 
 ## 安装
 

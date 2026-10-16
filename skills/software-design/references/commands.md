@@ -55,24 +55,24 @@
 
 ## 示例
 
-用 [示例设计](example/design/) 说明。主控把根目录分给写手 A，`architecture/attempt` 分给写手 B，`business/submit` 与 `business/report` 分给写手 C：
+用 [示例设计](example/design/) 说明。主控把根目录分给写手 A，`architecture/attempt` 分给写手 B，`business/report` 分给写手 C：
 
 ```text
 分配 C
-目录: business/submit; business/report
-内容: 每天生成一份日报：把当天的请求落到运行上并记下尝试，结果未知时按请求号找回，再结束运行
-归属表: architecture -> A（Run）; architecture/attempt -> B（Attempt）; business/submit -> C（Submit）; business/report -> C（Report）
-已有导出: Run`Start: RequestNo ==> StartOutcome; Run`Status: RequestNo ==> StatusOutcome; Run`Finish: RunId ==> ()
+目录: business/report
+内容: 每天生成一份日报：开始当天的运行，记下被接受的尝试，再结束它
+归属表: architecture -> A（Run）; architecture/attempt -> B（Attempt）; business/report -> C（Report）
+已有导出: Run`Start: RequestNo ==> StartOutcome; Run`Finish: RunId ==> ()
 ```
 
-C 写 `Submit` 时需要记下尝试，向拥有 `architecture/attempt` 的 B 发：
+C 写场景时需要记下尝试，向拥有 `architecture/attempt` 的 B 发：
 
 ```text
 需要 Attempt`Record
 种类: operations
 签名: Record: Entry ==> ()
-用途: Submit`Submit 在提交落到运行上之后记下尝试
-请求方: Submit
+用途: Report`Daily 在运行开始后记下被接受的尝试
+请求方: Report
 ```
 
 B 定义并导出之后回复：
@@ -91,4 +91,4 @@ A 写完 `Run` 之后公告它的全部导出，C 从中直接 import `Run`Start
 导出: Run`RunId: RunId; Run`RequestNo: struct RequestNo; Run`Started: struct Started; Run`StartOutcome: struct StartOutcome; Run`StatusOutcome: struct StatusOutcome; Run`RetrySeconds: nat1; Run`Start: RequestNo ==> StartOutcome; Run`Status: RequestNo ==> StatusOutcome; Run`Finish: RunId ==> (); Run`Recover: RequestNo ==> ()
 ```
 
-全部完成后，主控把新文件加进阅读次序并运行 `check`，示例设计的输出是“通过：4 个模块”。
+全部完成后，主控把新文件加进阅读次序并运行 `check`，示例设计的输出是“通过：3 个模块”。

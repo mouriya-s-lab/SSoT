@@ -251,17 +251,6 @@ ${FENCE}
     rejected(design, 'business/billing/billing.md', 'Billing`Peek：隐式定义的 post 恒为 true');
   });
 
-  test('post 只说结果是它的类型里的某一支，等于不承诺；少列一支是真的承诺', () => {
-    const lookup =
-      'definitions\ntypes\n  -- 查到的作业\n  Hit ::\n    n : nat;  -- 作业号\n\n  -- 查询的结局\n  Found = BRANCHES;\n\noperations\n  -- 查一项作业\n  Look(n: nat) r: Found\n  post is_Hit(r) or r = <Miss>;\n\n';
-    const covering = fixture();
-    edit(covering, 'business/billing/billing.md', 'definitions\noperations\n', lookup.replace('BRANCHES', 'Hit | <Miss>'));
-    rejected(covering, 'business/billing/billing.md', 'Billing`Look：隐式定义的 post 只说结果是它的类型里的某一支');
-    const narrowing = fixture();
-    edit(narrowing, 'business/billing/billing.md', 'definitions\noperations\n', lookup.replace('BRANCHES', 'Hit | <Miss> | <Gone>'));
-    expect(cli('check', narrowing).out).not.toContain('Billing`Look：隐式定义的 post');
-  });
-
   test('规格里没人用的定义只是一个名字', () => {
     const design = fixture();
     edit(design, 'architecture/queue/queue.md', '  -- 队列状态', '  -- 一个没人用的类型\n  Orphan = token;\n\n  -- 队列状态');

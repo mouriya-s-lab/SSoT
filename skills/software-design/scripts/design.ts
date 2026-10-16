@@ -16,7 +16,7 @@ const SECTIONS = {
 } as const;
 
 type Layer = keyof typeof SECTIONS;
-type Stage = 'layout' | 'parse' | 'structure' | 'antipattern' | 'prose' | 'typecheck' | 'quickcheck';
+type Stage = 'layout' | 'parse' | 'structure' | 'antipattern' | 'form' | 'prose' | 'typecheck' | 'quickcheck';
 type Diagnostic = { readonly stage: Stage; readonly path: string; readonly line: number; readonly message: string };
 type Place = { readonly path: string; readonly layer: Layer; readonly dir: string; readonly readme: boolean };
 type Field = { readonly name: string; readonly line: number };
@@ -54,9 +54,11 @@ type Obligations = {
   readonly maybe: readonly string[];
   readonly unchecked: readonly string[];
 };
+/** 设计正文里各种形式的行数：规格、规格里的说明注释、原文块（literal）、文字。 */
+type Forms = { readonly spec: number; readonly comment: number; readonly literal: number; readonly prose: number };
 type Report =
-  | { readonly kind: 'Accepted'; readonly modules: number; readonly warnings: readonly string[]; readonly obligations: Obligations }
-  | { readonly kind: 'Rejected'; readonly diagnostics: readonly Diagnostic[]; readonly warnings: readonly string[] };
+  | { readonly kind: 'Accepted'; readonly modules: number; readonly warnings: readonly string[]; readonly obligations: Obligations; readonly forms: Forms }
+  | { readonly kind: 'Rejected'; readonly diagnostics: readonly Diagnostic[]; readonly warnings: readonly string[]; readonly forms: Forms };
 type Command =
   | { readonly kind: 'Setup' }
   | { readonly kind: 'Init'; readonly repo: string }
@@ -462,6 +464,91 @@ function prose(design: string, places: readonly Place[], modules: readonly Locat
   return diagnostics;
 }
 
+// ---------------------------------------------------------------- 形式
+
+/** 原样排版的 LaTeX 环境。正文里只允许 literal，并且只用来放图与文法。 */
+const VERBATIM_ENVIRONMENTS = ['verbatim', 'verbatim*', 'Verbatim', 'BVerbatim', 'LVerbatim', 'lstlisting', 'alltt', 'minted'];
+const TYPESCRIPT = new Bun.Transpiler({ loader: 'ts' });
+const JAVASCRIPT = new Bun.Transpiler({ loader: 'js' });
+
+/** 用 Bun 的转译器判断：TypeScript 解析得了、JavaScript 解析不了，就是带 TypeScript 专有语法（类型、接口）的代码。 */
+function typescriptOnly(code: string): boolean {
+  const parses = (transpiler: Bun.Transpiler) => {
+    try {
+      transpiler.transformSync(code);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  return code.trim() !== '' && parses(TYPESCRIPT) && !parses(JAVASCRIPT);
+}
+
+/**
+ * 规格写成 VDM-SL，文字写规格说不清的语义。原样排版的代码块会让设计退化成包在 LaTeX 里的旧文档：
+ * 正文里不允许 verbatim 一类的环境；literal 只放图与文法，里面与文字段落里都不能出现 TypeScript 声明。
+ */
+function form(design: string, places: readonly Place[]): { readonly diagnostics: readonly Diagnostic[]; readonly forms: Forms } {
+  const diagnostics: Diagnostic[] = [];
+  const fail = (path: string, line: number, message: string) => diagnostics.push({ stage: 'form', path, line, message });
+  const counts = { spec: 0, comment: 0, literal: 0, prose: 0 };
+  for (const place of places) {
+    type Mode = { readonly kind: 'Prose' } | { readonly kind: 'Spec' } | { readonly kind: 'Literal'; readonly line: number; readonly body: string[] };
+    let mode: Mode = { kind: 'Prose' };
+    let paragraph: { line: number; body: string[] } | null = null;
+    const endParagraph = () => {
+      if (paragraph && typescriptOnly(paragraph.body.join('\n'))) {
+        fail(place.path, paragraph.line, '这段文字是 TypeScript 声明：类型、接口与签名写成 VDM-SL 规格，不放进文字。');
+      }
+      paragraph = null;
+    };
+    readFileSync(join(design, place.path), 'utf8').split('\n').forEach((raw, i) => {
+      const line = i + 1;
+      const trimmed = raw.trim();
+      const begin = /^\\begin\{([^}]*)\}/.exec(trimmed)?.[1];
+      const end = /^\\end\{([^}]*)\}/.exec(trimmed)?.[1];
+      switch (mode.kind) {
+        case 'Spec':
+          if (end === 'vdm_al') mode = { kind: 'Prose' };
+          else if (trimmed.startsWith('--')) counts.comment++;
+          else if (trimmed !== '') counts.spec++;
+          return;
+        case 'Literal':
+          if (end === 'literal') {
+            if (typescriptOnly(mode.body.join('\n'))) {
+              fail(place.path, mode.line, 'literal 里是 TypeScript 声明：literal 只放图与文法；类型、接口与签名写成 VDM-SL 规格。');
+            }
+            mode = { kind: 'Prose' };
+          } else {
+            mode.body.push(raw);
+            if (trimmed !== '') counts.literal++;
+          }
+          return;
+        case 'Prose':
+          if (begin === 'vdm_al' || begin === 'literal') {
+            endParagraph();
+            mode = begin === 'vdm_al' ? { kind: 'Spec' } : { kind: 'Literal', line, body: [] };
+            return;
+          }
+          if (begin !== undefined && VERBATIM_ENVIRONMENTS.includes(begin)) {
+            fail(place.path, line, `正文里不用 ${begin} 环境：规格写进 vdm_al，图与文法写进 literal，其余写成文字。`);
+          }
+          if (trimmed === '' || /^\\(sub)*section\{/.test(trimmed)) endParagraph();
+          else if (!trimmed.startsWith('%')) {
+            counts.prose++;
+            if (paragraph) paragraph.body.push(raw);
+            else paragraph = { line, body: [raw] };
+          }
+          return;
+        default:
+          assertNever(mode);
+      }
+    });
+    endParagraph();
+  }
+  return { diagnostics, forms: counts };
+}
+
 function readmeShape(place: Place, lines: readonly ProseLine[]): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   const fail = (line: number, message: string) => diagnostics.push({ stage: 'prose', path: place.path, line, message });
@@ -519,23 +606,42 @@ type ReviewQuestion =
   | 'business_in_arch'
   | 'prose_restates'
   | 'coined'
-  | 'basis';
+  | 'basis'
+  | 'literal_code';
 type Paragraph = { readonly path: string; readonly line: number; readonly section: string; readonly text: string };
+type Literal = { readonly path: string; readonly line: number; readonly text: string };
 
 /** 把文字里的 LaTeX 引用写法还原成读者看到的名字。 */
 function plain(text: string): string {
   return text.replace(/\\(?:vdmref|texttt)\{([^}]*)\}/g, '$1');
 }
 
-function paragraphs(design: string, place: Place): Paragraph[] {
+/** 文字段落与 literal 块分开取：literal 是图与文法，不按文字审查。 */
+function paragraphs(design: string, place: Place): { readonly paragraphs: readonly Paragraph[]; readonly literals: readonly Literal[] } {
   const result: Paragraph[] = [];
+  const literals: Literal[] = [];
   let section = '';
   let current: { line: number; lines: string[] } | null = null;
+  let literal: { line: number; lines: string[] } | null = null;
   const flush = () => {
     if (current) result.push({ path: place.path, line: current.line, section, text: plain(current.lines.join('')) });
     current = null;
   };
-  for (const { line, text, inSpec } of proseLines(readFileSync(join(design, place.path), 'utf8'))) {
+  const raw = readFileSync(join(design, place.path), 'utf8').split('\n');
+  for (const { line, text, inSpec } of proseLines(raw.join('\n'))) {
+    const source = raw[line - 1]!;
+    if (literal) {
+      if (/^\s*\\end\{literal\}/.test(source)) {
+        literals.push({ path: place.path, line: literal.line, text: literal.lines.join('\n') });
+        literal = null;
+      } else literal.lines.push(source);
+      continue;
+    }
+    if (/^\s*\\begin\{literal\}/.test(source)) {
+      flush();
+      literal = { line, lines: [] };
+      continue;
+    }
     const heading = /^\\(sub)?section\{([^}]*)\}/.exec(text);
     if (inSpec || text === '' || heading) {
       flush();
@@ -546,7 +652,7 @@ function paragraphs(design: string, place: Place): Paragraph[] {
     else current = { line, lines: [text] };
   }
   flush();
-  return result;
+  return { paragraphs: result, literals };
 }
 
 /** 每个定义的源码：从它的说明注释开始，到下一个定义的说明之前。 */
@@ -573,7 +679,7 @@ function review(design: string): readonly ReviewItem[] {
   const loaded = load(design);
   const blocking = loaded.diagnostics.filter((d) => d.stage === 'layout' || d.stage === 'parse');
   if (blocking.length > 0) {
-    printReport({ kind: 'Rejected', diagnostics: blocking, warnings: [] });
+    printDiagnostics(blocking);
     throw new UsageError('先让 check 通过 layout 与 parse 两个阶段，再做模型审查。');
   }
   const items: ReviewItem[] = [];
@@ -622,11 +728,13 @@ function review(design: string): readonly ReviewItem[] {
 
   for (const place of loaded.places) {
     const spec = (specsByDir.get(place.dir) ?? []).join('\n\n');
-    for (const para of paragraphs(design, place)) {
+    const text = paragraphs(design, place);
+    for (const para of text.paragraphs) {
       items.push({ question: 'coined', path: para.path, line: para.line, state: { spec_names: names, paragraph: para.text } });
       if (spec !== '' && para.section !== '') items.push({ question: 'prose_restates', path: para.path, line: para.line, state: { spec, paragraph: para.text } });
       if (para.section === '依据') items.push({ question: 'basis', path: para.path, line: para.line, state: { paragraph: para.text } });
     }
+    for (const literal of text.literals) items.push({ question: 'literal_code', path: literal.path, line: literal.line, state: { block: literal.text } });
   }
   return items;
 }
@@ -748,14 +856,17 @@ function antipatterns(modules: readonly Located[]): Diagnostic[] {
 
 function check(design: string): Report {
   const loaded = load(design);
-  if (loaded.diagnostics.some((d) => d.stage === 'layout' || d.stage === 'parse')) return { kind: 'Rejected', diagnostics: loaded.diagnostics, warnings: [] };
+  const shape = form(design, loaded.places);
+  if (loaded.diagnostics.some((d) => d.stage === 'layout' || d.stage === 'parse')) {
+    return { kind: 'Rejected', diagnostics: loaded.diagnostics, warnings: [], forms: shape.forms };
+  }
   const written = prose(design, loaded.places, loaded.modules);
   const spec = loaded.modules.length > 0 ? vdmj(design, loaded.modules) : { diagnostics: [], warnings: [], obligations: { total: 0, provable: 0, maybe: [], unchecked: [] } };
   const unused = unusedDefinitions(loaded.modules, spec.warnings);
-  const diagnostics = [...loaded.diagnostics, ...written, ...spec.diagnostics, ...unused.diagnostics];
+  const diagnostics = [...loaded.diagnostics, ...shape.diagnostics, ...written, ...spec.diagnostics, ...unused.diagnostics];
   return diagnostics.length > 0
-    ? { kind: 'Rejected', diagnostics, warnings: unused.warnings }
-    : { kind: 'Accepted', modules: loaded.modules.length, warnings: unused.warnings, obligations: spec.obligations };
+    ? { kind: 'Rejected', diagnostics, warnings: unused.warnings, forms: shape.forms }
+    : { kind: 'Accepted', modules: loaded.modules.length, warnings: unused.warnings, obligations: spec.obligations, forms: shape.forms };
 }
 
 /**
@@ -780,16 +891,24 @@ function unusedDefinitions(modules: readonly Located[], warnings: readonly strin
   return { diagnostics, warnings: rest };
 }
 
+function printDiagnostics(diagnostics: readonly Diagnostic[]): void {
+  for (const d of diagnostics) console.error(`${d.path}:${d.line}: [${d.stage}] ${d.message}`);
+  console.error(`未通过：${diagnostics.length} 处。`);
+}
+
 function printReport(report: Report): void {
   for (const warning of report.warnings) console.log(`提示：${warning}`);
+  const f = report.forms;
+  const form = `正文：规格 ${f.spec} 行，说明注释 ${f.comment} 行，文字 ${f.prose} 行，literal ${f.literal} 行。`;
   switch (report.kind) {
     case 'Rejected':
-      for (const d of report.diagnostics) console.error(`${d.path}:${d.line}: [${d.stage}] ${d.message}`);
-      console.error(`未通过：${report.diagnostics.length} 处。`);
+      printDiagnostics(report.diagnostics);
+      console.error(form);
       return;
     case 'Accepted': {
       const o = report.obligations;
       console.log(`通过：${report.modules} 个模块；类型检查无错误；QuickCheck 没有找到反例。`);
+      console.log(form);
       console.log(`证明义务 ${o.total} 条：可证 ${o.provable}，未定 ${o.maybe.length}，未评估 ${o.unchecked.length}。`);
       for (const title of o.maybe) console.log(`  未定：${title}`);
       for (const title of o.unchecked) console.log(`  未评估：${title}`);
@@ -805,7 +924,7 @@ function graph(design: string, json: boolean): number {
   const loaded = load(design);
   const blocking = loaded.diagnostics.filter((d) => d.stage === 'layout' || d.stage === 'parse');
   if (blocking.length > 0) {
-    printReport({ kind: 'Rejected', diagnostics: blocking, warnings: [] });
+    printDiagnostics(blocking);
     return 1;
   }
   const modules = loaded.modules.map((m) => ({ name: m.name, path: m.place.path, dir: m.place.dir, layer: m.place.layer, imports: m.imports.map((i) => i.module) }));
@@ -836,7 +955,7 @@ function passthrough(design: string, args: readonly string[]): number {
   const loaded = load(design);
   const blocking = loaded.diagnostics.filter((d) => d.stage === 'layout' || d.stage === 'parse');
   if (blocking.length > 0) {
-    printReport({ kind: 'Rejected', diagnostics: blocking, warnings: [] });
+    printDiagnostics(blocking);
     return 1;
   }
   const files = [...new Set(loaded.modules.map((m) => m.place.path))].sort();

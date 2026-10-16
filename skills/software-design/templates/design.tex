@@ -7,6 +7,9 @@
 \usepackage[hidelinks]{hyperref}
 % 文字里指认规格元素：\vdmref{模块}、\vdmref{模块`名字}、\vdmref{模块`名字.字段}。check 核对它们存在。
 \newcommand{\vdmref}[1]{\texttt{\detokenize{#1}}}
+% 原样排版的图与文法（Mermaid、ASCII 图、EBNF）。正文里只有它能原样排版，check 拒绝 verbatim 与里面的 TypeScript 声明。
+\usepackage{verbatim}
+\newenvironment{literal}{\verbatim}{\endverbatim}
 
 \title{设计}
 \date{}

@@ -1154,5 +1154,97 @@
     "definition": "-- 场景：开始当天的日报运行，记下被接受的尝试，再结束它\n  Daily: RequestNo ==> ()\n  Daily(request) ==\n    cases Start(request):\n      mk_Started(run) -> (Record(mk_Entry(run, <Accepted>)); Finish(run)),\n      others -> skip\n    end;"
    }
   }
+ ],
+ "literal_code": [
+  {
+   "label": true,
+   "state": {
+    "block": "export type BucketRef = {\n  readonly runtime: RuntimeId;\n};"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "block": "pub struct Ticket {\n    pub responsible: Principal,\n    pub versions: Vec<Version>,\n    pub basis: Set<LogPosition>,\n}"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "block": "pub enum DerivationNode {\n    Const(Value),\n    Field { input: InputId, path: FieldPath },\n    Window { size: usize, inner: Box<DerivationNode> },\n}"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "block": "data Outcome = Accepted RunId | Rejected | Unknown\n\nstart :: Request -> IO Outcome"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "block": "fn sma(xs: &[f64], n: usize) -> Vec<f64> {\n    let mut out = Vec::new();\n    for w in xs.windows(n) { out.push(w.iter().sum::<f64>() / n as f64); }\n    out\n}"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "block": "trait Rule {\n    type State;\n    fn step(&self, ctx: &Ctx, s: Self::State, i: Input) -> Result<(Self::State, Vec<Outcome>), Rejection>;\n}"
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "block": "class Run:\n    id: str\n    live: bool\n\n    def finish(self) -> None: ..."
+   }
+  },
+  {
+   "label": true,
+   "state": {
+    "block": "interface Workspace {\n  open(runtime: RuntimeId): Promise<Result<Handle, Failure>>;\n  close(handle: Handle): Promise<void>;\n}"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "block": "flowchart TB\n  CLI --> Daemon\n  Daemon --> Engine\n  Engine --> Store[(Store)]\n  Engine --> Workspace"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "block": "sequenceDiagram\n  participant C as Client\n  participant Q as Queue\n  C->>Q: submit\n  Q-->>C: accepted"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "block": "stateDiagram-v2\n  [*] --> Drafting\n  Drafting --> AwaitingDecision: submit\n  AwaitingDecision --> Closed: decide"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "block": "edge     = source \"->\" target ;\nsource   = node \".\" output ;\ntarget   = node \".\" attribute ;"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "block": "design/\n├── architecture/\n│   ├── run/\n│   └── attempt/\n└── business/"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "block": "Shape ::= Text | Int | List Shape | Record { name: Shape }"
+   }
+  },
+  {
+   "label": false,
+   "state": {
+    "block": "  Run ──start──▶ Live ──finish──▶ Ended\n         │\n         └──crash──▶ Halted"
+   }
+  }
  ]
 }

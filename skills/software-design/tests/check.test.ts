@@ -261,4 +261,30 @@ end Ledger
     edit(design, 'architecture/jobs.tex', 'struct Spec', 'struct Spec; Other');
     rejected(design, 'architecture/jobs.tex', 'Jobs`Other 前面缺少说明');
   });
+
+  test('正文里不用 verbatim', () => {
+    const design = fixture();
+    edit(design, 'architecture/queue/README.tex', '负责持有作业；不负责执行。\n', '负责持有作业；不负责执行。\n\n\\begin{verbatim}\nqueue\n\\end{verbatim}\n');
+    rejected(design, 'architecture/queue/README.tex', '正文里不用 verbatim 环境');
+  });
+
+  test('literal 里的 TypeScript 声明要写成规格', () => {
+    const design = fixture();
+    edit(design, 'architecture/queue/README.tex', '负责持有作业；不负责执行。\n', '负责持有作业；不负责执行。\n\n\\begin{literal}\nexport type Held = { readonly id: JobId };\n\\end{literal}\n');
+    rejected(design, 'architecture/queue/README.tex', 'literal 里是 TypeScript 声明');
+  });
+
+  test('文字段落里的 TypeScript 声明要写成规格', () => {
+    const design = fixture();
+    edit(design, 'architecture/queue/README.tex', '负责持有作业；不负责执行。\n', '负责持有作业；不负责执行。\n\ninterface Holder { hold(id: JobId): void }\n');
+    rejected(design, 'architecture/queue/README.tex', '这段文字是 TypeScript 声明');
+  });
+
+  test('literal 里的图可以通过，并计入形式统计', () => {
+    const design = fixture();
+    edit(design, 'architecture/queue/README.tex', '负责持有作业；不负责执行。\n', '负责持有作业；不负责执行。\n\n\\begin{literal}\nflowchart TB\n  Submit --> Held\n  Held --> Done\n\\end{literal}\n');
+    const run = cli('check', design);
+    expect(run.code).toBe(0);
+    expect(run.out).toContain('literal 3 行');
+  });
 });

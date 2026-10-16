@@ -441,6 +441,24 @@ function structure(design: string, places: readonly Place[], files: readonly Par
     }
   }
 
+  // 一样东西只展开一次：同名类型在两个模块里各定义一遍，它就有两种解释。
+  const expansions = new Map<string, { readonly module: string; readonly path: string; readonly line: number }[]>();
+  for (const module of modules) {
+    for (const definition of module.definitions) {
+      if (definition.kind !== 'type') continue;
+      const seen = expansions.get(definition.name) ?? [];
+      seen.push({ module: module.name, path: module.place.path, line: definition.line });
+      expansions.set(definition.name, seen);
+    }
+  }
+  for (const [name, seen] of expansions) {
+    if (seen.length < 2) continue;
+    const owners = seen.map((s) => s.module).join('、');
+    for (const s of seen.slice(1)) {
+      fail(s.path, s.line, `类型 ${name} 在 ${owners} 里各展开了一次：一样东西只在持有它的模块展开一次，其余模块 import 它。`);
+    }
+  }
+
   const byName = new Map(modules.map((m) => [m.name, m]));
   const edges = new Map<string, Map<string, { readonly path: string; readonly line: number }>>();
   for (const module of modules) {

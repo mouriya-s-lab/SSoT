@@ -251,6 +251,13 @@ ${FENCE}
     rejected(design, 'business/billing/billing.md', 'Billing`Peek：隐式定义的 post 恒为 true');
   });
 
+  test('同一个类型在两个模块里各展开一次，它就有两种解释', () => {
+    const design = fixture();
+    edit(design, 'architecture/jobs.md', 'command : seq1 of char;  -- 要执行的命令行\n', 'command : seq1 of char;  -- 要执行的命令行\n\n  -- 作业的优先级\n  Priority = <High> | <Low>;\n');
+    edit(design, 'architecture/queue/queue.md', 'definitions\n', 'definitions\ntypes\n  -- 作业的优先级\n  Priority = <Urgent> | <Normal> | <Idle>;\n\n');
+    rejected(design, 'architecture/queue/queue.md', '类型 Priority 在 Jobs、Queue 里各展开了一次');
+  });
+
   test('规格里没人用的定义只是一个名字', () => {
     const design = fixture();
     edit(design, 'architecture/queue/queue.md', '  -- 队列状态', '  -- 一个没人用的类型\n  Orphan = token;\n\n  -- 队列状态');

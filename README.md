@@ -44,7 +44,7 @@ flowchart TB
 
 1. **确定性检查与形式化验证（`design.ts check`）**
    - **布局与文字（`layout` / `form` / `prose`）**：核对目录与 `README.md` 小节次序、根 `README.md` 阅读次序完整性；正文只允许 `vdm` 与图/文法代码块（`mermaid`、`ebnf`、`text`），并用转译器拦截混入文字或图表块的 TypeScript 声明；校验双反引号引用的限定名全部存在。
-   - **结构与依赖（`structure`）**：强制一文件至多一个具名 VDM-SL 模块、每个定义与字段必有 `--` 说明注释、模块依赖单向无环。
+   - **结构与依赖（`structure`）**：强制一文件至多一个具名 VDM-SL 模块、每个定义与字段必有 `--` 说明注释、同名类型只在一个模块展开、模块依赖单向无环。
    - **AST 反模式（`antipattern`）**：拒绝规格中的字符串字面量、显式体里的局部变量/循环/赋值、`is not yet specified`、恒真后置条件 `post true`，以及规格内无处使用的顶层定义。
    - **VDMJ + QuickCheck（`parse` / `typecheck` / `quickcheck`）**：调用 VDMJ 完成语法与类型检查，生成证明义务并用 QuickCheck 搜索反例；末尾输出规格、注释、图与文字的行数占比，暴露向纯文字退化的苗头。
 2. **语义反模式模型审查（`review.py`）**

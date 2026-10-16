@@ -36,7 +36,7 @@ flowchart TB
 
 | 目录 | 说明 |
 |---|---|
-| [`skills/software-design`](skills/software-design/SKILL.md) | 从零编写、审查或重组设计文档的 skill。包含设计判据、目录与 VDM-SL 写法、CLI 检查与模型审查脚本、通过检查的[示例设计](skills/software-design/references/example/design/)、[本地 VDM 手册](skills/software-design/references/vdm/README.md)及[多 Agent 并行编写指令表](skills/software-design/references/commands.md) |
+| [`skills/software-design`](skills/software-design/SKILL.md) | 从零编写、审查或重组设计文档的 skill。分思路（写不写、写在哪一层、关系词汇）、做事方法（九步，每步写明谁做、写在哪、怎么做、做完的标志）与要点（审查清单）；附目录与 VDM-SL 写法、CLI 检查与模型审查脚本、通过检查的[示例设计](skills/software-design/references/example/design/)、[本地 VDM 手册](skills/software-design/references/vdm/README.md)及[多 Agent 并行编写指令表](skills/software-design/references/commands.md) |
 | [`skills/design-migration`](skills/design-migration/SKILL.md) | 将混杂的存量设计文档无损迁入三桶目录的 skill。遵循“只搬运、不判断对错、不改原意”：先勘察概念定义处与设计中心，搬完骨架后按区域把每条陈述拆层归入 `architecture/`、`business/` 或 `appendix/`，合并重复并统一有原文证据的叫法；搬完一条从旧文档删一条，旧文档清空即迁移完成 |
 
 ## 三层检验机制

@@ -216,7 +216,7 @@ public class Outline {
   private static Trivial side(ASTExpression left, ASTExpression right, String verdict, String where) {
     for (ASTExpression operand : List.of(left, right)) {
       Trivial part = trivial(operand);
-      if (part != null && part.verdict().equals(verdict)) return new Trivial(verdict, where + part.reason());
+      if (part != null && part.verdict().equals(verdict)) return new Trivial(verdict, part.reason().startsWith(where) ? part.reason() : where + part.reason());
     }
     return null;
   }

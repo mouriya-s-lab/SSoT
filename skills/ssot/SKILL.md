@@ -86,6 +86,10 @@ flowchart TB
 | 2. 审业务分流与走通 | `ssot-review-flow` | 看值与动作在模块间的流转是否自然，识别因责任混杂造成的积压或断链，核对每条需求、失败结局与生命周期能否顺畅走通 |
 | 3. 审规格严密与用词 | `ssot-review-spec` | 运行 `ssot check` 与 `review.py`，核对未定证明义务、说明注释与谓词的一致性、以及字面用词是否准确 |
 
+审查按阶段顺序推进：
+- **边读边想，不走过场翻页：** 按 `design/README.md` 的次序每读完一个模块，当场想清楚它的视角、它定义了什么、哪里看着顺眼或积压，不把“读完所有文件”当成不带思考的机械前置任务。
+- **先审框架与流转，最后跑机械工具：** 先完成阶段 1（`ssot-review-arch`）与阶段 2（`ssot-review-flow`）的思考，最后进入阶段 3（`ssot-review-spec`）时才运行 `ssot check` 与 `review.py`。（`ssot check` 一次运行就会跑完 AST 反模式、VDMJ 类型检查与 QuickCheck，不需要把 `design/` 复制到 `/tmp` 修改后重跑。）
+
 ### 3. 存量旧文档迁移
 已有大量旧设计文档要迁入 `design/` 时，加载 **`ssot-migration`**：迁移期间遵循“只搬运、不判断对错、不改动原意”，等 `legacy-design/` 搬空后再进入审设计与写设计流水线。
 

@@ -1,13 +1,13 @@
-"""模型审查：把 software-design review 准备的材料交给 jev（omp 的 judge），找出程序判不了的反模式。
+"""模型审查：把 ssot review 准备的材料交给 jev（omp 的 judge），找出程序判不了的反模式。
 
 在 omp 的 eval（Python）里使用：
 
-    %load skill://software-design/scripts/review.py
+    %load skill://ssot/scripts/review.py
     findings = await review("/path/to/repo/design")
 
 问题的措辞与阈值用 review-calibration.json 里的正反样本校准过；改动措辞或阈值之后运行
 `await calibrate()`，每个问题都要零误判才算校准通过。
-judge 只在 omp 的 eval 里存在，所以这一步不在 software-design check 里。
+judge 只在 omp 的 eval 里存在，所以这一步不在 ssot check 里。
 """
 
 import json
@@ -15,7 +15,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-SKILL = Path(__file__).resolve().parent.parent if "__file__" in globals() else Path("~/.agents/skills/software-design").expanduser()
+SKILL = Path(__file__).resolve().parent.parent if "__file__" in globals() else Path("~/.agents/skills/ssot").expanduser()
 
 # 每个问题：判断说明、阈值（P(yes) 不低于它就算反模式）、给作者的修改说明。
 QUESTIONS = {

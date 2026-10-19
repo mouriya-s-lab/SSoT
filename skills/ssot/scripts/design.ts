@@ -14,7 +14,7 @@ const BIN = join(homedir(), '.local', 'bin');
 /** VDMJ 与 QuickCheck 的 jar：setup 写入，本脚本的 Java 调用与 PATH 上的 vdmj 都从这里读。不放在 skill 目录里，更新 skill 时不会被冲掉。 */
 const LIB = join(process.env.XDG_DATA_HOME || join(homedir(), '.local', 'share'), 'vdmj');
 /** setup 装进 BIN 的命令：本脚本，以及连同 QuickCheck 插件的 VDMJ。 */
-const COMMANDS = ['software-design', 'vdmj'] as const;
+const COMMANDS = ['ssot', 'vdmj'] as const;
 const OUTLINE = join(SKILL, 'scripts', 'Outline.java');
 const TEMPLATE = join(SKILL, 'templates', 'README.md');
 const MAVEN = 'https://repo1.maven.org/maven2/dk/au/ece/vdmj';
@@ -86,14 +86,14 @@ class MissingDependency extends Error {}
 const SETUP_GUIDE = join(SKILL, 'references', 'setup.md');
 
 const USAGE = `用法：
-  software-design setup                     检查 Java，取最新 VDMJ 与 QuickCheck，把 software-design 与 vdmj 装进 ~/.local/bin
-  software-design init <仓库根>              生成 <仓库根>/design
-  software-design module <design> <a/b>      建立架构子模块目录
-  software-design unit <design> <名字>       建立业务单元目录
-  software-design check <design> [--json]    检查目录、说明、方向、文字引用、形式、类型与反例
-  software-design graph <design> [--json]    输出模块与 import 关系
-  software-design vdmj <design> [VDMJ 参数]  用全部规格运行 VDMJ，例如 -e 或 -i
-  software-design review <design>            输出模型审查的材料（JSON），由 scripts/review.py 在 omp eval 里交给 jev 判断`;
+  ssot setup                     检查 Java，取最新 VDMJ 与 QuickCheck，把 ssot 与 vdmj 装进 ~/.local/bin
+  ssot init <仓库根>              生成 <仓库根>/design
+  ssot module <design> <a/b>      建立架构子模块目录
+  ssot unit <design> <名字>       建立业务单元目录
+  ssot check <design> [--json]    检查目录、说明、方向、文字引用、形式、类型与反例
+  ssot graph <design> [--json]    输出模块与 import 关系
+  ssot vdmj <design> [VDMJ 参数]  用全部规格运行 VDMJ，例如 -e 或 -i
+  ssot review <design>            输出模型审查的材料（JSON），由 scripts/review.py 在 omp eval 里交给 jev 判断`;
 
 function assertNever(value: never): never {
   throw new Error(`程序错误：未处理的 variant ${String(value)}`);
@@ -160,12 +160,12 @@ async function setup(): Promise<number> {
     console.log(`${artifact} ${latest} -> ${join(LIB, `${artifact}.jar`)}`);
   }
   mkdirSync(BIN, { recursive: true });
-  const design = join(BIN, 'software-design');
+  const design = join(BIN, 'ssot');
   rmSync(design, { force: true });
   symlinkSync(import.meta.path, design);
   const vdmj = join(BIN, 'vdmj');
   const quote = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`;
-  writeFileSync(vdmj, `#!/bin/sh\n# 由 software-design setup 生成：VDMJ 连同 QuickCheck 插件。\nexec java -cp ${quote(classpath())} com.fujitsu.vdmj.plugins.VDMJ "$@"\n`);
+  writeFileSync(vdmj, `#!/bin/sh\n# 由 ssot setup 生成：VDMJ 连同 QuickCheck 插件。\nexec java -cp ${quote(classpath())} com.fujitsu.vdmj.plugins.VDMJ "$@"\n`);
   chmodSync(vdmj, 0o755);
   const wrong = COMMANDS.filter((name) => Bun.which(name) !== join(BIN, name));
   if (wrong.length > 0) {
@@ -197,7 +197,7 @@ function requireJava(): void {
 
 function classpath(): string {
   const jars = ARTIFACTS.map((artifact) => join(LIB, `${artifact}.jar`));
-  if (!jars.every(existsSync)) throw new MissingDependency(`VDMJ 尚未安装到 ${LIB}：先运行 software-design setup，见 ${SETUP_GUIDE}。`);
+  if (!jars.every(existsSync)) throw new MissingDependency(`VDMJ 尚未安装到 ${LIB}：先运行 ssot setup，见 ${SETUP_GUIDE}。`);
   return jars.join(delimiter);
 }
 
@@ -337,7 +337,7 @@ let shadowRoot: string | null = null;
 
 function shadow(design: string, places: readonly Place[]): string {
   if (shadowRoot) rmSync(shadowRoot, { recursive: true, force: true });
-  const root = mkdtempSync('/tmp/software-design-');
+  const root = mkdtempSync('/tmp/ssot-');
   shadowRoot = root;
   for (const place of places) {
     const file = readMarkdown(design, place.path);

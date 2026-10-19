@@ -78,7 +78,7 @@ function cli(...args: string[]): { readonly code: number; readonly out: string }
 
 /** 一份通过检查的最小设计：根模块、一个子模块、一个业务单元。 */
 function fixture(): string {
-  const root = mkdtempSync('/tmp/software-design-check-');
+  const root = mkdtempSync('/tmp/ssot-check-');
   roots.push(root);
   const design = join(root, 'design');
   expect(cli('init', root).code).toBe(0);

@@ -1072,7 +1072,7 @@ function printReport(report: Report): void {
       console.log(`证明义务 ${o.total} 条：可证 ${o.provable}，未定 ${o.maybe.length}，未评估 ${o.unchecked.length}。`);
       for (const title of o.maybe) console.log(`  未定：${title}`);
       for (const title of o.unchecked) console.log(`  未评估：${title}`);
-      console.log('未定与未评估的义务、说明、依据和理由仍按 SKILL.md 的审查清单人工判断。');
+      console.log('未定与未评估的义务、说明、依据和理由仍按 ssot-review-arch、ssot-review-flow、ssot-review-spec 审查。');
       return;
     }
     default:

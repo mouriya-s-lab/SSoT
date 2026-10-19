@@ -55,7 +55,7 @@
 
 ## 示例
 
-用 [示例设计](example/design/) 说明。主控把根目录分给写手 A，`architecture/attempt` 分给写手 B，`business/report` 分给写手 C：
+用 [示例设计](../../ssot/references/example/design/) 说明。主控把根目录分给写手 A，`architecture/attempt` 分给写手 B，`business/report` 分给写手 C：
 
 ```text
 分配 C

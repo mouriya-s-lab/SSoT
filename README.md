@@ -33,13 +33,13 @@ flowchart TB
 
 ## 仓库构成
 
-本仓库按认知重心将设计编写、设计审查与存量迁移拆分为 8 个协同的 skill，由 `ssot` 统一编排路由：
+本仓库由 `ssot` 定义贯穿写设计与审设计的**五条共同思维方式**（抽象边界与可替换性、源头事实与纯函数投影、视角与最小展开、一般规律与分层细化、形式化分工与名实对齐），并将写设计、审设计与存量迁移拆分为对称的阶段 skill：
 
 | 目录 | 阶段 / 角色 | 说明 |
 |---|---|---|
-| [`skills/ssot`](skills/ssot/SKILL.md) | **总纲与路由** | 定义三桶目录结构、CLI 工具（`scripts/design.ts`）与模型审查脚本（`scripts/review.py`）、通过检查的[示例设计](skills/ssot/references/example/design/)，以及“写设计 / 审设计 / 迁移”三条流水线的阶段门控路由 |
-| [`skills/ssot-arch`](skills/ssot-arch/SKILL.md) | **写设计 · 阶段 1** | 核心抽象与架构设计：划定抽象边界（连接不变可替换的做法归实现、边界外不存在），回答架构三问，确定两条轴、视角与持有者、连接面与状态不变量、生命周期嵌套以及依据与理由 |
-| [`skills/ssot-business`](skills/ssot-business/SKILL.md) | **写设计 · 阶段 2** | 业务单元、确定性判定与场景设计：在架构导出的连接之上划分业务单元，明确上层一般规律与下层策略细化的关系，定义问题域需求、两个实现必须一致的确定性判定（显式纯函数）以及走通需求与失败分支的无循环代表元场景（显式操作） |
+| [`skills/ssot`](skills/ssot/SKILL.md) | **总纲 · 共同思维与路由** | 定义三桶目录结构、贯穿全流程的五条共同思维方式、CLI 工具（`scripts/design.ts`）与模型审查脚本（`scripts/review.py`）、通过检查的[示例设计](skills/ssot/references/example/design/)，以及“写设计 / 审设计 / 迁移”三条流水线的阶段门控路由 |
+| [`skills/ssot-arch`](skills/ssot-arch/SKILL.md) | **写设计 · 阶段 1** | 核心抽象与架构设计：运用共同思维，通过四步正向建表（依据 $\to$ 抽象边界表、模块树与正交底座划分、概念持有与最小展开表、连接面与生命周期嵌套表）设计 `design/architecture/` |
+| [`skills/ssot-business`](skills/ssot-business/SKILL.md) | **写设计 · 阶段 2** | 业务单元、确定性判定与场景设计：运用共同思维，通过四步正向建表（业务单元与组合拓扑表、架构底线 $\to$ 业务策略细化表、问题域需求 $\to$ 全集纯函数 + 代表元场景表、跨模块实参值传递表）设计 `design/business/` |
 | [`skills/ssot-spec`](skills/ssot-spec/SKILL.md) | **写设计 · 阶段 3** | VDM-SL 形式化规格、受控文字与工具验收：目录与 `README.md` 小节规范、VDM-SL 语法写法、受控文字（双反引号限定名与代码索引）、AST 与 `jev` 语义反模式、[本地 VDM 文档](skills/ssot-spec/references/vdm/README.md)及[多 Agent 并行编写指令表](skills/ssot-spec/references/commands.md) |
 | [`skills/ssot-review-arch`](skills/ssot-review-arch/SKILL.md) | **审设计 · 阶段 1** | 抽象模型与架构/业务边界审查：通过四步正向推导（从依据构建抽象边界表、构建概念持有与视角展开表、构建架构底线到业务细化对齐表、执行连接不变可替换性检验），以推导表的断口或冲突判定架构与业务分工是否成立 |
 | [`skills/ssot-review-flow`](skills/ssot-review-flow/SKILL.md) | **审设计 · 阶段 2** | 值流转、连接闭合与需求场景走通审查：通过三步正向追踪（函数形参到调用处实参的值传递链、业务需求到“全集纯函数 + 代表元单步场景”的对账表、生命周期开闭序列与跨连接时序表），检验业务需求与失败分支能否借架构连接走到底 |

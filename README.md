@@ -33,14 +33,22 @@ flowchart TB
 
 ## 仓库构成
 
-| 目录 | 说明 |
-|---|---|
-| [`skills/ssot`](skills/ssot/SKILL.md) | 从零编写、审查或重组设计文档的 skill。包含设计判据、目录与 VDM-SL 写法、CLI 检查与模型审查脚本、通过检查的[示例设计](skills/ssot/references/example/design/)、[本地 VDM 手册](skills/ssot/references/vdm/README.md)及[多 Agent 并行编写指令表](skills/ssot/references/commands.md) |
-| [`skills/ssot-migration`](skills/ssot-migration/SKILL.md) | 将混杂的存量设计文档无损迁入三桶目录的 skill。遵循“只搬运、不判断对错、不改原意”：先勘察概念定义处与设计中心，搬完骨架后按区域把每条陈述拆层归入 `architecture/`、`business/` 或 `appendix/`，合并重复并统一有原文证据的叫法；搬完一条从旧文档删一条，旧文档清空即迁移完成 |
+本仓库按认知重心将设计编写、设计审查与存量迁移拆分为 8 个协同的 skill，由 `ssot` 统一编排路由：
+
+| 目录 | 阶段 / 角色 | 说明 |
+|---|---|---|
+| [`skills/ssot`](skills/ssot/SKILL.md) | **总纲与路由** | 定义三桶目录结构、CLI 工具（`scripts/design.ts`）与模型审查脚本（`scripts/review.py`）、通过检查的[示例设计](skills/ssot/references/example/design/)，以及“写设计 / 审设计 / 迁移”三条流水线的阶段门控路由 |
+| [`skills/ssot-arch`](skills/ssot-arch/SKILL.md) | **写设计 · 阶段 1** | 核心抽象与架构设计：划定抽象边界（连接不变可替换的做法归实现、边界外不存在），回答架构三问，确定两条轴、视角与持有者、连接面与状态不变量、生命周期嵌套以及依据与理由 |
+| [`skills/ssot-business`](skills/ssot-business/SKILL.md) | **写设计 · 阶段 2** | 业务单元、确定性判定与场景设计：在架构导出的连接之上划分业务单元，明确上层一般规律与下层策略细化的关系，定义问题域需求、两个实现必须一致的确定性判定（显式纯函数）以及走通需求与失败分支的无循环代表元场景（显式操作） |
+| [`skills/ssot-spec`](skills/ssot-spec/SKILL.md) | **写设计 · 阶段 3** | VDM-SL 形式化规格、受控文字与工具验收：目录与 `README.md` 小节规范、VDM-SL 语法写法、受控文字（双反引号限定名与代码索引）、AST 与 `jev` 语义反模式、按需检索的[本地 VDM 字典](skills/ssot-spec/references/vdm/README.md)及[多 Agent 并行编写指令表](skills/ssot-spec/references/commands.md) |
+| [`skills/ssot-review-arch`](skills/ssot-review-arch/SKILL.md) | **审设计 · 阶段 1** | 抽象逻辑与架构/业务边界审查：强制第零步先还原系统的抽象逻辑，通过五道假阳性筛子（防边界外脑补、防等价当身份、防细化当矛盾、防存储与实例思维、防契约外缺结局误判），审查架构与业务分工、视角与持有者、依赖方向、依据与理由 |
+| [`skills/ssot-review-flow`](skills/ssot-review-flow/SKILL.md) | **审设计 · 阶段 2** | 值流转、连接闭合与需求场景走通审查：顺着函数与值追踪跨模块参数流转是否断链（排查死参数与硬编码空值），按 VDM-SL 无循环代表元约定核对每条业务需求、可观察失败结局与生命周期嵌套能否走到底 |
+| [`skills/ssot-review-spec`](skills/ssot-review-spec/SKILL.md) | **审设计 · 阶段 3** | 形式化规格严密性、证明义务与字面用词审查：运行 `ssot check` 与 `review.py`，逐条裁决 QuickCheck 未定证明义务，核对 `--` 说明承诺是否落入 `inv`/`pre`/`post`（揪出伪装重言式与漏写保持条件），清理会引发面向对象实例、缓存或存储误读的字面用词 |
+| [`skills/ssot-migration`](skills/ssot-migration/SKILL.md) | **存量旧文档迁移** | 将混杂的存量设计文档无损迁入三桶目录：遵循“只搬运、不判断对错、不改原意”，先勘察概念定义处与设计中心，搬完骨架后按区域把每条陈述拆层归入 `architecture/`、`business/` 或 `appendix/`；搬完一条从旧文档删一条，旧文档清空即迁移完成 |
 
 ## 三层检验机制
 
-为防止 AI 用“合法但空洞”的规格敷衍（例如把规格写成空名字登记表、用字符串装一切状态、写 `post true` 或 `post r = r` 这类恒真条件），验收由三层组成：
+为防止 AI 用“合法但空洞”的规格敷衍（例如把规格写成空名字登记表、用字符串装一切状态、写 `post true` 或 `post r = r` 这类恒真条件），或审查时跳过抽象逻辑直接逐行找茬，验收由三层组成：
 
 1. **确定性检查与形式化验证（`ssot check`）**
    - **布局与文字（`layout` / `form` / `prose`）**：核对目录与 `README.md` 小节次序、根 `README.md` 阅读次序完整性；正文只允许 `vdm` 与图/文法代码块（`mermaid`、`ebnf`、`text`），并用转译器拦截混入文字或图表块的 TypeScript 声明；校验双反引号引用的限定名全部存在，业务单元「需求」的每条都引用了走通它的场景；校验“索引：路径:行号”指向的文件与行存在（不写进 VDM 的内容要么留索引，要么写 `is not yet specified` 表示未定义）。
@@ -49,15 +57,15 @@ flowchart TB
    - **VDMJ + QuickCheck（`parse` / `typecheck` / `quickcheck`）**：调用 VDMJ 完成语法与类型检查，生成证明义务并用 QuickCheck 搜索反例；末尾输出规格、注释、图与文字的行数占比，暴露向纯文字退化的苗头。
 2. **语义反模式模型审查（`review.py`）**
    - 在 omp 的 `eval` 中调用 `jev`，对程序无法单凭语法判定的 12 类反模式做概率审查（问题与阈值经 [`review-calibration.json`](skills/ssot/scripts/review-calibration.json) 的调参集零误判校准，留出集只报误报与漏报）：用 `seq of char` 偷藏状态/身份、多 `bool` 字段堆叠互斥状态、逐项枚举失败原因、说明注释只复述类型形状、显式体写实现过程、空名字登记表、模拟时钟/进程等运行机制、把单一业务塞进架构、文字复述规格、文字自造词、依据无来源或拿技术选型当理由、图表块里塞其他语言代码。
-3. **人工审查清单**
-   - 核对 QuickCheck 标为“未定”的证明义务、说明注释里的承诺是否全部写进了 `pre`/`post`/`inv`，以及场景是否走通对应需求。
+3. **三阶段人工/Agent 审查流水线（`ssot-review-arch` → `ssot-review-flow` → `ssot-review-spec`）**
+   - 先还原系统抽象逻辑并审架构与业务边界，再追查跨模块值流转与需求场景走通，最后核对 QuickCheck 未定证明义务、说明承诺与 `pre`/`post`/`inv` 的严密性以及字面误导用词。
 
 ## 安装
 
-通过 GitHub 安装（按实际使用的 Agent 调整 `--agent`）：
+通过 GitHub 安装全部 8 个 skill（按实际使用的 Agent 调整 `--agent`）：
 
 ```sh
-npx skills add mouriya-s-lab/SSoT --skill ssot ssot-migration --global --agent claude-code codex --yes
+npx skills add mouriya-s-lab/SSoT --skill ssot ssot-arch ssot-business ssot-spec ssot-review-arch ssot-review-flow ssot-review-spec ssot-migration --global --agent claude-code codex --yes
 ```
 
 检查依赖 **Java 11+** 与 **Bun**。不需要另外运行安装命令：首次加载 `ssot` skill 时，`SKILL.md` 里的 `` !`…` `` 行发现 `ssot` 或 `vdmj` 不在 `PATH` 上，就自动从 Maven Central 拉取 VDMJ 与 QuickCheck 最新正式版到 `${XDG_DATA_HOME:-~/.local/share}/vdmj/`，把这两个命令装进 `~/.local/bin`，并把安装结果（缺 Java、`~/.local/bin` 不在 `PATH` 上时的处理办法）放进加载的 skill 正文；已安装时这一行没有输出。Claude Code 在加载 skill 时执行这一行；不执行它的 agent 需手动运行一次 `bun ~/.agents/skills/ssot/scripts/design.ts setup`。细节见 [`references/setup.md`](skills/ssot/references/setup.md)。
@@ -65,7 +73,7 @@ npx skills add mouriya-s-lab/SSoT --skill ssot ssot-migration --global --agent c
 后续更新：
 
 ```sh
-npx skills update ssot ssot-migration --global
+npx skills update ssot ssot-arch ssot-business ssot-spec ssot-review-arch ssot-review-flow ssot-review-spec ssot-migration --global
 ```
 
 ## 使用

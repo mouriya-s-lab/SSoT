@@ -5,7 +5,7 @@ description: 把内容多、但有价值的旧语义设计文档搬进 ssot 的 
 
 # ssot-migration
 
-把旧文档的内容原样搬进 `ssot` 的设计目录。新目录的写法、`check` 与 `graph` 见 `ssot`，开始前先读它。
+把旧文档的内容原样搬进 `ssot` 的设计目录。新目录的布局、VDM-SL 写法、`check` 与 `graph` 见 `ssot` 与 `ssot-spec`，开始前先读它们。
 
 ## 禁令
 
@@ -243,4 +243,4 @@ flowchart TB
 
 `legacy-design/` 搬空时，迁移就结束了。在同一个提交里删掉 `legacy-design/`，并把仓库说明与规则里指向它、为迁移而放宽的地方改回只指 `design/`。
 
-`check` 里剩下的诊断、模型审查的结果，以及对设计的审查与修改，属于后续阶段，按 `ssot` 进行，那已经不是迁移。
+`check` 里剩下的诊断、模型审查的结果，以及对设计的审查与修改，属于后续阶段，按 `ssot` 的审查流水线（`ssot-review-arch` → `ssot-review-flow` → `ssot-review-spec`）与设计流水线（`ssot-arch` → `ssot-business` → `ssot-spec`）进行，那已经不是迁移。

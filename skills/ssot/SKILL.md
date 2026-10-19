@@ -69,12 +69,6 @@ design/ 全文 → [1. ssot-review-arch] → 抽象逻辑与架构/业务边界 
 - 迁移期间遵循“只搬运、不判断对错、不改动原意”，不按设计或审查阶段修改内容；
 - 等 `legacy-design/` 全部搬空后，再进入上面的「审设计流水线」与「写设计流水线」。
 
-## 阅读纪律（防上下文污染）
-
-- **按阶段读 Skill**：执行哪个阶段就读哪个阶段的 `SKILL.md`。
-- **严禁通读字典与工具源码**：`ssot-spec` 下的 VDM 语言手册、报错码目录（共约 2 万行）以及本目录下的 `scripts/*`、`tests/*`、`review-calibration.json` 属于按需检索的字典与工具实现。除正在排查具体 VDMJ 报错码或修改本仓库脚本外，**任何时候都不得通读这些文件**。
-- **审设计或改设计时，通读的是目标仓库的 `design/`**（按 `design/README.md` 的阅读次序逐篇读完 `architecture/` 与 `business/`）。
-
 ## 命令与检查概览
 
 命令 `ssot` 与 `vdmj` 在 PATH 上，直接调用。加载本 skill 时自动检查并按需安装（细节见 [`references/setup.md`](references/setup.md)）：

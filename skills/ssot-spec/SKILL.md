@@ -1,6 +1,6 @@
 ---
 name: ssot-spec
-description: SSoT 设计阶段三：VDM-SL 形式化规格、受控文字与工具验收。规定设计目录的文件与 README 布局、VDM-SL 语法写法、规格说不清的语义与受控文字（双反引号限定名、代码索引）、AST 与 jev 模型反模式、按需查阅本地 VDM 字典及多 agent 并行编写指令。在将设计写成 Markdown + VDM-SL 并运行 ssot check 与 review.py 验收时调用。
+description: SSoT 设计阶段三：VDM-SL 形式化规格、受控文字与工具验收。规定设计目录的文件与 README 布局、VDM-SL 语法写法、规格说不清的语义与受控文字（双反引号限定名、代码索引）、AST 与 jev 模型反模式、本地 VDM 参考文档及多 agent 并行编写指令。在将设计写成 Markdown + VDM-SL 并运行 ssot check 与 review.py 验收时调用。
 ---
 
 # ssot-spec：VDM-SL 形式化规格、受控文字与工具验收
@@ -235,13 +235,13 @@ findings = await review("/path/to/repo/design")
 
 ---
 
-## 五、按需查阅字典与多 Agent 并行编写
+## 五、本地 VDM 文档与多 Agent 并行编写
 
-### 1. 本地 VDM 字典（严禁通读，仅按需检索）
+### 1. 本地 VDM 文档
 
-[`references/vdm/`](references/vdm/README.md) 存放 VDM-SL 与 VDMJ 的完整参考手册（共约 2 万行）。**铁律：这些文件是字典，严禁在开始任务时全文通读！** 只在写规格遇到具体语法不确定、或 `ssot check` 报出特定 Error/Warning 编号时，用 `grep` 或按行号范围局部查阅：
+VDM 的本地文档在 [`references/vdm/`](references/vdm/README.md)，随时查阅：
 
-| 字典文件 | 何时按需检索 |
+| 文档 | 用途 |
 |---|---|
 | [运算符速查](references/vdm/operators.md) | 查集合、序列、映射、记录 `mu` 等运算符写法时 |
 | [诊断信息](references/vdm/messages.md) | `ssot check` 报出 `Error XXXX` 或 `Warning XXXX`，按编号 `grep` 查含义时 |

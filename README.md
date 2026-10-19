@@ -40,7 +40,7 @@ flowchart TB
 | [`skills/ssot`](skills/ssot/SKILL.md) | **总纲与路由** | 定义三桶目录结构、CLI 工具（`scripts/design.ts`）与模型审查脚本（`scripts/review.py`）、通过检查的[示例设计](skills/ssot/references/example/design/)，以及“写设计 / 审设计 / 迁移”三条流水线的阶段门控路由 |
 | [`skills/ssot-arch`](skills/ssot-arch/SKILL.md) | **写设计 · 阶段 1** | 核心抽象与架构设计：划定抽象边界（连接不变可替换的做法归实现、边界外不存在），回答架构三问，确定两条轴、视角与持有者、连接面与状态不变量、生命周期嵌套以及依据与理由 |
 | [`skills/ssot-business`](skills/ssot-business/SKILL.md) | **写设计 · 阶段 2** | 业务单元、确定性判定与场景设计：在架构导出的连接之上划分业务单元，明确上层一般规律与下层策略细化的关系，定义问题域需求、两个实现必须一致的确定性判定（显式纯函数）以及走通需求与失败分支的无循环代表元场景（显式操作） |
-| [`skills/ssot-spec`](skills/ssot-spec/SKILL.md) | **写设计 · 阶段 3** | VDM-SL 形式化规格、受控文字与工具验收：目录与 `README.md` 小节规范、VDM-SL 语法写法、受控文字（双反引号限定名与代码索引）、AST 与 `jev` 语义反模式、按需检索的[本地 VDM 字典](skills/ssot-spec/references/vdm/README.md)及[多 Agent 并行编写指令表](skills/ssot-spec/references/commands.md) |
+| [`skills/ssot-spec`](skills/ssot-spec/SKILL.md) | **写设计 · 阶段 3** | VDM-SL 形式化规格、受控文字与工具验收：目录与 `README.md` 小节规范、VDM-SL 语法写法、受控文字（双反引号限定名与代码索引）、AST 与 `jev` 语义反模式、[本地 VDM 文档](skills/ssot-spec/references/vdm/README.md)及[多 Agent 并行编写指令表](skills/ssot-spec/references/commands.md) |
 | [`skills/ssot-review-arch`](skills/ssot-review-arch/SKILL.md) | **审设计 · 阶段 1** | 抽象逻辑与架构/业务边界审查：强制第零步先还原系统的抽象逻辑，通过五道假阳性筛子（防边界外脑补、防等价当身份、防细化当矛盾、防存储与实例思维、防契约外缺结局误判），审查架构与业务分工、视角与持有者、依赖方向、依据与理由 |
 | [`skills/ssot-review-flow`](skills/ssot-review-flow/SKILL.md) | **审设计 · 阶段 2** | 值流转、连接闭合与需求场景走通审查：顺着函数与值追踪跨模块参数流转是否断链（排查死参数与硬编码空值），按 VDM-SL 无循环代表元约定核对每条业务需求、可观察失败结局与生命周期嵌套能否走到底 |
 | [`skills/ssot-review-spec`](skills/ssot-review-spec/SKILL.md) | **审设计 · 阶段 3** | 形式化规格严密性、证明义务与字面用词审查：运行 `ssot check` 与 `review.py`，逐条裁决 QuickCheck 未定证明义务，核对 `--` 说明承诺是否落入 `inv`/`pre`/`post`（揪出伪装重言式与漏写保持条件），清理会引发面向对象实例、缓存或存储误读的字面用词 |

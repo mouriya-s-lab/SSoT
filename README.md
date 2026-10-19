@@ -33,17 +33,17 @@ flowchart TB
 
 ## 仓库构成
 
-本仓库由 `ssot` 阐述设计的**三层核心直觉**（主体、地面与观察者分离：动物发力、地面承载反作用力、外部观察者解释什么算跳跃；顺眼与积压感：多来源积压即责任失守；直面根本：审视到底有多少东西需要被定义、定义得对不对，不迁就错误的大体框架做修补）与**五步推演脉络**，并将写设计、审设计与存量迁移拆分为对称推进的阶段 skill：
+本仓库由 `ssot` 阐述设计的思考思路（多视角下的权衡、值与动作的位置、积压感与责任边界、需要定义多少东西及定义得对不对），并将写设计、审设计与存量迁移拆分为对称推进的阶段 skill：
 
 | 目录 | 阶段 / 角色 | 说明 |
 |---|---|---|
-| [`skills/ssot`](skills/ssot/SKILL.md) | **总纲 · 核心直觉与路由** | 阐述设计的三层核心直觉与五步推演脉络、三桶目录结构、CLI 工具（`scripts/design.ts`）与模型审查脚本（`scripts/review.py`）、通过检查的[示例设计](skills/ssot/references/example/design/)，以及“写设计 / 审设计 / 迁移”三条流水线路由 |
-| [`skills/ssot-arch`](skills/ssot-arch/SKILL.md) | **写设计 · 阶段 1** | 核心抽象与架构设计：从外部依据推边界 $\to$ 切分正交模块树 $\to$ 分离静态值（动物属性，优先 `token`）与承载动作的连接面（地面）$\to$ 定最小源头事实、不变量与生命周期 |
-| [`skills/ssot-business`](skills/ssot-business/SKILL.md) | **写设计 · 阶段 2** | 业务单元、确定性判定与场景设计：从问题域定需求与业务单元 $\to$ 各负其责避免多来源集中积压、在架构底线内写纯函数判定 $\to$ 用代表元场景定连接调用次序 $\to$ 核对调用链值流转 |
+| [`skills/ssot`](skills/ssot/SKILL.md) | **总纲 · 思考思路与路由** | 阐述设计的思考思路、三桶目录结构、CLI 工具（`scripts/design.ts`）与模型审查脚本（`scripts/review.py`）、通过检查的[示例设计](skills/ssot/references/example/design/)，以及“写设计 / 审设计 / 迁移”三条流水线路由 |
+| [`skills/ssot-arch`](skills/ssot-arch/SKILL.md) | **写设计 · 阶段 1** | 核心抽象与架构设计：从外部依据出发，在多视角下权衡需要定义的核心概念、值与动作的位置，划分模块树、连接面、状态不变量与生命周期 |
+| [`skills/ssot-business`](skills/ssot-business/SKILL.md) | **写设计 · 阶段 2** | 业务单元、确定性判定与场景设计：在架构导出的连接之上划分业务单元，让各单元各司其职避免多来源集中积压，编写问题域需求、确定性判定（显式纯函数）与走通需求的场景（显式操作） |
 | [`skills/ssot-spec`](skills/ssot-spec/SKILL.md) | **写设计 · 阶段 3** | VDM-SL 形式化规格、受控文字与工具验收：先立最小 VDM 框架跑通 `ssot check`，再填完整谓词、纯函数、场景与受控文字跑通 `ssot check` 与 `review.py`；附[本地 VDM 文档](skills/ssot-spec/references/vdm/README.md)及[多 Agent 并行编写指令表](skills/ssot-spec/references/commands.md) |
-| [`skills/ssot-review-arch`](skills/ssot-review-arch/SKILL.md) | **审设计 · 阶段 1** | 审大体框架、概念定义与责任边界：不迁就现有框架做修补，先凭“顺眼与积压感”嗅出多来源汇集与过度展开的病灶，用“动物属性 vs 地面反作用力”审视到底有多少东西需要被定义、定义得对不对 |
-| [`skills/ssot-review-flow`](skills/ssot-review-flow/SKILL.md) | **审设计 · 阶段 2** | 审业务分流、值流转与主干场景走通：由传参异味（如积压或传空值）先追问责任是否放错模块，再顺着每条需求核查纯函数、代表元定序场景与生命周期嵌套能否走到底 |
-| [`skills/ssot-review-spec`](skills/ssot-review-spec/SKILL.md) | **审设计 · 阶段 3** | 审形式化规格严密性、证明义务与用词对齐：顺着“跑工具验底线 $\to$ 核对未定证明义务守卫 $\to$ 核对说明、签名与谓词三者合一 $\to$ 核对字面用词与函数值定义对齐”四步完成形式化验收 |
+| [`skills/ssot-review-arch`](skills/ssot-review-arch/SKILL.md) | **审设计 · 阶段 1** | 审大体框架、多视角权衡与概念定义：从“看着顺不顺眼、有没有被积压”的直觉出发，审视在这套软件的视角下到底有多少东西需要被定义、定义得对不对，值与动作的位置及架构与业务的分工是否成立 |
+| [`skills/ssot-review-flow`](skills/ssot-review-flow/SKILL.md) | **审设计 · 阶段 2** | 审业务分流、值与动作的配合及场景走通：顺着“看值流转是否因多来源积压而别扭 $\to$ 跟每条需求走纯函数判定与代表元场景 $\to$ 看生命周期开闭与跨连接语义”的思路，检验各模块协作是否顺畅走通 |
+| [`skills/ssot-review-spec`](skills/ssot-review-spec/SKILL.md) | **审设计 · 阶段 3** | 审形式化规格严密性、证明义务与用词对齐：运行 `ssot check` 与 `review.py`，核对未定证明义务、说明注释与谓词的一致性、以及字面用词是否准确 |
 | [`skills/ssot-migration`](skills/ssot-migration/SKILL.md) | **存量旧文档迁移** | 将混杂的存量设计文档无损迁入三桶目录：遵循“只搬运、不判断对错、不改原意”，先勘察概念定义处与设计中心，搬完骨架后按区域把每条陈述拆层归入 `architecture/`、`business/` 或 `appendix/`；搬完一条从旧文档删一条，旧文档清空即迁移完成 |
 
 ## 三层检验机制

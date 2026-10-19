@@ -50,15 +50,13 @@ ssot check + review.py → [步骤 1：工具验收] → [步骤 2：未定义�
 
 | 定义（`文件:行号`） | `--` 说明注释中的承诺子句 | 对应的 `inv` / `pre` / `post` 谓词子句 | `ext wr` 状态分量的帧条件（每个分支是否写全未变分量的 `x = x~`） | 对齐结论 |
 |---|---|---|---|---|
-| 例：`Closure`Place` (`boundary.md:109`) | “向尚未关闭的闭包放置输入文件与程序；闭包已关闭时必定拒绝放置” | `closure in set rng openByCall and closure not in set closed and (placements = {} or placements <> {})` | 无 `wr` 分量 | **谓词缺口**：`placements = {} or placements <> {}` 是恒真子句，未对 `placements` 做任何状态记录或约束 |
-| 例：`Closure`ObserveRoot` (`boundary.md:150`) | “关闭后仍可读取已固化的工作根现场副本” | `closure in set dom snapshots~ => result = snapshots~(closure)` | `wr snapshots`（`<Unavailable>` 分支写明 `snapshots = snapshots~`） | **待核对**：谓词允许在 `Close` 之前固化快照并在 `Close` 后继续返回该旧快照，比“关闭后的最终现场”更宽 |
+| 例：`Closure`Place` (`boundary.md:109`) | “向尚未关闭的闭包放置输入文件与程序；闭包已关闭时必定拒绝放置” | `closure in set rng openByCall and closure not in set closed and (placements = {} or placements <> {})` | 无 `wr` 分量 | **恒真子句**：`placements = {} or placements <> {}` 是只为挂住参数名的恒真式 |
 
-通过这张表直接识别五类规格缺口：
+通过这张表直接识别四类规格缺口（注：跨操作的调用次序如“先 `Close` 后 `ObserveRoot`”已由编排场景规定时，不要求在单个被调操作里重复加防御乱序调用的守卫）：
 1. **说明与签名/字段自相矛盾**：`--` 说明里声称携带某载荷、接收某参数、区分某几种状态或调用某连接，但记录字段、函数形参或布尔字段中根本没有对应项（如注释写“携带载荷”而记录无载荷字段、注释写“支持原子改单或拆成两单”而形参无改单意图、用一个 `closed : bool` 混装“获批交出”与“依据失效被拒”）；
 2. **无约束恒真子句**：形如 `x = {} or x <> {}`、只为挂住参数名而不排除任何取值的子句；
-3. **承诺未落入谓词**：`--` 说明里写了明确约束，但对应的 `inv` / `pre` / `post` 栏为空或条件更弱；
-4. **漏写帧条件（Frame Condition）**：隐式操作声明了 `ext wr x`，但在某个 `or` 分支中既未写出 `x` 的新值，也未写 `x = x~`（在 VDM-SL 中这代表该分支允许 `x` 变为任意满足状态不变量的值）；或声明了 `ext rd/wr x` 却在谓词中完全未出现 `x`；
-5. **无状态隐式 `operations` 伪装纯函数**：不读写任何 `state` 分量（无 `ext rd/wr`）却写成隐式 `operations`（`Op(x) r post r = ...`），用以逃避对显式纯函数体的审查。
+3. **漏写帧条件（Frame Condition）**：隐式操作声明了 `ext wr x`，但在某个 `or` 分支中既未写出 `x` 的新值，也未写 `x = x~`（在 VDM-SL 中这代表该分支允许 `x` 变为任意满足状态不变量的值）；或声明了 `ext rd/wr x` 却在谓词中完全未出现 `x`；
+4. **无状态隐式 `operations` 伪装纯函数**：不读写任何 `state` 分量（无 `ext rd/wr`）却写成隐式 `operations`（`Op(x) r post r = ...`），用以逃避对显式纯函数体的审查。
 
 ---
 

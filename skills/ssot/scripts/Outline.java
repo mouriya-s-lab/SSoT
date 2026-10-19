@@ -199,7 +199,8 @@ public class Outline {
     }
     if (expr instanceof ASTAndExpression both) {
       if (negationOf(both.left, both.right) || negationOf(both.right, both.left)) return new Trivial("contradiction", "是 P and not P");
-      return side(both.left, both.right, "contradiction", "有一支");
+      Trivial contradiction = side(both.left, both.right, "contradiction", "有一支");
+      return contradiction != null ? contradiction : side(both.left, both.right, "tautology", "有一支");
     }
     if (expr instanceof ASTEqualsExpression equal && same(equal.left, equal.right)) return new Trivial("tautology", "的两边相同（e = e）");
     if (expr instanceof ASTNotEqualExpression unequal && same(unequal.left, unequal.right)) return new Trivial("contradiction", "的两边相同（e <> e）");
@@ -227,7 +228,11 @@ public class Outline {
 
   /** `other` 是 `expr` 的否定。 */
   private static boolean negationOf(ASTExpression expr, ASTExpression other) {
-    return other instanceof ASTNotExpression not && same(not.exp, expr);
+    if (other instanceof ASTNotExpression not && same(not.exp, expr)) return true;
+    if (expr instanceof ASTEqualsExpression eq && other instanceof ASTNotEqualExpression neq) {
+      return (same(eq.left, neq.left) && same(eq.right, neq.right)) || (same(eq.left, neq.right) && same(eq.right, neq.left));
+    }
+    return false;
   }
 
   /** Shapes that are anti-patterns only in some contexts; the model-based review decides each one. */

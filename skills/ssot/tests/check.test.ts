@@ -275,6 +275,12 @@ ${FENCE}
     rejected(design, 'business/billing/billing.md', 'Billing`Count：post 有一支的两边相同（e = e），恒真');
   });
 
+  test('为消掉未使用参数警告塞进 and 的 x = a or x <> a 同样是恒真反模式', () => {
+    const design = fixture();
+    edit(design, 'business/billing/billing.md', 'end Billing', '  -- 看一眼作业\n  Count(xs: set of nat) r: nat\n  post r = 0 and (xs = {} or xs <> {});\nend Billing');
+    rejected(design, 'business/billing/billing.md', 'Billing`Count：post 有一支是 P or not P，恒真');
+  });
+
   test('不变式恒为 true 是反模式', () => {
     const design = fixture();
     edit(design, 'architecture/queue/queue.md', '  init q == q = mk_Queues({})', '  inv mk_Queues(h) == true\n  init q == q = mk_Queues({})');

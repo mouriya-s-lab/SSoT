@@ -33,17 +33,17 @@ flowchart TB
 
 ## 仓库构成
 
-本仓库由 `ssot` 定义贯穿写设计与审设计的**五条共同思维方式**（抽象边界与可替换性、源头事实与纯函数投影、视角与最小展开、一般规律与分层细化、形式化分工与名实对齐），并将写设计、审设计与存量迁移拆分为对称的阶段 skill：
+本仓库由 `ssot` 定义贯穿写设计与审设计的**五步思考脉络**（立边界 $\to$ 定视角与切模块 $\to$ 定连接与不变量 $\to$ 定细化与走通场景 $\to$ 落规格与受控文字），并将写设计、审设计与存量迁移拆分为对称推进的阶段 skill：
 
 | 目录 | 阶段 / 角色 | 说明 |
 |---|---|---|
-| [`skills/ssot`](skills/ssot/SKILL.md) | **总纲 · 共同思维与路由** | 定义三桶目录结构、贯穿全流程的五条共同思维方式、CLI 工具（`scripts/design.ts`）与模型审查脚本（`scripts/review.py`）、通过检查的[示例设计](skills/ssot/references/example/design/)，以及“写设计 / 审设计 / 迁移”三条流水线的阶段门控路由 |
-| [`skills/ssot-arch`](skills/ssot-arch/SKILL.md) | **写设计 · 阶段 1** | 核心抽象与架构设计：运用共同思维，通过四步正向建表（依据 $\to$ 抽象边界表、模块树与正交底座划分、概念持有与最小展开表、连接面与生命周期嵌套表）设计 `design/architecture/` |
-| [`skills/ssot-business`](skills/ssot-business/SKILL.md) | **写设计 · 阶段 2** | 业务单元、确定性判定与场景设计：运用共同思维，通过四步正向建表（业务单元与组合拓扑表、架构底线 $\to$ 业务策略细化表、问题域需求 $\to$ 全集纯函数 + 代表元场景表、跨模块实参值传递表）设计 `design/business/` |
-| [`skills/ssot-spec`](skills/ssot-spec/SKILL.md) | **写设计 · 阶段 3** | VDM-SL 形式化规格、受控文字与工具验收：目录与 `README.md` 小节规范、VDM-SL 语法写法、受控文字（双反引号限定名与代码索引）、AST 与 `jev` 语义反模式、[本地 VDM 文档](skills/ssot-spec/references/vdm/README.md)及[多 Agent 并行编写指令表](skills/ssot-spec/references/commands.md) |
-| [`skills/ssot-review-arch`](skills/ssot-review-arch/SKILL.md) | **审设计 · 阶段 1** | 抽象模型与架构/业务边界审查：通过四步正向推导（从依据构建抽象边界表、构建概念持有与视角展开表、构建架构底线到业务细化对齐表、执行连接不变可替换性检验），以推导表的断口或冲突判定架构与业务分工是否成立 |
-| [`skills/ssot-review-flow`](skills/ssot-review-flow/SKILL.md) | **审设计 · 阶段 2** | 值流转、连接闭合与需求场景走通审查：通过三步正向追踪（函数形参到调用处实参的值传递链、业务需求到“全集纯函数 + 代表元单步场景”的对账表、生命周期开闭序列与跨连接时序表），检验业务需求与失败分支能否借架构连接走到底 |
-| [`skills/ssot-review-spec`](skills/ssot-review-spec/SKILL.md) | **审设计 · 阶段 3** | 形式化规格严密性、证明义务与字面用词审查：运行 `ssot check` 与 `review.py`，通过三张对齐表（未定证明义务到上下文守卫推导表、说明注释承诺到谓词与帧条件对齐表、字面日常含义到规格函数值定义对齐表），完成规格严密性与词汇卫生验收 |
+| [`skills/ssot`](skills/ssot/SKILL.md) | **总纲 · 思考脉络与路由** | 定义从外部约束到形式化规格的五步思考脉络、三桶目录结构、CLI 工具（`scripts/design.ts`）与模型审查脚本（`scripts/review.py`）、通过检查的[示例设计](skills/ssot/references/example/design/)，以及“写设计 / 审设计 / 迁移”三条流水线的阶段路由 |
+| [`skills/ssot-arch`](skills/ssot-arch/SKILL.md) | **写设计 · 阶段 1** | 核心抽象与架构设计：顺着“立边界 $\to$ 切模块 $\to$ 定视角展开 $\to$ 定连接面与生命周期”四步推演，完成 `design/architecture/` 的设计 |
+| [`skills/ssot-business`](skills/ssot-business/SKILL.md) | **写设计 · 阶段 2** | 业务单元、确定性判定与场景设计：顺着“定问题域需求与业务单元 $\to$ 在架构底线内定细化策略与纯函数判定 $\to$ 用代表元场景定连接调用次序 $\to$ 顺着调用链核对值流转”四步推演，完成 `design/business/` 的设计 |
+| [`skills/ssot-spec`](skills/ssot-spec/SKILL.md) | **写设计 · 阶段 3** | VDM-SL 形式化规格、受控文字与工具验收：先立最小 VDM 框架跑通 `ssot check`，再填完整谓词、纯函数、场景与受控文字跑通 `ssot check` 与 `review.py`；附[本地 VDM 文档](skills/ssot-spec/references/vdm/README.md)及[多 Agent 并行编写指令表](skills/ssot-spec/references/commands.md) |
+| [`skills/ssot-review-arch`](skills/ssot-review-arch/SKILL.md) | **审设计 · 阶段 1** | 审抽象模型与架构/业务边界：顺着“由依据看边界 $\to$ 由视角看模块切分与最小展开 $\to$ 由连接面看状态不变量 $\to$ 由底线到细化看架构与业务分工”四步推演，检验设计的抽象骨架是否成立 |
+| [`skills/ssot-review-flow`](skills/ssot-review-flow/SKILL.md) | **审设计 · 阶段 2** | 审主干意图、值流转与场景走通：顺着“跟关键值走调用链 $\to$ 跟需求走纯函数与代表元场景 $\to$ 跟生命周期走开闭次序”三步追踪，检验每条业务需求能否借架构连接从头走到尾 |
+| [`skills/ssot-review-spec`](skills/ssot-review-spec/SKILL.md) | **审设计 · 阶段 3** | 审形式化规格严密性、证明义务与用词对齐：顺着“跑工具验底线 $\to$ 核对未定证明义务守卫 $\to$ 核对说明、签名与谓词三者合一 $\to$ 核对字面用词与函数值定义对齐”四步完成形式化验收 |
 | [`skills/ssot-migration`](skills/ssot-migration/SKILL.md) | **存量旧文档迁移** | 将混杂的存量设计文档无损迁入三桶目录：遵循“只搬运、不判断对错、不改原意”，先勘察概念定义处与设计中心，搬完骨架后按区域把每条陈述拆层归入 `architecture/`、`business/` 或 `appendix/`；搬完一条从旧文档删一条，旧文档清空即迁移完成 |
 
 ## 三层检验机制
@@ -57,8 +57,8 @@ flowchart TB
    - **VDMJ + QuickCheck（`parse` / `typecheck` / `quickcheck`）**：调用 VDMJ 完成语法与类型检查，生成证明义务并用 QuickCheck 搜索反例；末尾输出规格、注释、图与文字的行数占比，暴露向纯文字退化的苗头。
 2. **语义反模式模型审查（`review.py`）**
    - 在 omp 的 `eval` 中调用 `jev`，对程序无法单凭语法判定的 12 类反模式做概率审查（问题与阈值经 [`review-calibration.json`](skills/ssot/scripts/review-calibration.json) 的调参集零误判校准，留出集只报误报与漏报）：用 `seq of char` 偷藏状态/身份、多 `bool` 字段堆叠互斥状态、逐项枚举失败原因、说明注释只复述类型形状、显式体写实现过程、空名字登记表、模拟时钟/进程等运行机制、把单一业务塞进架构、文字复述规格、文字自造词、依据无来源或拿技术选型当理由、图表块里塞其他语言代码。
-3. **推导表驱动的三阶段审查流水线（`ssot-review-arch` → `ssot-review-flow` → `ssot-review-spec`）**
-   - 每个阶段先从 `design/` 构造对应的映射与追踪表，所有审查发现均取自表中的断口、次序倒置或不一致，上一阶段建立的推导表作为下一阶段的输入。
+3. **三阶段推演审查流水线（`ssot-review-arch` → `ssot-review-flow` → `ssot-review-spec`）**
+   - 顺着五步思考脉络由外向内核验：先还原抽象骨架与模块视角边界，再跟主干调用链核查值流转与场景走通，最后核对未定证明义务、说明—签名—谓词三者合一与字面用词对齐。
 
 ## 安装
 

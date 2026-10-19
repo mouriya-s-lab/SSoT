@@ -41,9 +41,9 @@ flowchart TB
 | [`skills/ssot-arch`](skills/ssot-arch/SKILL.md) | **写设计 · 阶段 1** | 核心抽象与架构设计：划定抽象边界（连接不变可替换的做法归实现、边界外不存在），回答架构三问，确定两条轴、视角与持有者、连接面与状态不变量、生命周期嵌套以及依据与理由 |
 | [`skills/ssot-business`](skills/ssot-business/SKILL.md) | **写设计 · 阶段 2** | 业务单元、确定性判定与场景设计：在架构导出的连接之上划分业务单元，明确上层一般规律与下层策略细化的关系，定义问题域需求、两个实现必须一致的确定性判定（显式纯函数）以及走通需求与失败分支的无循环代表元场景（显式操作） |
 | [`skills/ssot-spec`](skills/ssot-spec/SKILL.md) | **写设计 · 阶段 3** | VDM-SL 形式化规格、受控文字与工具验收：目录与 `README.md` 小节规范、VDM-SL 语法写法、受控文字（双反引号限定名与代码索引）、AST 与 `jev` 语义反模式、[本地 VDM 文档](skills/ssot-spec/references/vdm/README.md)及[多 Agent 并行编写指令表](skills/ssot-spec/references/commands.md) |
-| [`skills/ssot-review-arch`](skills/ssot-review-arch/SKILL.md) | **审设计 · 阶段 1** | 抽象逻辑与架构/业务边界审查：强制第零步先还原系统的抽象逻辑，通过五道假阳性筛子（防边界外脑补、防等价当身份、防细化当矛盾、防存储与实例思维、防契约外缺结局误判），审查架构与业务分工、视角与持有者、依赖方向、依据与理由 |
-| [`skills/ssot-review-flow`](skills/ssot-review-flow/SKILL.md) | **审设计 · 阶段 2** | 值流转、连接闭合与需求场景走通审查：顺着函数与值追踪跨模块参数流转是否断链（排查死参数与硬编码空值），按 VDM-SL 无循环代表元约定核对每条业务需求、可观察失败结局与生命周期嵌套能否走到底 |
-| [`skills/ssot-review-spec`](skills/ssot-review-spec/SKILL.md) | **审设计 · 阶段 3** | 形式化规格严密性、证明义务与字面用词审查：运行 `ssot check` 与 `review.py`，逐条裁决 QuickCheck 未定证明义务，核对 `--` 说明承诺是否落入 `inv`/`pre`/`post`（揪出伪装重言式与漏写保持条件），清理会引发面向对象实例、缓存或存储误读的字面用词 |
+| [`skills/ssot-review-arch`](skills/ssot-review-arch/SKILL.md) | **审设计 · 阶段 1** | 抽象模型与架构/业务边界审查：通过四步正向推导（从依据构建抽象边界表、构建概念持有与视角展开表、构建架构底线到业务细化对齐表、执行连接不变可替换性检验），以推导表的断口或冲突判定架构与业务分工是否成立 |
+| [`skills/ssot-review-flow`](skills/ssot-review-flow/SKILL.md) | **审设计 · 阶段 2** | 值流转、连接闭合与需求场景走通审查：通过三步正向追踪（函数形参到调用处实参的值传递链、业务需求到“全集纯函数 + 代表元单步场景”的对账表、生命周期开闭序列与跨连接时序表），检验业务需求与失败分支能否借架构连接走到底 |
+| [`skills/ssot-review-spec`](skills/ssot-review-spec/SKILL.md) | **审设计 · 阶段 3** | 形式化规格严密性、证明义务与字面用词审查：运行 `ssot check` 与 `review.py`，通过三张对齐表（未定证明义务到上下文守卫推导表、说明注释承诺到谓词与帧条件对齐表、字面日常含义到规格函数值定义对齐表），完成规格严密性与词汇卫生验收 |
 | [`skills/ssot-migration`](skills/ssot-migration/SKILL.md) | **存量旧文档迁移** | 将混杂的存量设计文档无损迁入三桶目录：遵循“只搬运、不判断对错、不改原意”，先勘察概念定义处与设计中心，搬完骨架后按区域把每条陈述拆层归入 `architecture/`、`business/` 或 `appendix/`；搬完一条从旧文档删一条，旧文档清空即迁移完成 |
 
 ## 三层检验机制
@@ -57,8 +57,8 @@ flowchart TB
    - **VDMJ + QuickCheck（`parse` / `typecheck` / `quickcheck`）**：调用 VDMJ 完成语法与类型检查，生成证明义务并用 QuickCheck 搜索反例；末尾输出规格、注释、图与文字的行数占比，暴露向纯文字退化的苗头。
 2. **语义反模式模型审查（`review.py`）**
    - 在 omp 的 `eval` 中调用 `jev`，对程序无法单凭语法判定的 12 类反模式做概率审查（问题与阈值经 [`review-calibration.json`](skills/ssot/scripts/review-calibration.json) 的调参集零误判校准，留出集只报误报与漏报）：用 `seq of char` 偷藏状态/身份、多 `bool` 字段堆叠互斥状态、逐项枚举失败原因、说明注释只复述类型形状、显式体写实现过程、空名字登记表、模拟时钟/进程等运行机制、把单一业务塞进架构、文字复述规格、文字自造词、依据无来源或拿技术选型当理由、图表块里塞其他语言代码。
-3. **三阶段人工/Agent 审查流水线（`ssot-review-arch` → `ssot-review-flow` → `ssot-review-spec`）**
-   - 先还原系统抽象逻辑并审架构与业务边界，再追查跨模块值流转与需求场景走通，最后核对 QuickCheck 未定证明义务、说明承诺与 `pre`/`post`/`inv` 的严密性以及字面误导用词。
+3. **推导表驱动的三阶段审查流水线（`ssot-review-arch` → `ssot-review-flow` → `ssot-review-spec`）**
+   - 每个阶段先从 `design/` 构造对应的映射与追踪表，所有审查发现均取自表中的断口、次序倒置或不一致，上一阶段建立的推导表作为下一阶段的输入。
 
 ## 安装
 

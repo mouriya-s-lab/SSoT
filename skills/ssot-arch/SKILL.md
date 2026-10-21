@@ -1,13 +1,11 @@
 ---
 name: ssot-arch
-description: SSoT 设计块：核心抽象与架构设计。从外部依据出发，在多视角下权衡需要定义的核心概念、值与动作的位置，划分模块树、连接面、状态不变量与生命周期。当用户明确指定设计或修改架构时调用。
+description: SSoT写设计·架构块：多视角权衡核心概念、模块树与连接面。阅读顺序：先读ssot再读本skill；用户未明确指定架构块时禁读。
 ---
 
 # ssot-arch：核心抽象与架构设计
 
-开始前先读 `ssot`。本块按三步推演 `design/architecture/`，示例见 [`../ssot/references/example/design/architecture/`](../ssot/references/example/design/architecture/)。
-
----
+示例见 [`../ssot/references/example/design/architecture/`](../ssot/references/example/design/architecture/)。
 
 ## 第一步：从外部事实推演依据与边界
 

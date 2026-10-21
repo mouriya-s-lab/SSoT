@@ -1,11 +1,11 @@
 ---
 name: ssot-review-arch
-description: SSoT 审查块：审大体框架、多视角权衡与概念定义。从“看着顺不顺眼、有没有被积压”的直觉出发，审视在这套软件的视角下到底有多少东西需要被定义、定义得对不对，值与动作的位置及架构与业务的分工是否成立。当用户明确指定审查架构与概念定义时调用。
+description: SSoT审设计·架构与概念块：从顺眼与积压感审视多视角下需定义什么及大体框架。先读ssot再读本skill；未明确指定本块时禁读。
 ---
 
 # ssot-review-arch：审大体框架、多视角权衡与概念定义
 
-开始前先读 `ssot`。按 `design/README.md` 的次序边读边想，把 `architecture/` 与 `business/` 都纳入审视，结合 `ssot graph <design>`（本块不跑 `ssot check` 或 `review.py`），依次执行以下四步：
+按 `design/README.md` 的次序边读边想，把 `architecture/` 与 `business/` 都纳入审视，结合 `ssot graph <design>`（本块不跑 `ssot check` 或 `review.py`），依次执行以下四步：
 
 ## 第一步：查积压与多来源混杂
 

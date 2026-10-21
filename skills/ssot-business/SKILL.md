@@ -1,13 +1,11 @@
 ---
 name: ssot-business
-description: SSoT 设计块：业务单元、确定性判定与场景设计。在架构导出的连接之上划分业务单元，让各单元各司其职避免多来源集中积压，编写问题域需求、确定性判定（显式纯函数）与走通需求的场景（显式操作）。当用户明确指定设计或修改业务单元与场景时调用。
+description: SSoT写设计·业务块：业务单元接入组合、纯函数判定与场景。阅读顺序：先读ssot再读本skill；用户未明确指定业务块时禁读。
 ---
 
 # ssot-business：业务单元、确定性判定与场景设计
 
-开始前先读 `ssot`。本块按四步设计 `design/business/<unit>/`，示例见 [`../ssot/references/example/design/business/report/`](../ssot/references/example/design/business/report/)。
-
----
+示例见 [`../ssot/references/example/design/business/report/`](../ssot/references/example/design/business/report/)。
 
 ## 第一步：定业务单元与问题域需求
 

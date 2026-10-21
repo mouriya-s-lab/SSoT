@@ -1,13 +1,11 @@
 ---
 name: ssot-spec
-description: SSoT 设计块：VDM-SL 形式化规格、受控文字与工具验收。规定设计目录的文件与 README 布局、VDM-SL 语法写法、规格说不清的语义与受控文字（双反引号限定名、代码索引）、AST 与 jev 模型反模式、本地 VDM 参考文档及多 agent 并行编写指令。当用户明确指定编写 VDM-SL 规格或运行工具验收时调用。
+description: SSoT写设计·规格块：目录布局、VDM-SL写法、受控文字与check/review验收。阅读顺序：先读ssot再读本skill；未指定规格块时禁读。
 ---
 
 # ssot-spec：VDM-SL 形式化规格、受控文字与工具验收
 
-开始前先读 `ssot`。本块把架构与业务写成符合布局规范、VDM-SL 语法规则与受控文字约束的 Markdown 文件，并通过 `ssot check` 与 `jev` 模型审查（`review.py`）。正面示例取自 [`../ssot/references/example/design/`](../ssot/references/example/design/)。
-
----
+正面示例取自 [`../ssot/references/example/design/`](../ssot/references/example/design/)。
 
 ## 一、文件与目录布局
 

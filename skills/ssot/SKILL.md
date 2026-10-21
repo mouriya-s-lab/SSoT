@@ -1,14 +1,10 @@
 ---
 name: ssot
-description: SSoT（设计真源）总纲与路由门控：把程序核心的设计写成可机械检验、独立于实现代码的文学式规格（Markdown + VDM-SL）。阐述多视角权衡、值与动作的位置、积压感与本体审视的思考思路，并将设计编写（ssot-arch、ssot-business、ssot-spec）、设计审查（ssot-review-arch、ssot-review-flow、ssot-review-spec）与存量迁移（ssot-migration）按块路由。用户未明确指定具体哪一块时必须先询问并停止，明确指定后只完整读取并执行对应的那一个子 skill。不用于 issue、PR 或实现代码。
+description: SSoT设计真源（Markdown+VDM-SL文学式规格）总纲与路由。必先读本skill；用户未指明具体子块前先询问并停止，禁读其他ssot-*或design/。
 allowed-tools: Bash(command -v *) Bash(bun */scripts/design.ts setup)
 ---
 
 # ssot
-
-设计是代码化的文档：把程序的核心与不变量写成可机械检验的文学式规格（Markdown + VDM-SL）；实现对照它检验，它不随实现改变。
-
-**没有编译步骤，也没有排版。** 设计的使用者是 VDMJ 与读 Markdown 的人：规格放在 ```` ```vdm ```` 代码块里由 `ssot check` 与模型审查验收，文字在任何 Markdown 查看器里直接阅读。不把设计转换成别的格式去查看效果，也不为显示效果改动内容。
 
 完整通过检查的示例设计见 [`references/example/design/`](references/example/design/)。
 
@@ -73,8 +69,6 @@ flowchart TB
 | `appendix/` | `examples/`（示例）、`evidence/`（依据的证据）、`reference/`（实现参考） | 不出现在阅读次序里，不被 `check` 检查，不设立规则 |
 
 ## 三、路由门控（一次只执行一块，未明确前不继续、不读其他 Skill）
-
-阅读与执行顺序为 **`ssot` → 用户指定的那一个子 skill**（子 skill 不重复本文件已定义的思路、边界与规则）：
 
 1. **用户未明确告知具体要做哪一块时——先问清楚，立即停下：**
    - 如果用户只说“review design”“检查 design 对不对”或“写/改 design”，而没有明确指出本次是下面哪一个具体的块（哪个子 skill），**必须先列出对应的选项询问用户本次要做哪一块**。

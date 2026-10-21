@@ -11,6 +11,8 @@ description: SSoT 设计块：业务单元、确定性判定与场景设计。�
 
 顺着下面四步设计 `design/business/<unit>/`，示例见 [`../ssot/references/example/design/business/report/`](../ssot/references/example/design/business/report/)：
 
+默认只读写 `design/` 下的文件，不查看仓库中 `design/` 之外的任何文件或 `git` 历史；确需参考外部材料时只能向用户提议，不自行读取。
+
 ```text
 1. 问题域有哪些可观察的需求？切成哪几个职责清晰的业务单元？（定需求与单元边界）
    ↓

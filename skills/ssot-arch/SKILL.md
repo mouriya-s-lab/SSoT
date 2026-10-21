@@ -11,6 +11,8 @@ description: SSoT 设计块：核心抽象与架构设计。从外部依据出�
 
 顺着下面四步推演 `design/architecture/`，示例见 [`../ssot/references/example/design/architecture/`](../ssot/references/example/design/architecture/)：
 
+默认只读写 `design/` 下的文件，不查看仓库中 `design/` 之外的任何文件（如实现代码或其他文档）或 `git` 历史；确需参考外部材料时只能向用户提议，不自行读取。
+
 ```text
 1. 外部有什么事实与约束，让架构多了或少了什么？（立依据与边界）
    ↓

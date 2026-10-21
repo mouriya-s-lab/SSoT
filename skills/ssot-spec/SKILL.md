@@ -11,6 +11,8 @@ description: SSoT 设计块：VDM-SL 形式化规格、受控文字与工具验�
 
 全部正面示例取自通过检查的 [`../ssot/references/example/design/`](../ssot/references/example/design/)。
 
+默认只读写 `design/` 下的文件，不查看仓库中 `design/` 之外的任何文件或 `git` 历史（若某定义需填写 `索引：路径:行号` 而需查看对应代码位置，先向用户提议获准后再读，不作为默认行为）。
+
 ---
 
 ## 一、文件与目录布局

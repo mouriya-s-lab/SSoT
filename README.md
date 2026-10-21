@@ -33,14 +33,14 @@ flowchart TB
 
 ## 仓库构成
 
-本仓库由 `ssot` 阐述设计的思考思路（多视角下的权衡、值与动作的位置、积压感与责任边界、需要定义多少东西及定义得对不对），默认只专注于 `design/` 本身（不查看 `design/` 之外的仓库文件或 `git` 历史），并实行**显式单块路由**：用户未明确指定具体做哪一块时先询问并停止（不继续、不预读其他 skill）；用户明确指定后，必须完整读完并只执行对应的那一个子 skill：
+本仓库由 `ssot` 阐述设计的思考思路（多视角下的权衡、值与动作的位置、积压感与责任边界、需要定义多少东西及定义得对不对），默认只专注于 `design/` 本身（全程禁止使用任何 subagent，不查看 `design/` 之外的仓库文件或 `git` 历史），并实行**显式单块路由**：用户未明确指定具体做哪一块时先询问并停止（不继续、不预读其他 skill）；用户明确指定后，必须完整读完并只执行对应的那一个子 skill：
 
 | 目录 | 块 / 角色 | 说明 |
 |---|---|---|
 | [`skills/ssot`](skills/ssot/SKILL.md) | **总纲 · 思考思路与路由门控** | 阐述设计的思考思路、三桶目录结构、CLI 工具（`scripts/design.ts`）与模型审查脚本（`scripts/review.py`）、通过检查的[示例设计](skills/ssot/references/example/design/)，以及显式单块路由门控 |
 | [`skills/ssot-arch`](skills/ssot-arch/SKILL.md) | **写设计 · 架构块** | 核心抽象与架构设计：从外部依据出发，在多视角下权衡需要定义的核心概念、值与动作的位置，划分模块树、连接面、状态不变量与生命周期 |
 | [`skills/ssot-business`](skills/ssot-business/SKILL.md) | **写设计 · 业务块** | 业务单元、确定性判定与场景设计：在架构导出的连接之上划分业务单元，让各单元各司其职避免多来源集中积压，编写问题域需求、确定性判定（显式纯函数）与走通需求的场景（显式操作） |
-| [`skills/ssot-spec`](skills/ssot-spec/SKILL.md) | **写设计 · 规格块** | VDM-SL 形式化规格、受控文字与工具验收：先立最小 VDM 框架跑通 `ssot check`，再填完整谓词、纯函数、场景与受控文字跑通 `ssot check` 与 `review.py`；附[本地 VDM 文档](skills/ssot-spec/references/vdm/README.md)及[多 Agent 并行编写指令表](skills/ssot-spec/references/commands.md) |
+| [`skills/ssot-spec`](skills/ssot-spec/SKILL.md) | **写设计 · 规格块** | VDM-SL 形式化规格、受控文字与工具验收：先立最小 VDM 框架跑通 `ssot check`，再填完整谓词、纯函数、场景与受控文字跑通 `ssot check` 与 `review.py`；附[本地 VDM 文档](skills/ssot-spec/references/vdm/README.md) |
 | [`skills/ssot-review-arch`](skills/ssot-review-arch/SKILL.md) | **审设计 · 架构与概念块** | 审大体框架、多视角权衡与概念定义：从“看着顺不顺眼、有没有被积压”的直觉出发，审视在这套软件的视角下到底有多少东西需要被定义、定义得对不对，值与动作的位置及架构与业务的分工是否成立 |
 | [`skills/ssot-review-flow`](skills/ssot-review-flow/SKILL.md) | **审设计 · 业务分流与走通块** | 审业务分流、值与动作的配合及场景走通：顺着“看值流转是否因多来源积压而别扭 $\to$ 跟每条需求走纯函数判定与代表元场景 $\to$ 看生命周期开闭与跨连接语义”的思路，检验各模块协作是否顺畅走通 |
 | [`skills/ssot-review-spec`](skills/ssot-review-spec/SKILL.md) | **审设计 · 规格严密与用词块** | 审形式化规格严密性、证明义务与用词对齐：运行 `ssot check` 与 `review.py`，核对未定证明义务、说明注释与谓词的一致性、以及字面用词是否准确 |

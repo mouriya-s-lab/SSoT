@@ -251,9 +251,7 @@ findings = await review("/path/to/repo/design")
 | `jev` 报 `[review:impl_body]` | 显式体写成了具体实现步骤或非唯一定律的内部过程 | 提炼为两个实现必须得出同一结果的纯函数判定，或移入代码/`appendix/reference/`（不把纯函数改写成无状态的隐式 `operations` `post r = ...` 来规避检查） |
 ---
 
-## 六、本地 VDM 文档与多 Agent 并行编写
-
-### 1. 本地 VDM 文档
+## 六、本地 VDM 文档
 
 VDM 的本地文档在 [`references/vdm/`](references/vdm/README.md)，随时查阅：
 
@@ -265,7 +263,3 @@ VDM 的本地文档在 [`references/vdm/`](references/vdm/README.md)，随时查
 | [QuickCheck](references/vdm/quickcheck.md) | 查证明义务生成规则与反例搜索策略时 |
 | [VDMJ 用户指南](references/vdm/vdmj-user-guide.md) | 用 `ssot vdmj` 调解释器或命令行参数时 |
 | [外部格式](references/vdm/external-formats.md) | 了解文学式块行号映射机制时 |
-
-### 2. 多 Agent 并行编写
-
-几个 agent 同时编写同一份设计时，按模块目录分工：主控运行 `init`/`module`/`unit`、分配目录归属并做最终集成检查；每个写手只写自己目录的文件。写手之间只用 [`references/commands.md`](references/commands.md) 定义的固定格式指令（`分配`、`需要`、`已导出`、`不归我`、`公告`、`签名变更`、`改名`、`新模块`、`冲突`、`重做`、`完成`、`停止`）通信。

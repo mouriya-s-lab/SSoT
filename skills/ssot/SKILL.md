@@ -1,6 +1,6 @@
 ---
 name: ssot
-description: SSoT设计真源（Markdown+VDM-SL文学式规格）总纲与路由。必先读本skill；用户未指明具体子块前先询问并停止，禁读其他ssot-*或design/。
+description: SSoT设计真源（Markdown+VDM-SL文学式规格）总纲与路由。必先读本skill；全程禁止subagent；未指明具体子块前先询问并停止，禁读其他ssot-*或design/。
 allowed-tools: Bash(command -v *) Bash(bun */scripts/design.ts setup)
 ---
 
@@ -8,7 +8,7 @@ allowed-tools: Bash(command -v *) Bash(bun */scripts/design.ts setup)
 
 完整通过检查的示例设计见 [`references/example/design/`](references/example/design/)。
 
-**默认工作边界：只专注 `design/` 本身。** 执行任何 `ssot` 任务时，**默认禁止查看目标仓库中 `design/` 之外的任何文件（包括实现代码、测试、配置文件、其他文档，以及 `legacy-design/`），也禁止查看 `git` 历史或 diff**；`legacy-design/` 仅在当前任务明确是执行 `ssot-migration` 存量迁移时才允许读取。不要找任何借口去翻看 `design/` 之外的内容；如果确实认为某一步非看某个外部文件不可，只能向用户提议并等待许可，绝不是默认行为。
+**默认工作边界：只专注 `design/` 本身，禁止使用任何 subagent。** 执行任何 `ssot` 任务时，**全程禁止使用任何 subagent（包括 `task`、`discuss`、`mentor` 等子代理），必须由当前主代理独立通读与思考**；**默认禁止查看目标仓库中 `design/` 之外的任何文件（包括实现代码、测试、配置文件、其他文档，以及 `legacy-design/`），也禁止查看 `git` 历史或 diff**；`legacy-design/` 仅在当前任务明确是执行 `ssot-migration` 存量迁移时才允许读取。不要找任何借口去翻看 `design/` 之外的内容或派发子代理；如果确实认为某一步非看某个外部文件不可，只能向用户提议并等待许可，绝不是默认行为。
 
 ---
 

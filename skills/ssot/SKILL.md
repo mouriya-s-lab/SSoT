@@ -1,6 +1,6 @@
 ---
 name: ssot
-description: SSoT设计真源（Markdown+VDM-SL文学式规格）总纲与路由。必先读本skill；全程禁止subagent；未指明具体子块前先询问并停止，禁读其他ssot-*或design/。
+description: SSoT设计真源（Markdown+VDM-SL文学式规格）总纲与路由。必先读本skill；未指明具体子块前先询问并停止，禁读其他ssot-*或design/。
 allowed-tools: Bash(command -v *) Bash(bun */scripts/design.ts setup)
 ---
 
@@ -8,7 +8,7 @@ allowed-tools: Bash(command -v *) Bash(bun */scripts/design.ts setup)
 
 完整通过检查的示例设计见 [`references/example/design/`](references/example/design/)。
 
-**默认工作边界：只专注 `design/` 本身，禁止使用任何 subagent。** 执行任何 `ssot` 任务时，**全程禁止使用任何 subagent（包括 `task`、`discuss`、`mentor` 等子代理），必须由当前主代理独立通读与思考**；**默认禁止查看目标仓库中 `design/` 之外的任何文件（包括实现代码、测试、配置文件、其他文档，以及 `legacy-design/`），也禁止查看 `git` 历史或 diff**；`legacy-design/` 仅在当前任务明确是执行 `ssot-migration` 存量迁移时才允许读取。审查 `design/` 时只以 `ssot` 系列 skill 与 `design/` 自身为准，不受目标仓库 `.claude/rules/` 中既有模块划分或旧审查条文的预设绑架；运行 `ssot` 命令行工具直接用终端工具（如 `exec_command`），不绕用 Python `eval` 调 `subprocess`。不要找任何借口去翻看 `design/` 之外的内容或派发子代理；如果确实认为某一步非看某个外部文件不可，只能向用户提议并等待许可，绝不是默认行为。
+**默认工作边界：只专注 `design/` 本身。** 执行任何 `ssot` 任务时，**默认禁止查看目标仓库中 `design/` 之外的任何文件（包括实现代码、测试、配置文件、其他文档，以及 `legacy-design/`），也禁止查看 `git` 历史或 diff**；`legacy-design/` 仅在当前任务明确是执行 `ssot-migration` 存量迁移时才允许读取。**禁止使用 `discuss`、`mentor`、`task:*` 等通用 subagent**（仅审查块按下方规则使用本 skill `agents/` 目录下预置的 `ssot:argon` 与 `ssot:fable`）。审查 `design/` 时只以 `ssot` 系列 skill 与 `design/` 自身为准，不受目标仓库 `.claude/rules/` 中既有模块划分或旧审查条文的预设绑架；运行 `ssot` 命令行工具直接用终端工具（如 `exec_command`），不绕用 Python `eval` 调 `subprocess`。不要找任何借口去翻看 `design/` 之外的内容；如果确实认为某一步非看某个外部文件不可，只能向用户提议并等待许可，绝不是默认行为。
 
 ---
 
@@ -89,6 +89,15 @@ flowchart TB
 | **架构与概念定义** | `ssot-review-arch` | 不迁就现有大体框架，从“顺眼与积压感”出发审视在这套软件的视角下到底有多少东西需要被定义、定义得对不对，值与动作的位置及架构/业务分工是否成立（不跑 `ssot check` / `review.py`） |
 | **业务分流与场景走通** | `ssot-review-flow` | 看值与动作在模块间的流转是否自然，识别因责任混杂造成的积压或断链，核对每条需求、失败结局与生命周期开闭能否顺畅走通 |
 | **形式化规格与用词** | `ssot-review-spec` | 运行 `ssot check` 与 `review.py`，核对未定证明义务、说明注释与签名/谓词的一致性、以及字面用词是否准确 |
+
+**审查块的模型协作与 Subagent 规则：**
+- **拷贝预置 Subagent 文件：** 需要派发审查 subagent 时，直接将本 skill 目录下的 `agents/ssot-argon.md` 与 `agents/ssot-fable.md` 拷入当前项目的 `.omp/agents/` 目录（直接拷贝现成文件，不在运行时手写或修改内容；审查完成交付前删掉拷入的 `.omp/agents/ssot-*.md` 保持工作区干净）。
+- **架构审查（`ssot-review-arch`）必须有 `fable`（`claude-fable-5-1`）与 `argon`（`gemini-4-argon`）同时参加：**
+  - 若当前主 agent 是 `argon` 或 `fable`：主 agent 自己独立执行审查，同时派发另一方的 subagent（`ssot:fable` 或 `ssot:argon`）补齐，汇总两方结果；
+  - 若当前主 agent 既不是 `argon` 也不是 `fable`：主 agent 用 subagent 全权委托调查——同时派发 `ssot:argon` 与 `ssot:fable` 两个 subagent，汇总两方结果。
+- **其他审查（`ssot-review-flow`、`ssot-review-spec`）由主 agent 与 `argon` 合作（不限定主 agent 模型）：**
+  - 主 agent 自己独立执行审查；若当前主 agent 不是 `argon`，同时派发 `ssot:argon` 合作审查并汇总结果。
+- **派发时只传一句话指令：** 开启 `ssot:argon` 或 `ssot:fable` 时，只需告诉它要用 `ssot` skill 做哪一块的 review（如 `"用 ssot skill 做 ssot-review-arch 的 review"`），不需要额外定义任何规则、步骤或预设结论。
 
 ### 2. 写设计 / 改设计的三个独立块
 

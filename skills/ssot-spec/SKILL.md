@@ -5,13 +5,7 @@ description: SSoT 设计块：VDM-SL 形式化规格、受控文字与工具验�
 
 # ssot-spec：VDM-SL 形式化规格、受控文字与工具验收
 
-## 这个阶段解决什么问题
-
-把 `ssot-arch` 与 `ssot-business` 定好的架构模块、业务单元、连接、判定与场景，写成符合布局规范、VDM-SL 语法规则与受控文字约束的 Markdown 文件，并通过 `ssot check` 与 `jev` 模型审查（`review.py`）。
-
-全部正面示例取自通过检查的 [`../ssot/references/example/design/`](../ssot/references/example/design/)。
-
-默认只读写 `design/` 下的文件，不查看仓库中 `design/` 之外的任何文件（包括实现代码、`legacy-design/` 或其他文档）或 `git` 历史（若某定义需填写 `索引：路径:行号` 而需查看对应代码位置，先向用户提议获准后再读，不作为默认行为）。
+开始前先读 `ssot`。本块把架构与业务写成符合布局规范、VDM-SL 语法规则与受控文字约束的 Markdown 文件，并通过 `ssot check` 与 `jev` 模型审查（`review.py`）。正面示例取自 [`../ssot/references/example/design/`](../ssot/references/example/design/)。
 
 ---
 

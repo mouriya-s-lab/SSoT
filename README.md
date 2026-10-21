@@ -60,15 +60,29 @@ flowchart TB
 3. **分块独立审查（`ssot-review-arch` / `ssot-review-flow` / `ssot-review-spec`）**
    - 每次只专注执行用户指定的一块：审大体框架与概念定义时只跑 `ssot-review-arch`；审跨模块责任分流与场景走通时只跑 `ssot-review-flow`；审未定证明义务、说明—签名—谓词一致性与字面用词时只跑 `ssot-review-spec`。
 
+## 兼容性
+
+本仓库只兼容 omp，其他任何 harness 都需要当场改造。依赖 omp 的环节：
+
+- 语义反模式审查 `review.py` 在 omp 的 Python `eval` 里调用 `jev`；
+- 审查 subagent `ssot:argon` 与 `ssot:fable` 是 omp 的 agent 定义（[`skills/ssot/agents/`](skills/ssot/agents/)），模型按 omp 的模型名写定；
+- skill 内的脚本与参考文件经 omp 的 `skill://` 地址加载。
+
 ## 安装
 
-通过 GitHub 安装全部 8 个 skill（按实际使用的 Agent 调整 `--agent`）：
+通过 GitHub 安装全部 8 个 skill。`npx skills` 把它们放进 `~/.agents/skills/`，`--agent claude-code` 再链接到 omp 会发现的 `~/.claude/skills/`：
 
 ```sh
-npx skills add mouriya-s-lab/SSoT --skill ssot ssot-arch ssot-business ssot-spec ssot-review-arch ssot-review-flow ssot-review-spec ssot-migration --global --agent claude-code codex --yes
+npx skills add mouriya-s-lab/SSoT --skill ssot ssot-arch ssot-business ssot-spec ssot-review-arch ssot-review-flow ssot-review-spec ssot-migration --global --agent claude-code --yes
 ```
 
-检查依赖 **Java 11+** 与 **Bun**。不需要另外运行安装命令：首次加载 `ssot` skill 时，`SKILL.md` 里的 `` !`…` `` 行发现 `ssot` 或 `vdmj` 不在 `PATH` 上，就自动从 Maven Central 拉取 VDMJ 与 QuickCheck 最新正式版到 `${XDG_DATA_HOME:-~/.local/share}/vdmj/`，把这两个命令装进 `~/.local/bin`，并把安装结果（缺 Java、`~/.local/bin` 不在 `PATH` 上时的处理办法）放进加载的 skill 正文；已安装时这一行没有输出。Claude Code 在加载 skill 时执行这一行；不执行它的 agent 需手动运行一次 `bun ~/.agents/skills/ssot/scripts/design.ts setup`。细节见 [`references/setup.md`](skills/ssot/references/setup.md)。
+检查依赖 **Java 11+** 与 **Bun**。装好 skill 后运行一次：
+
+```sh
+bun ~/.agents/skills/ssot/scripts/design.ts setup
+```
+
+它从 Maven Central 拉取 VDMJ 与 QuickCheck 最新正式版到 `${XDG_DATA_HOME:-~/.local/share}/vdmj/`，把 `ssot` 与 `vdmj` 两个命令装进 `~/.local/bin`；缺 Java 或 `~/.local/bin` 不在 `PATH` 上时按输出处理，细节见 [`references/setup.md`](skills/ssot/references/setup.md)。
 
 后续更新：
 

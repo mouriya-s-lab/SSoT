@@ -1,7 +1,6 @@
 ---
 name: ssot
 description: SSoT设计真源（Markdown+VDM-SL文学式规格）总纲与路由。必先读本skill；未指明具体子块前先询问并停止，禁读其他ssot-*或design/。
-allowed-tools: Bash(command -v *) Bash(bun */scripts/design.ts setup)
 ---
 
 # ssot
@@ -117,9 +116,7 @@ flowchart TB
 
 ## 四、命令与检查概览
 
-命令 `ssot` 与 `vdmj` 在 PATH 上，直接调用。加载本 skill 时自动检查并按需安装（细节见 [`references/setup.md`](references/setup.md)）：
-
-!`command -v ssot >/dev/null 2>&1 && command -v vdmj >/dev/null 2>&1 || bun "${CLAUDE_SKILL_DIR}/scripts/design.ts" setup 2>&1 || true`
+命令 `ssot` 与 `vdmj` 在 PATH 上，直接调用。不在 PATH 上时，运行一次 `bun ~/.agents/skills/ssot/scripts/design.ts setup` 安装（细节见 [`references/setup.md`](references/setup.md)）。
 
 | 命令 | 作用 |
 |---|---|

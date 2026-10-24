@@ -514,12 +514,10 @@ function printOutcomes(outcomes: readonly Outcome[]): number {
   return errors > 0 ? 1 : 0;
 }
 
+/** ssot check 的错误。未定与未评估的证明义务不在这里重复：它们是 verify po 的义务，逐条记在台账里。 */
 function checkOutcome(design: string, sub: string): Outcome {
   const report = check(design);
-  const notes: Note[] =
-    report.kind === 'Rejected'
-      ? report.diagnostics.map((d) => error(sub, `${d.path}:${d.line}`, `[${d.stage}] ${d.message}`))
-      : [...report.obligations.maybe, ...report.obligations.unchecked].map((t) => warning(sub, t, '证明义务未定或未评估：在 verify po 里逐条判断它的守卫。'));
+  const notes = report.kind === 'Rejected' ? report.diagnostics.map((d) => error(sub, `${d.path}:${d.line}`, `[${d.stage}] ${d.message}`)) : [];
   return { sub, notes, missing: null, total: 1, judged: report.kind === 'Accepted' ? 1 : 0 };
 }
 

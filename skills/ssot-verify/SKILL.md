@@ -21,7 +21,7 @@ description: SSoT独立验证：由未参与设计的上下文，从需求独立
 
 ## 一、谁来验证
 
-主 agent 按总纲把 `agents/ssot-fable.md` 与 `agents/ssot-argon.md` 拷入当前项目的 `.omp/agents/`，同时派发 `ssot:fable` 与 `ssot:argon`。派发时只告诉它们“用 ssot skill 做 ssot-verify 的验证”、`design/` 与需求材料的位置，以及它们的 `--as` 名字（`fable`、`argon`）。验证范围大时，按 `--dir <目录>` 或 `--constraint <编号>` 分批派发，同一验证方的各批写各自的台账文件。被派发的代理从第二节开始执行，不再派发。
+主 agent 按总纲把 `agents/ssot-fable.md` 与 `agents/ssot-argon.md` 拷入当前项目的 `.omp/agents/`，同时派发 `ssot:fable` 与 `ssot:argon`。派发时只告诉它们“用 ssot skill 做 ssot-verify 的验证”、`design/` 与需求材料的位置，以及它们的 `--as` 名字（`fable`、`argon`）。验证范围大时分批：每个验证方先不分范围完成第一步的 `expect`（它只读需求材料、`README.md` 与依赖图，并给出全部应有约束及其持有目录，后面的分批靠它）；之后按 `--dir <目录>` 或 `--constraint <编号>` 分批派发 `gaps` 及以后的子命令，同一验证方的各批写各自的台账文件。被派发的代理从第二节开始执行，不再派发。
 
 主 agent 只汇总，不加自己的结论：两方的 `ssot verify status` 完整列出，标明出自哪一方；两方判断相反时并列，不裁决。交付前删掉拷入的 `.omp/agents/ssot-*.md`。
 
@@ -97,7 +97,7 @@ witness: {module: Run, expression: "…"}    # 其余情形：以 module 为默�
 
 ## 七、第五步：工具（`check`、`po`、`review`）
 
-`ssot verify check` 运行 `ssot check`。`ssot verify po` 对每条未定或未评估的证明义务，要求到 `pre`、`inv` 与分支条件里找守卫：找到就判 `guarded` 并在 `guards` 写出位置，找不到就判 `missing_guard`，即缺了前置条件或分支守卫。
+`ssot verify check` 运行 `ssot check`，只报它的错误。`ssot verify po` 对每条未定或未评估的证明义务，要求找出守住它的东西：`pre`、`inv`、分支条件，或使它必然成立的类型与 `post`。找到就判 `guarded`，在 `guards` 写出位置，并在 `reason` 说明怎样守住；找不到就判 `missing_guard`，即缺了前置条件或分支守卫。
 
 在 omp 的 Python `eval` 里运行语义反模式审查，把每条材料的判断存进台账根：
 

@@ -827,7 +827,7 @@ function expansionsOf(spec: Spec, baseline: Baseline): ReadonlyMap<string, Expan
 
 const EXPANSION_HINT: Readonly<Record<Expansion, string>> = {
   structure:
-    '它不是最小形式（token）：expansion.violation 写出缩回 token、删掉这个字段或分支之后，哪条草稿约束的哪种违反情形会重新可以构造；needed_by 写出读这份结构、按它分支的别的元素。写不出就缩回去，约束改落到使用它的操作的 pre/post 或状态的 inv 上。',
+    '它不是最小形式（token）：expansion.violation 写出缩回 token、删掉这个字段或分支之后，哪条草稿约束的哪种违反情形会重新可以构造；needed_by 写出读这份结构、按它分支的别的元素，读者在系统外（调用方按它区分结局）时写 README 里说明这个读者的那一行（路径.md:行）。写不出就缩回去，约束改落到使用它的操作的 pre/post 或状态的 inv 上。',
   body:
     '它不是最小形式（is not yet specified）：expansion.violation 写出退回 is not yet specified、删掉多余的参数、合取项或调用之后，哪条草稿约束的哪种违反情形会重新可以构造；needed_by 可选，写出要求它的体或谓词的别的元素。写不出就退回去。',
 };
@@ -1004,7 +1004,7 @@ function designOutcomes(design: string, sub: DesignSub, mode: StampMode): Outcom
                 x.only(['violation', 'needed_by']);
                 x.text('violation');
                 const by = x.list('needed_by');
-                if (expansion === 'structure' && by.length === 0) x.errors.push(`${o.key}.expansion.needed_by：它带着结构（不是 token）；写出读这份结构、按它分支的别的元素，指不出就缩回 token 或删掉这个字段。`);
+                if (expansion === 'structure' && by.length === 0) x.errors.push(`${o.key}.expansion.needed_by：它带着结构（不是 token）；写出读这份结构、按它分支的别的元素，读者在系统外时写 README 里说明这个读者的那一行（路径.md:行）；都指不出就缩回 token 或删掉这个字段。`);
                 // 结构的读者不能是它自己、它所在的定义或它的字段：那是自证。
                 const own = spec.elements.get(o.key);
                 const owner = own && own.field !== null ? `${own.module.name}\`${own.definition.name}` : o.key;

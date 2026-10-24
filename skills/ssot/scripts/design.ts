@@ -131,7 +131,7 @@ const USAGE = `用法：
   ssot draft  <子命令> <仓库根>                    requirements | objects | constraints | owner | excluded | tradeoffs | status
   ssot design <子命令> <design> [--stamp …]        check | elements | constraints | status
   ssot verify <子命令> <design> --as <验证方> [--dir <目录>]… [--constraint <编号>]… [--stamp …]
-                                                 check | expect | gaps | attack | elements | scenarios | flows | prose | modules | owner | po | review | verdict | status | report
+                                                 check | expect | gaps | overview | attack | elements | scenarios | flows | prose | modules | owner | po | review | verdict | status | report
   --stamp        核对无误的新记录与改过的记录盖章；--stamp <键> 逐条确认过期的记录仍然成立`;
 
 function assertNever(value: never): never {

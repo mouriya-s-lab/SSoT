@@ -4,6 +4,8 @@
 
     %load skill://ssot/scripts/review.py
     findings = await review("/path/to/repo/design")
+    # ssot-verify：每条材料的判断写进验证方的台账根，交给 `ssot verify review` 逐条核对
+    await review("/path/to/repo/design", save="/path/to/repo/.tmp/ssot-verify/<验证方>/review.json")
 
 问题的措辞与阈值用 review-calibration.json 里的正反样本校准过；改动措辞或阈值之后运行
 `await calibrate()`，每个问题都要零误判才算校准通过。
@@ -156,18 +158,28 @@ async def _probabilities(question: str, states: list) -> list[float]:
     return [answered[str(i)] for i in range(len(states))]
 
 
-async def review(design: str, show: bool = True) -> list[dict]:
-    """对每类材料各跑一批 judge，返回超过阈值的反模式，按文件与行排序。"""
+async def review(design: str, show: bool = True, save: str | None = None) -> list[dict]:
+    """对每类材料各跑一批 judge，返回超过阈值的反模式，按文件与行排序。
+
+    save 给出路径时，把每一条材料的判断（不只是反模式）写成 JSON：`ssot verify review` 用它核对每条材料都判过，
+    并要求验证者对每个反模式逐条采纳或驳回。
+    """
     items = materials(design)
     findings = []
+    judged = []
     for question, (_, threshold, advice) in QUESTIONS.items():
         group = [item for item in items if item["question"] == question]
         if not group:
             continue
         for item, probability in zip(group, await _probabilities(question, [item["state"] for item in group])):
+            judged.append({**item, "probability": probability, "threshold": threshold, "finding": probability >= threshold})
             if probability >= threshold:
                 findings.append({**item, "probability": probability, "advice": advice})
     findings.sort(key=lambda f: (f["path"], f["line"], f["question"]))
+    if save is not None:
+        target = Path(save)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps({"design": design, "items": judged}, ensure_ascii=False, indent=2))
     if show:
         for f in findings:
             print(f"{f['path']}:{f['line']}: [review:{f['question']}] {f['advice']} (p={f['probability']:.2f})")

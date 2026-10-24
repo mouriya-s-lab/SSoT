@@ -1033,7 +1033,10 @@ export type Evaluation = { readonly kind: 'Value'; readonly text: string } | { r
 export function evaluate(design: string, modules: readonly Located[], module: string, expression: string): Evaluation {
   const files = [...new Set(modules.map((m) => toShadow(m.place.path)))].sort();
   const run = java(['-cp', classpath(), 'com.fujitsu.vdmj.plugins.VDMJ', '-vdmsl', '-q', '-default', module, '-e', expression, ...files], shadow(design, modules.map((m) => m.place)));
-  const lines = run.lines.map((l) => l.trim()).filter((l) => l !== '' && !l.startsWith('Wall time'));
+  // 只留值或错误本身：「Execution:」标题、Java 栈帧与计时都不是结论。
+  const lines = run.lines
+    .map((l) => l.trim().replace(/^EXCEPTION: VDMErrorsException |^Execution: /, ''))
+    .filter((l) => l !== '' && l !== 'Execution:' && !/^(Wall time|com\.fujitsu\.|\d+ more frames available)/.test(l));
   const failed = run.code !== 0 || lines.some((l) => /^(Execution: )?Error \d+:|^Runtime: Error/.test(l));
   return failed ? { kind: 'Failed', text: lines.join('\n') } : { kind: 'Value', text: lines.join('\n') };
 }

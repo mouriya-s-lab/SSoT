@@ -441,7 +441,7 @@ function runStamped(s: Stamped, scope: Scope, mode: StampMode, rel: (p: string) 
     for (const e of result.errors) notes.push(error(s.sub, at, e));
     if (result.errors.length > 0) continue;
     for (const w of result.warnings) notes.push(warning(s.sub, at, w));
-    const deps = { '主体': obligation.subject, ...result.deps };
+    const deps: Readonly<Record<string, string>> = { '主体': obligation.subject, ...result.deps };
     const record = canonical(entry.record);
     const fileStamps = stamps.get(entry.file)!;
     const stamp = fileStamps.get(obligation.key);
@@ -557,7 +557,9 @@ function readDraft(repo: string): { readonly draft: Draft | null; readonly probl
   const constraints = new Map<string, DraftConstraint>();
   for (const c of listOf(value, 'constraints')) {
     if (typeof c.id !== 'string') continue;
-    const owner = isObj(c.owner) && (c.owner.layer === 'architecture' || c.owner.layer === 'business') && typeof c.owner.holder === 'string' ? { layer: c.owner.layer, holder: c.owner.holder } : null;
+    const layer = isObj(c.owner) ? c.owner.layer : undefined;
+    const holder = isObj(c.owner) ? c.owner.holder : undefined;
+    const owner: DraftConstraint['owner'] = (layer === 'architecture' || layer === 'business') && typeof holder === 'string' ? { layer, holder } : null;
     constraints.set(c.id, { id: c.id, record: c, category: (CATEGORIES as readonly string[]).includes(c.category as string) ? (c.category as Category) : null, owner });
   }
   return { draft: { file, value, constraints }, problem: null };
@@ -1106,7 +1108,7 @@ function witness(spec: Spec, w: Obj, where: string, slots: Slots, deps: Record<s
     const body = frame.length > 0 ? `mk_(${parts.join(' and ')}, [${frame.map((f) => `before.${f} = after.${f}`).join(', ')}])` : parts.join(' and ');
     const expression = bindings.length > 0 ? `let ${bindings.join(', ')} in ${body}` : body;
     const run = evaluate(spec.design, spec.modules, element.module.name, expression);
-    if (run.kind === 'Failed') s.errors.push(`${where}：反例求值出错，规格不接受它：${run.text.split('\n')[0]}（表达式：${expression}）`);
+    if (run.kind === 'Failed') s.errors.push(`${where}：反例求值出错，规格不接受它：${run.text.split('\n').join('；')}（表达式：${expression}）`);
     else {
       const values = [...run.text.matchAll(/\b(true|false)\b/g)].map((m) => m[1] === 'true');
       if (values[0] !== true) s.errors.push(`${where}：反例不成立，求值为 false：pre/post 不允许这次变化，或 violates 不成立（表达式：${expression}）。`);
@@ -1125,7 +1127,7 @@ function witness(spec: Spec, w: Obj, where: string, slots: Slots, deps: Record<s
   if (located && expression) {
     deps[`模块 ${module}`] = sources(spec.design, located).module;
     const run = evaluate(spec.design, spec.modules, located.name, expression);
-    if (run.kind === 'Failed') s.errors.push(`${where}：反例求值出错：${run.text.split('\n')[0]}`);
+    if (run.kind === 'Failed') s.errors.push(`${where}：反例求值出错：${run.text.split('\n').join('；')}`);
     else if (run.text.trim() !== 'true') s.errors.push(`${where}：反例表达式求值为 ${run.text.trim()}，要为 true。`);
   }
   slots.merge(s);
@@ -1133,7 +1135,7 @@ function witness(spec: Spec, w: Obj, where: string, slots: Slots, deps: Record<s
 }
 
 function attackHint(spec: Spec, e: Expected): string {
-  const owned = spec.modules.filter((m) => inDir(m.place.dir, e.dir));
+  const owned = spec.modules.filter((m) => m.place.dir === e.dir);
   const names = new Set(owned.map((m) => m.name));
   const importers = spec.modules.filter((m) => m.imports.some((i) => names.has(i.module)));
   const states = owned.flatMap((m) => m.definitions.filter((d) => d.kind === 'state').map((d) => `${m.name}\`${d.name}(${d.fields.map((f) => f.name).join(', ')})`));
@@ -1174,7 +1176,6 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
   if (wants('gaps')) {
     if (expectBlocked) outcomes.push(needsExpect('gaps'));
     else {
-      const blank = { found: false, at: [], reason: '' };
       outcomes.push(
         runStamped(
           {
@@ -1183,7 +1184,10 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
             keyField: 'constraint',
             target: target('gaps'),
             files: files('gaps'),
-            obligations: expectedObligations((e) => ({ constraint: e.id, missing: blank, overstrong: blank, misnecessary: blank }), constraintHint),
+            obligations: expectedObligations(
+              (e) => ({ constraint: e.id, ...Object.fromEntries(['missing', 'overstrong', 'misnecessary'].map((q) => [q, { found: false, at: [], reason: '' }])) }),
+              constraintHint,
+            ),
             judge: (record) => {
               const slots = new Slots(record, String(record.constraint));
               slots.only(['constraint', 'missing', 'overstrong', 'misnecessary']);
@@ -1207,7 +1211,6 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
   if (wants('attack')) {
     if (expectBlocked) outcomes.push(needsExpect('attack'));
     else {
-      const blank = { verdict: '', by: [], reason: '' };
       outcomes.push(
         runStamped(
           {
@@ -1216,7 +1219,7 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
             keyField: 'constraint',
             target: target('attack'),
             files: files('attack'),
-            obligations: expectedObligations((e) => ({ constraint: e.id, ...Object.fromEntries(SLOTS.map((s) => [s, blank])) }), (e) => attackHint(spec, e)),
+            obligations: expectedObligations((e) => ({ constraint: e.id, ...Object.fromEntries(SLOTS.map((s) => [s, { verdict: '', by: [], reason: '' }])) }), (e) => attackHint(spec, e)),
             judge: (record) => {
               const id = String(record.constraint);
               const slots = new Slots(record, id);
@@ -1364,7 +1367,7 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
               const warnings: string[] = [];
               const dir = expected.get(o.key)!.dir;
               if (verdict !== 'absent' && actual.length === 0) slots.errors.push(`${o.key}.actual：写出它实际写在哪里。`);
-              if (verdict === 'match') for (const f of found) if (!inDir(f.dir, dir)) warnings.push(`判为归属一致，但实际位置在 ${f.dir}，应在 ${dir}。`);
+              if (verdict === 'match') for (const f of found) if (f.dir !== dir) warnings.push(`判为归属一致，但实际位置在 ${f.dir}，应在 ${dir}。`);
               if (verdict === 'misplaced') warnings.push(`归属不对：${reason ?? ''}`);
               if (verdict === 'duplicated') warnings.push(`同一个东西在两处展开：${reason ?? ''}`);
               if (verdict === 'absent') warnings.push(`规格里没有写这条约束：${reason ?? ''}`);
@@ -1496,7 +1499,8 @@ type ReviewResult = { readonly question: string; readonly path: string; readonly
 
 function reviewAnchor(item: ReviewItem): string {
   const s = item.state as Record<string, unknown>;
-  const text = String(s.owner ?? s.element ?? s.definition ?? s.spec ?? s.paragraph ?? s.block ?? s.comment ?? '');
+  // 先取最能认出这条材料的部分：属主名、元素、段落、图块，最后才是整段定义或整个模块。
+  const text = String(s.owner ?? s.element ?? s.paragraph ?? s.block ?? s.comment ?? s.definition ?? s.spec ?? '');
   const first = text.split('\n').find((l) => l.trim() !== '')?.trim() ?? '';
   return first.length > 40 ? `${first.slice(0, 40)}…` : first;
 }

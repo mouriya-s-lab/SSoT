@@ -506,7 +506,7 @@ function structure(design: string, places: readonly Place[], files: readonly Par
       }
       modules.push({ ...module, place });
       for (const definition of module.definitions) {
-        if (!definition.commented) fail(file.path, definition.line, `${module.name}\`${definition.name} 前面缺少说明它是什么、承诺什么的 -- 注释。`);
+        if (!definition.commented) fail(file.path, definition.line, `${module.name}\`${definition.name} 前面缺少说明它是什么的 -- 注释（只有草稿约束要求的承诺才写进说明）。`);
         for (const field of definition.fields) {
           if (!fieldCommented(lines, field.line, definition.line)) {
             fail(file.path, field.line, `${module.name}\`${definition.name}.${field.name} 缺少说明：在同一行末尾或上一行写 -- 注释。`);

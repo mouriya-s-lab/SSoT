@@ -287,10 +287,10 @@ ${FENCE}
     rejected(design, 'architecture/queue/queue.md', 'Queue`Queues：inv 恒为 true，恒真');
   });
 
-  test('业务单元的需求要指出由哪个场景走通', () => {
+  test('业务单元的需求要指出兑现它的规格元素', () => {
     const design = fixture();
     write(design, 'business/billing/README.md', '# 出账\n\n负责月末出账。\n\n## 需求\n\n每月提交一次。\n');
-    rejected(design, 'business/billing/README.md', '这条需求没有指出由哪个场景走通它');
+    rejected(design, 'business/billing/README.md', '这条需求没有指出兑现它的规格元素');
   });
 
   test('同一个类型在两个模块里各展开一次，它就有两种解释', () => {

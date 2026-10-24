@@ -16,7 +16,6 @@ import {
   htmlComment,
   load,
   markdown,
-  paragraphs,
   readMarkdown,
   review,
   sources,
@@ -27,7 +26,6 @@ import {
   type Place,
   type ProofObligation,
   type ReviewItem,
-  type ScenarioNode,
 } from './design.ts';
 
 // ---------------------------------------------------------------- 结果
@@ -516,10 +514,16 @@ function printOutcomes(outcomes: readonly Outcome[]): number {
   return errors > 0 ? 1 : 0;
 }
 
-/** ssot check 的错误。未定与未评估的证明义务不在这里重复：它们是 verify po 的义务，逐条记在台账里。 */
+/**
+ * ssot check 的错误与 VDMJ 的警告。警告（例如没用到的参数）原样转成警告，交给验证者看。
+ * 未定与未评估的证明义务不在这里重复：它们是 verify po 的义务，逐条记在台账里。
+ */
 function checkOutcome(design: string, sub: string): Outcome {
   const report = check(design);
-  const notes = report.kind === 'Rejected' ? report.diagnostics.map((d) => error(sub, `${d.path}:${d.line}`, `[${d.stage}] ${d.message}`)) : [];
+  const notes = [
+    ...(report.kind === 'Rejected' ? report.diagnostics.map((d) => error(sub, `${d.path}:${d.line}`, `[${d.stage}] ${d.message}`)) : []),
+    ...report.warnings.map((w) => warning(sub, 'VDMJ', w)),
+  ];
   return { sub, notes, missing: null, total: 1, judged: report.kind === 'Accepted' ? 1 : 0 };
 }
 
@@ -756,16 +760,18 @@ function elementObligations(spec: Spec, verb: 'design' | 'verify'): Obligation[]
   }));
 }
 
-/** 语义落点：README.md 的「语义」小节里的一行正文。 */
+/** 语义落点：README.md 的「语义」小节里的一行正文，或它展开到的主题文件（没有规格的 .md）里的一行正文。 */
 function semanticLine(spec: Spec, path: string, line: number): string | null {
-  const place = spec.places.find((p) => p.path === path && p.readme);
+  const place = spec.places.find((p) => p.path === path);
   if (!place) return null;
+  const topic = !place.readme && !spec.modules.some((m) => m.place.path === path);
+  if (!place.readme && !topic) return null;
   const file = readMarkdown(spec.design, path);
   let section = '';
   for (const l of file.lines) {
     const heading = l.in === 'Prose' ? /^(#{1,6})\s+(.*)$/.exec(l.raw.trim()) : null;
     if (heading) section = heading[1]!.length === 2 ? heading[2]!.trim() : heading[1]!.length === 1 ? '' : section;
-    if (l.line === line) return section === '语义' && l.in === 'Prose' && !heading && l.raw.trim() !== '' ? l.raw.trim() : null;
+    if (l.line === line) return (topic || section === '语义') && l.in === 'Prose' && !heading && l.raw.trim() !== '' ? l.raw.trim() : null;
   }
   return null;
 }
@@ -955,7 +961,7 @@ function designOutcomes(design: string, sub: DesignSub, mode: StampMode): Outcom
 
 // ---------------------------------------------------------------- 验证
 
-const VERIFY_SUBS = ['check', 'expect', 'gaps', 'attack', 'elements', 'scenarios', 'flows', 'prose', 'modules', 'owner', 'po', 'review', 'verdict', 'status'] as const;
+const VERIFY_SUBS = ['check', 'expect', 'gaps', 'attack', 'elements', 'scenarios', 'flows', 'prose', 'modules', 'owner', 'po', 'review', 'verdict', 'status', 'report'] as const;
 type VerifySub = (typeof VERIFY_SUBS)[number];
 const SLOTS = ['initial', 'call', 'compose', 'bypass', 'import'] as const;
 type Slot = (typeof SLOTS)[number];
@@ -974,15 +980,15 @@ function verifyRoot(design: string, as: string): string {
   return join(dirname(design), '.tmp', 'ssot-verify', as);
 }
 
-/** 第一步写下的应有长相：读规格之前，系统要满足什么、需要哪些视角与核心概念、各模块职责应怎样。 */
-const SHAPE_FIELDS = ['requirements', 'perspectives', 'modules'] as const;
+/** 第一步写下的应有长相：读规格之前，系统要满足什么、需要哪些视角与核心概念、各模块职责应怎样，以及对各 README 依据、理由与包含关系的初判。 */
+const SHAPE_FIELDS = ['requirements', 'perspectives', 'modules', 'readme'] as const;
 
 function readExpect(
   design: string,
   as: string,
   spec: Spec | null,
   sub: string,
-): { readonly expected: ReadonlyMap<string, Expected>; readonly shape: string | null; readonly outcome: Outcome } {
+): { readonly expected: ReadonlyMap<string, Expected>; readonly shape: string | null; readonly shapeRecord: Obj | null; readonly outcome: Outcome } {
   const repo = dirname(design);
   const root = verifyRoot(design, as);
   const rel = (p: string) => relative(repo, p);
@@ -1005,6 +1011,7 @@ function readExpect(
     if (value?.shape !== undefined) shapes.push({ record: value.shape, where: `${rel(file)} shape` });
   }
   let shape: string | null = null;
+  let shapeRecord: Obj | null = null;
   if (shapes.length === 0) {
     notes.push(error(sub, 'expect shape', `缺判：读规格之前写下应有长相，在 expect 的某个文件里加 shape: {${SHAPE_FIELDS.map((f) => `${f}: …`).join(', ')}}（系统要满足什么、需要哪些视角与核心概念、各模块职责应怎样）。`));
   } else if (shapes.length > 1) {
@@ -1016,7 +1023,10 @@ function readExpect(
     slots.only(SHAPE_FIELDS);
     for (const field of SHAPE_FIELDS) slots.text(field);
     slots.errors.forEach((e) => notes.push(error(sub, shapes[0]!.where, e)));
-    if (slots.errors.length === 0) shape = canonical(shapes[0]!.record);
+    if (slots.errors.length === 0) {
+      shapeRecord = shapes[0]!.record as Obj;
+      shape = canonical(shapeRecord);
+    }
   }
   const expected = new Map<string, Expected>();
   for (const { record, where } of constraintRecords) {
@@ -1074,6 +1084,7 @@ function readExpect(
   return {
     expected,
     shape,
+    shapeRecord,
     outcome: {
       sub,
       notes,
@@ -1167,24 +1178,31 @@ function witness(spec: Spec, w: Obj, where: string, slots: Slots, deps: Record<s
 /**
  * 一个审查问题：判断者对它单独下结论。ok 是没有问题，problem 是有问题（警告），not_applicable 写明为什么不适用，
  * undecided 是看过但判定不了（警告）。每个问题一槽，结论不合并：一个 ok 只说明这一问看过了。
+ * 判为 problem 时要指出设计里的位置（at）并写出修法（fix），报告里随问题一起给出。
  */
 type Question = { readonly slot: string; readonly ask: string };
 const ASSESSMENTS = ['ok', 'problem', 'not_applicable', 'undecided'] as const;
 
 function blankAssessments(questions: readonly Question[]): Obj {
-  return Object.fromEntries(questions.map((q) => [q.slot, { verdict: '', reason: '', at: [] }]));
+  return Object.fromEntries(questions.map((q) => [q.slot, { verdict: '', reason: '', at: [], fix: '' }]));
 }
 
 function questionHint(questions: readonly Question[]): string {
   return questions.map((q) => `${q.slot}：${q.ask}`).join('\n');
 }
 
-/** 核对一个问题的结论：取值在范围内、理由不空、at 引用找得到；有问题与判定不了记成警告。s 是这个问题自己的槽。 */
+/** 核对一个问题的结论：取值在范围内、理由不空、at 引用找得到；problem 还要有位置与修法。有问题与判定不了记成警告。s 是这个问题自己的槽。 */
 function assessSlots(s: Slots, where: string, q: Question, spec: Spec, deps: Record<string, string>, warnings: string[]): void {
   const verdict = s.choice('verdict', ASSESSMENTS);
   const reason = s.text('reason');
-  refs(spec, s.list('at'), `${where}.at`, s, deps);
-  if (verdict === 'problem') warnings.push(`${q.slot}（${q.ask}）有问题：${reason ?? ''}`);
+  const at = s.list('at');
+  refs(spec, at, `${where}.at`, s, deps);
+  const fix = s.optionalText('fix');
+  if (verdict === 'problem') {
+    if (at.length === 0) s.errors.push(`${where}.at：判为有问题，要指出设计里的位置（规格元素或 路径.md:行）。`);
+    if (!fix) s.errors.push(`${where}.fix：判为有问题，要写出修法（验证者不改设计，修法交给作者）。`);
+    warnings.push(`${q.slot}（${q.ask}）有问题：${reason ?? ''}｜位置：${at.join('、')}｜修法：${fix ?? ''}`);
+  }
   if (verdict === 'undecided') warnings.push(`${q.slot}（${q.ask}）未能判定：${reason ?? ''}`);
 }
 
@@ -1192,21 +1210,33 @@ function assessSlots(s: Slots, where: string, q: Question, spec: Spec, deps: Rec
 function assess(slots: Slots, where: string, q: Question, spec: Spec, deps: Record<string, string>, warnings: string[]): void {
   const s = slots.nested(q.slot);
   if (!s) return;
-  s.only(['verdict', 'reason', 'at']);
+  s.only(['verdict', 'reason', 'at', 'fix']);
   assessSlots(s, `${where}.${q.slot}`, q, spec, deps, warnings);
   slots.merge(s);
 }
 
-/** 每个规格元素都问的两件事：说明是否兑现、字面用词是否误导。 */
-const ELEMENT_QUESTIONS: readonly Question[] = [
-  { slot: 'promise', ask: '说明注释承诺的东西（要区分的结局、载荷、参数、“同一……只……”这类规则）都兑现在签名、字段与 inv/pre/post 上；没有用恒真子句假装用到参数' },
-  { slot: 'wording', ask: '名字与说明的字面意思不会让人误解成实例、指针、缓存、存储、拷贝或原地重跑等机制' },
+/** 说明注释与用词：定义与字段都问。说明是否写意义、提到的东西是否在签名里、字面会不会误导。 */
+const COMMENT_MEANING: Question = { slot: 'comment_meaning', ask: '说明写它是什么、承诺什么，不只复述类型形状' };
+const SIGNATURE: Question = { slot: 'signature', ask: '说明里提到的参数、载荷字段、要区分的结局或状态，都在签名与字段里真实存在，没有用一个 bool 混掉要区分的几种结局' };
+const WORDING: Question = { slot: 'wording', ask: '名字与说明不会让人误解成实例、指针、成员变量、缓存或存储；改用函数、值、静态定义、不可变事实记录与凭据的说法' };
+const ACTION_WORDS: Question = { slot: 'action_words', ask: '动作与状态词与实际定义一致：按等价引用已发布事实不叫“拷贝/复用”，输入变了构成新调用不叫“原地重跑”' };
+const DESIGN_REASON: Question = { slot: 'design_reason', ask: '写出的理由是设计层面的（单一展开避免多重解释、源头事实上的纯函数投影等），不拿“不存储副本、避免同步负担、不作可变字段”这类存储或实现优化当理由；没写理由时判 not_applicable' };
+const FIELD_QUESTIONS: readonly Question[] = [COMMENT_MEANING, SIGNATURE, WORDING, ACTION_WORDS];
+const DEFINITION_QUESTIONS: readonly Question[] = [
+  COMMENT_MEANING,
+  SIGNATURE,
+  { slot: 'predicate_promise', ask: '说明里的行为承诺（“同一……只……”“已关闭时必拒绝”“保持一致”等）有 inv、pre 或 post 的合取项真正排除违规情形；跨操作的先后由场景规定，不要求在单个被调操作里重复设防' },
+  { slot: 'nonvacuous', ask: '没有为挂住参数名而写恒真子句（如 and (x = {} or x <> {})），每个参数都真正参与约束' },
+  WORDING,
+  ACTION_WORDS,
+  DESIGN_REASON,
 ];
 const TYPE_QUESTIONS: readonly Question[] = [
   { slot: 'observation', ask: '只有观察者要按它分支或读字段时才展开结构；只原样传递的保持 token' },
   { slot: 'struct_exposure', ask: '导出时带不带 struct 与使用方是否读它的结构一致' },
-  { slot: 'outcomes', ask: '作为结局时只列合法调用方必须区分处理的分支，不逐项列失败原因' },
-  { slot: 'recovery', ask: '可观察的失败分支写明了改走哪个连接恢复' },
+  { slot: 'outcomes', ask: '作为结局时只列合法调用方必须区分处理的分支，不逐项列失败原因；不是结局时判 not_applicable' },
+  { slot: 'recovery', ask: '可观察的失败分支写明了改走哪个连接恢复；没有失败分支时判 not_applicable' },
+  { slot: 'consumption', ask: '导出后在下游确有消费：写出设计里使用它的位置，或系统外调用方使用它的契约与依据；没有导出时判 not_applicable' },
 ];
 const STATE_QUESTIONS: readonly Question[] = [
   { slot: 'minimality', ask: '状态只放这个连接面要守住的事实，没有冗余分量，也没有观察者不读的内部结构' },
@@ -1216,17 +1246,18 @@ const STATE_QUESTIONS: readonly Question[] = [
 const FRAME_QUESTION: Question = { slot: 'frame', ask: '每个 or 分支都写齐了这一支没改的 wr 分量（x = x~）；没写的分量在那一支可以变成任意值' };
 
 function elementQuestions(e: Element): readonly Question[] {
-  if (e.field !== null) return ELEMENT_QUESTIONS;
+  if (e.field !== null) return FIELD_QUESTIONS;
   const d = e.definition;
-  if (d.kind === 'type') return [...ELEMENT_QUESTIONS, ...TYPE_QUESTIONS];
-  if (d.kind === 'state') return [...ELEMENT_QUESTIONS, ...STATE_QUESTIONS];
-  if (d.kind === 'implicit operation' && d.ext.some((x) => x.mode === 'wr')) return [...ELEMENT_QUESTIONS, FRAME_QUESTION];
-  return ELEMENT_QUESTIONS;
+  if (d.kind === 'type') return [...DEFINITION_QUESTIONS, ...TYPE_QUESTIONS];
+  if (d.kind === 'state') return [...DEFINITION_QUESTIONS, ...STATE_QUESTIONS];
+  if (d.kind === 'implicit operation' && d.ext.some((x) => x.mode === 'wr')) return [...DEFINITION_QUESTIONS, FRAME_QUESTION];
+  return DEFINITION_QUESTIONS;
 }
 
 const SCENARIO_RESULT: Question = { slot: 'result', ask: '场景交给自己调用方的结果区分了正常推进与故障' };
 const CALL_OUTCOMES: Question = { slot: 'outcomes', ask: '被调连接返回的每一支可观察结局（尤其失败与结果未知）在本场景或配套的恢复场景里都有处理' };
-const SEQUENCE_ORDER: Question = { slot: 'order', ask: '会产生持久状态或外部动作的调用之前已完成合法性校验；后面要用的参数在需求所说的时点已经存在' };
+const CALL_ADMISSION: Question = { slot: 'admission', ask: '这次调用会产生持久状态或外部动作时，调用之前已完成合法性校验（没有先产生副作用、后做校验）；不产生副作用时判 not_applicable' };
+const SEQUENCE_ORDER: Question = { slot: 'order', ask: '这些调用的先后与需求一致；后面要用的参数在需求所说的时点已经存在' };
 
 const FLOW_QUESTIONS: readonly Question[] = [
   { slot: 'responsibility', ask: '参数多或传固定空值时，先判断那个参数代表的事是否本属另一个视角或模块；是就把它拆回原处，而不是要求上游一路透传' },
@@ -1243,41 +1274,133 @@ const LIFECYCLE_QUESTIONS: readonly Question[] = [
   { slot: 'failure_close', ask: '内层关闭或取回证据失败时，没有伪造外层的结束锚点' },
 ];
 
-/** README 每段按所在小节要问的事；每段都问字面用词。 */
+/** 每条正文（段落、列表项、表格行）都问的受控文字问题。 */
+const TEXT_QUESTIONS: readonly Question[] = [
+  { slot: 'restates', ask: '没有复述规格的类型、inv、pre、post 已经表达清楚的内容（只复述一部分也算）' },
+  { slot: 'atomic', ask: '一句陈述一条事实或一条规则；规则用“必须、不得、可以、只”' },
+  { slot: 'quantities', ask: '数量写了数值、单位与条件，常量定义在规格 values 里再由文字引用；没有数量时判 not_applicable' },
+  { slot: 'references', ask: '提到规格元素时用双反引号写限定名，没有另造同义词或自造名字' },
+  { slot: 'current', ask: '只写当前设计：没有状态标记、没有并列新旧规则、没有变更历史' },
+  WORDING,
+  ACTION_WORDS,
+];
+/** README 每条正文按所在小节另问的事。 */
 const PROSE_QUESTIONS: Readonly<Record<string, readonly Question[]>> = {
   '': [{ slot: 'scope', ask: '写的负责什么、不负责什么与规格实际承担的一致' }],
   依据: [
     { slot: 'source', ask: '有真实的外部来源，不是结论复述自己，也不拿当前实现或技术选型当理由' },
     { slot: 'implication', ask: '“所以……”能从这条事实推出它让设计多了或少了什么' },
     { slot: 'quality', ask: '质量要求写成“在〈环境〉下，〈刺激〉发生时，〈响应〉满足〈度量〉”，数值有出处；不是质量要求时判 not_applicable' },
+    DESIGN_REASON,
   ],
   需求: [
+    { slot: 'source', ask: '写出了来源，且来源真实对应需求材料' },
     { slot: 'observable', ask: '是问题域里可以观察到的结果（用户或外部系统看到什么），不是机器的功能列表' },
     { slot: 'walk', ask: '从它引用的规格元素一路走到需求所说的结果，没有断在中途' },
+    { slot: 'collection', ask: '涉及集合时，全集或候选集合由显式纯函数算出，场景接收单个代表元走通单步调用，两者配合完整；不涉及集合时判 not_applicable' },
   ],
-  为什么: [{ slot: 'alternatives', ask: '理由引用了依据；存在可信替代时写了为什么不选它' }],
-  语义: [{ slot: 'belongs', ask: '写的是规格说不清的语义（定时、调度、并发、进程、事实与副本、包含关系、崩溃接管、跨连接规律），没有复述规格' }],
+  为什么: [{ slot: 'alternatives', ask: '理由引用了依据；存在可信替代时写了为什么不选它' }, DESIGN_REASON],
+  语义: [{ slot: 'belongs', ask: '写的是规格说不清的语义（定时、调度、并发、进程、事实与副本、包含关系、崩溃接管、跨连接规律），不是规格已有的内容' }],
 };
-const PROSE_WORDING: Question = { slot: 'wording', ask: '字面用词不会让人误解成实例、缓存、存储、拷贝或原地重跑等机制' };
+/** README 以外文件（规格文件、主题文件）的正文。 */
+const TOPIC_BELONGS: Question = { slot: 'belongs', ask: '写的是规格说不清的语义，属于它所展开的那一节' };
+const TOPIC_EXPANDS: Question = { slot: 'expands', ask: '主题文件开头一段说明了它展开 README 的哪一节；拆出来是因为在 README 里展开会遮住架构，而且没有拆散同一个不变量、生命周期或失败窗口' };
 
 /** 每个设计目录单独判断的问题；架构目录与业务单元各一组。每个问题是一项独立义务。 */
+const FILES_QUESTION: Question = { slot: 'files', ask: '一组一起变化的元素放在一个文件、按内容命名；各自独立变化的分开；不按篇幅拆分；没有迫使读者跨文件拼出同一个不变量、生命周期或失败窗口' };
+const CROSS_SEMANTICS: Question = { slot: 'cross_semantics', ask: '跨越多个连接的规律（定时与重试、进程边界、崩溃后由谁按哪份事实接管、哪些可以同时发生）在「语义」或它展开的主题文件里交代完整；没有这类规律时判 not_applicable' };
 const ARCHITECTURE_DIR_QUESTIONS: readonly Question[] = [
   { slot: 'partition', ask: '模块按抽象划分（对外陈述连接、对内隐藏决定），不按篇幅或执行步骤；拆出子模块的理由写进了 README；并列的底座彼此正交' },
-  { slot: 'containment', ask: '同进程、同部署、同信任范围、同存续期等包含关系在「语义」里写明了（模块树不代表运行期包含）' },
+  { slot: 'rationale_coverage', ask: '每个改变架构形状的决定都在「为什么」里写了理由并引用依据，存在可信替代时写了为什么不选；在 reason 里列出核对过的决定' },
+  { slot: 'containment', ask: '同进程、同部署、同信任范围、同存续期等包含关系在「语义」或它展开的主题文件里写明了（模块树不代表运行期包含）' },
+  CROSS_SEMANTICS,
   { slot: 'boundary', ask: '没有只服务单一业务单元的规则，也没有连接不变时可以替换的实现做法写进架构' },
   { slot: 'accumulation', ask: '没有哪里积压了多个来源或视角的值与结构；没有整片定义脱离当前要观察的视角' },
+  FILES_QUESTION,
   { slot: 'shape', ask: '规格的实际长相与第一步写下的应有长相对得上，没有拧巴或没想通的设计思路' },
 ];
 const BUSINESS_DIR_QUESTIONS: readonly Question[] = [
   { slot: 'composition', ask: '只经导出的连接单向组合；不持有持久 state；不承诺结构的 token 原样传递，不读结构、不自造；结果在本单元边界收敛' },
   { slot: 'boundary', ask: '没有把常变的业务内容本身（应留在代码里的规则）写进规格' },
+  CROSS_SEMANTICS,
   { slot: 'accumulation', ask: '没有哪里积压了多个来源或视角的值与结构；不属于本单元的来源拆回了各自的模块' },
+  FILES_QUESTION,
   { slot: 'shape', ask: '规格的实际长相与第一步写下的应有长相对得上，没有拧巴或没想通的设计思路' },
 ];
 const DESIGN_QUESTIONS: readonly Question[] = [
-  { slot: 'overall', ask: '整个设计的长相能自然立住需求：在本系统的视角下，需要定义的核心概念都定义了，值与动作的位置对' },
+  { slot: 'overall', ask: '整个设计的长相能自然立住需求：在本系统的视角下，需要定义的核心概念都定义了，值与动作的位置对；在 reason 里讲清现有设计整体长什么样' },
   { slot: 'forms', ask: '规格没有退化成文字：规格行、说明注释行、文字行、图与文法行的占比合理' },
+  { slot: 'navigation', ask: 'design/README.md 只列阅读次序，不写规则' },
 ];
+
+/** 在 module 里叫 name 的被调连接（本模块定义的，或导入时起的本地名）的源码：调用记录依据它的契约。 */
+function calleeSource(spec: Spec, module: Located, name: string): string {
+  const own = spec.elements.get(`${module.name}\`${name}`);
+  if (own) return own.source;
+  for (const imported of module.imports) {
+    for (const item of imported.items) {
+      if (item.name && (item.renamed ?? item.name) === name) return spec.elements.get(`${imported.module}\`${item.name}`)?.source ?? '';
+    }
+  }
+  return '';
+}
+
+/** 正文里的一条：段落、列表项或表格行（表头不算），以及它所在的二级标题。 */
+type ProseItem = { readonly line: number; readonly section: string; readonly text: string };
+
+function proseItems(design: string, path: string): ProseItem[] {
+  const file = readMarkdown(design, path);
+  const items: ProseItem[] = [];
+  let section = '';
+  let current: { line: number; lines: string[] } | null = null;
+  let table = false;
+  const flush = () => {
+    if (current) items.push({ line: current.line, section, text: current.lines.join('\n') });
+    current = null;
+  };
+  for (const { line, raw, in: where } of file.lines) {
+    const trimmed = raw.trim();
+    const heading = where === 'Prose' ? /^(#{1,6})\s+(.*)$/.exec(trimmed) : null;
+    if (where === 'Fence' || trimmed === '' || htmlComment(raw) || heading) {
+      flush();
+      table = false;
+      if (heading && heading[1]!.length <= 2) section = heading[1]!.length === 2 ? heading[2]!.trim() : '';
+      continue;
+    }
+    if (trimmed.startsWith('|')) {
+      flush();
+      // 表头下面的分隔行说明上一行是表头，不是一条正文。
+      if (/^\|?\s*:?-{3,}/.test(trimmed)) {
+        if (!table) items.pop();
+        table = true;
+      } else items.push({ line, section, text: trimmed });
+      continue;
+    }
+    table = false;
+    if (/^\s*(?:[-*+]|\d+[.)])\s+/.test(raw)) {
+      flush();
+      current = { line, lines: [trimmed] };
+    } else if (current) current.lines.push(trimmed);
+    else current = { line, lines: [trimmed] };
+  }
+  flush();
+  return items;
+}
+
+/** 未定或未评估的证明义务，按不含行号的键：模块、属主、种类，同名的按出现次序编号。规格过不了类型检查或 QuickCheck 时为 null。 */
+function pendingProofs(design: string, spec: Spec): ReadonlyMap<string, ProofObligation> | null {
+  const run = vdmj(design, spec.modules);
+  if (run.diagnostics.length > 0) return null;
+  const counts = new Map<string, number>();
+  const pending = new Map<string, ProofObligation>();
+  for (const p of run.proofs.filter((p) => p.status === 'MAYBE' || p.status === 'ERROR' || p.status === 'UNCHECKED')) {
+    const base = `${p.module}\`${p.owner}: ${p.kind}`;
+    const n = (counts.get(base) ?? 0) + 1;
+    counts.set(base, n);
+    pending.set(n > 1 ? `${base} #${n}` : base, p);
+  }
+  return pending;
+}
 
 function attackHint(spec: Spec, e: Expected): string {
   const owned = spec.modules.filter((m) => m.place.dir === e.dir);
@@ -1482,13 +1605,15 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
             const n = (counts.get(base) ?? 0) + 1;
             counts.set(base, n);
             const key = n > 1 ? `${base}#${n}` : base;
-            const extra = node.kind === 'call' ? [CALL_OUTCOMES] : node.kind === 'sequence' ? [SEQUENCE_ORDER] : [];
+            const extra = node.kind === 'call' ? [CALL_OUTCOMES, CALL_ADMISSION] : node.kind === 'sequence' ? [SEQUENCE_ORDER] : [];
             questions.set(key, extra);
+            // 调用节点的依据带上被调连接的契约：契约变了，结局有没有处理完就要重判。
+            const callee = node.kind === 'call' ? /\/call ([^/#]+)$/.exec(node.path)?.[1] : undefined;
             obligations.push({
               key,
               dir: module.place.dir,
               constraint: null,
-              subject: `${node.kind}: ${node.text}`,
+              subject: `${node.kind}: ${node.text}${callee ? `\n${calleeSource(spec, module, callee)}` : ''}`,
               skeleton: { node: key, verdict: '', constraints: [], reason: '', ...blankAssessments(extra) },
               hint: [`${node.kind}（${module.place.path}:${node.line}）：${node.text}`, ...(extra.length > 0 ? [questionHint(extra)] : [])].join('\n'),
             });
@@ -1553,7 +1678,7 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
               key,
               dir: module.place.dir,
               constraint: null,
-              subject: call.text,
+              subject: `${call.text}\n${calleeSource(spec, module, call.callee)}`,
               skeleton: { call: key, ...blankAssessments(FLOW_QUESTIONS) },
               hint: [
                 `${module.place.path}:${call.line}：${call.text}`,
@@ -1603,18 +1728,21 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
     else {
       const questions = new Map<string, readonly Question[]>();
       const obligations: Obligation[] = [];
-      for (const place of spec.places.filter((p) => p.readme)) {
+      const specFiles = new Set(spec.modules.map((m) => m.place.path));
+      for (const place of spec.places) {
         const counts = new Map<string, number>();
-        for (const para of paragraphs(design, place).paragraphs) {
-          const first = para.text.length > 30 ? `${para.text.slice(0, 30)}…` : para.text;
-          const base = `${place.path}#${para.section || '首段'}:${first}`;
+        const topic = !place.readme && !specFiles.has(place.path);
+        proseItems(design, place.path).forEach((item, i) => {
+          const first = item.text.length > 30 ? `${item.text.slice(0, 30)}…` : item.text;
+          const base = `${place.path}#${item.section || '首段'}:${first}`;
           const n = (counts.get(base) ?? 0) + 1;
           counts.set(base, n);
           const key = n > 1 ? `${base} #${n}` : base;
-          const qs = [...(PROSE_QUESTIONS[para.section] ?? []), PROSE_WORDING];
+          const own = place.readme ? (PROSE_QUESTIONS[item.section] ?? []) : topic && i === 0 ? [TOPIC_EXPANDS, TOPIC_BELONGS] : [TOPIC_BELONGS];
+          const qs = [...own, ...TEXT_QUESTIONS];
           questions.set(key, qs);
-          obligations.push({ key, dir: place.dir, constraint: null, subject: para.text, skeleton: { paragraph: key, ...blankAssessments(qs) }, hint: `${place.path}:${para.line}（${para.section || '首段'}）\n${questionHint(qs)}` });
-        }
+          obligations.push({ key, dir: place.dir, constraint: null, subject: item.text, skeleton: { paragraph: key, ...blankAssessments(qs) }, hint: `${place.path}:${item.line}（${item.section || '首段'}）\n${questionHint(qs)}` });
+        });
       }
       outcomes.push(
         runStamped(
@@ -1647,8 +1775,12 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
     if (expectBlocked) outcomes.push(needsExpect('modules'));
     else {
       const text = (path: string) => readFileSync(join(design, path), 'utf8');
-      const readme = (dir: string) => spec.places.filter((p) => p.dir === dir && p.readme).map((p) => text(p.path)).join('\n');
-      const specText = (dir: string) => spec.places.filter((p) => p.dir === dir && !p.readme).map((p) => `${p.path}\n${text(p.path)}`).join('\n');
+      const specFiles = new Set(spec.modules.map((m) => m.place.path));
+      const gather = (dir: string, kind: 'readme' | 'spec' | 'topic') =>
+        spec.places
+          .filter((p) => p.dir === dir && (kind === 'readme' ? p.readme : kind === 'spec' ? specFiles.has(p.path) : !p.readme && !specFiles.has(p.path)))
+          .map((p) => `${p.path}\n${text(p.path)}`)
+          .join('\n');
       const exportsOf = (dir: string) =>
         spec.modules
           .filter((m) => m.place.dir === dir)
@@ -1658,24 +1790,30 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
       const obligations: Obligation[] = [];
       const add = (key: string, dir: string | null, q: Question, subject: string, hint: string) => {
         questions.set(key, q);
-        obligations.push({ key, dir, constraint: null, subject, skeleton: { item: key, verdict: '', reason: '', at: [] }, hint: `${hint}\n${q.ask}` });
+        obligations.push({ key, dir, constraint: null, subject, skeleton: { item: key, verdict: '', reason: '', at: [], fix: '' }, hint: `${hint}\n${q.ask}` });
       };
       for (const dir of [...spec.dirs].sort()) {
         const layer = spec.places.find((p) => p.dir === dir)!.layer;
+        const [readme, specText, topic] = [gather(dir, 'readme'), gather(dir, 'spec'), gather(dir, 'topic')];
         for (const q of layer === 'architecture' ? ARCHITECTURE_DIR_QUESTIONS : BUSINESS_DIR_QUESTIONS) {
-          // 每个问题只依据它要读的原文：拆分看 README 与导出，包含关系看 README，其余看本目录的规格（长相还要对照第一步的应有长相）。
+          // 每个问题只依据它要读的原文：拆分看 README 与导出，包含关系与跨连接语义看 README 与主题文件，文件组织看全部文件，其余看本目录的规格。
           const subject =
-            q.slot === 'partition' ? `${readme(dir)}\n${exportsOf(dir)}`
-            : q.slot === 'containment' ? readme(dir)
-            : q.slot === 'shape' ? `${shape ?? ''}\n${readme(dir)}\n${specText(dir)}`
-            : specText(dir);
+            q.slot === 'partition' ? `${readme}\n${exportsOf(dir)}`
+            : q.slot === 'containment' || q.slot === 'cross_semantics' ? `${readme}\n${topic}`
+            : q.slot === 'rationale_coverage' || q.slot === 'files' ? `${readme}\n${topic}\n${specText}`
+            : q.slot === 'shape' ? `${shape ?? ''}\n${readme}\n${specText}`
+            : specText;
           add(`${dir}#${q.slot}`, dir, q, subject, dir);
         }
       }
       const all = spec.places.map((p) => `${p.path}\n${text(p.path)}`).join('\n');
       const forms = form(design, spec.places).forms;
+      const root = existsSync(join(design, 'README.md')) ? text('README.md') : '';
       for (const q of DESIGN_QUESTIONS) {
-        const subject = q.slot === 'forms' ? `规格 ${forms.spec} 行，说明注释 ${forms.comment} 行，文字 ${forms.prose} 行，图与文法 ${forms.figure} 行` : `${shape ?? ''}\n${all}`;
+        const subject =
+          q.slot === 'forms' ? `规格 ${forms.spec} 行，说明注释 ${forms.comment} 行，文字 ${forms.prose} 行，图与文法 ${forms.figure} 行`
+          : q.slot === 'navigation' ? root
+          : `${shape ?? ''}\n${all}`;
         add(`design#${q.slot}`, null, q, subject, q.slot === 'forms' ? subject : '整份设计（只在不带范围时要求）');
       }
       outcomes.push(
@@ -1690,7 +1828,7 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
             judge: (record, o) => {
               const q = questions.get(o.key)!;
               const slots = new Slots(record, o.key);
-              slots.only(['item', 'verdict', 'reason', 'at']);
+              slots.only(['item', 'verdict', 'reason', 'at', 'fix']);
               const deps: Record<string, string> = {};
               const warnings: string[] = [];
               assessSlots(slots, o.key, q, spec, deps, warnings);
@@ -1744,16 +1882,10 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
   }
 
   if (wants('po')) {
-    const run = vdmj(design, spec.modules);
-    if (run.diagnostics.length > 0) outcomes.push(gate('po', `规格没有通过类型检查或 QuickCheck（ssot check ${rel(design)}）：先修好，证明义务才有意义。`));
+    const pending = pendingProofs(design, spec);
+    if (pending === null) outcomes.push(gate('po', `规格没有通过类型检查或 QuickCheck（ssot check ${rel(design)}）：先修好，证明义务才有意义。`));
     else {
-      const pending = run.proofs.filter((p) => p.status === 'MAYBE' || p.status === 'ERROR' || p.status === 'UNCHECKED');
-      const counts = new Map<string, number>();
-      const obligations: Obligation[] = pending.map((p: ProofObligation) => {
-        const base = `${p.module}\`${p.owner}: ${p.kind}`;
-        const n = (counts.get(base) ?? 0) + 1;
-        counts.set(base, n);
-        const key = n > 1 ? `${base} #${n}` : base;
+      const obligations: Obligation[] = [...pending.entries()].map(([key, p]) => {
         const place = spec.places.find((pl) => pl.path === p.path);
         return { key, dir: place?.dir ?? null, constraint: null, subject: p.predicate, skeleton: { po: key, verdict: '', guards: [], reason: '' }, hint: `${p.path}:${p.line}（QuickCheck：${p.status}）\n${p.predicate}` };
       });
@@ -1864,6 +1996,64 @@ function reviewAnchor(item: ReviewItem): string {
   const text = String(s.owner ?? s.element ?? s.paragraph ?? s.block ?? s.comment ?? s.definition ?? s.spec ?? '');
   const first = text.split('\n').find((l) => l.trim() !== '')?.trim() ?? '';
   return first.length > 40 ? `${first.slice(0, 40)}…` : first;
+}
+
+/**
+ * 验证报告：把一个验证方的台账整理成交付用的视图。它不加任何结论，只把台账里已有的判断按交付需要排好：
+ * 应有长相、整体长相、形式统计、证明义务核验表、全部问题（带位置与修法）与还没判完的项。
+ */
+function verifyReport(design: string, as: string): number {
+  const repo = dirname(design);
+  const root = verifyRoot(design, as);
+  const rel = (p: string) => relative(repo, p);
+  const outcomes = verifyOutcomes(design, 'status', as, { dirs: [], constraints: [] }, { stamp: false, restamp: new Set() });
+  const { spec } = loadSpec(design);
+  const cell = (s: string) => s.replace(/\s*\n\s*/g, ' ').replaceAll('|', '\\|');
+  const out: string[] = [`# 验证报告：${as}`, ''];
+
+  const { shapeRecord } = readExpect(design, as, spec, 'expect');
+  const labels: Readonly<Record<(typeof SHAPE_FIELDS)[number], string>> = { requirements: '要满足的需求', perspectives: '视角与核心概念', modules: '各模块的职责边界', readme: 'README 依据、理由与包含关系的初判' };
+  out.push('## 应有长相（第一步，读规格之前）', '');
+  if (shapeRecord) for (const f of SHAPE_FIELDS) out.push(`- **${labels[f]}**：${cell(String(shapeRecord[f] ?? ''))}`);
+  else out.push('expect 还没有写 shape。');
+
+  const modules = readEntries(yamlFiles(join(root, 'modules')), 'modules', 'item', 'modules', rel).entries;
+  const overall = modules.get('design#overall')?.record;
+  out.push('', '## 现有设计的整体长相', '', overall ? `${String(overall.verdict)}：${cell(String(overall.reason ?? ''))}` : 'modules 的 design#overall 还没有判。');
+
+  if (spec) {
+    const f = form(design, spec.places).forms;
+    const total = f.spec + f.comment + f.prose + f.figure;
+    const share = (n: number) => (total === 0 ? '0%' : `${Math.round((n / total) * 100)}%`);
+    out.push('', '## 形式统计', '', '| 形式 | 行数 | 占比 |', '|---|---:|---:|');
+    out.push(`| 规格 | ${f.spec} | ${share(f.spec)} |`, `| 说明注释 | ${f.comment} | ${share(f.comment)} |`, `| 文字 | ${f.prose} | ${share(f.prose)} |`, `| 图与文法 | ${f.figure} | ${share(f.figure)} |`);
+    const forms = modules.get('design#forms')?.record;
+    if (forms) out.push('', `判断：${String(forms.verdict)}：${cell(String(forms.reason ?? ''))}`);
+
+    const pending = pendingProofs(design, spec);
+    const records = readEntries(yamlFiles(join(root, 'po')), 'obligations', 'po', 'po', rel).entries;
+    out.push('', '## 证明义务核验', '');
+    if (pending === null) out.push('规格没有通过类型检查或 QuickCheck，证明义务无从核验。');
+    else if (pending.size === 0) out.push('没有未定或未评估的证明义务。');
+    else {
+      out.push('| 证明义务 | 位置 | 要求成立的条件 | 结论 | 守卫 | 理由 |', '|---|---|---|---|---|---|');
+      for (const [key, p] of pending) {
+        const r = records.get(key)?.record;
+        const guards = Array.isArray(r?.guards) ? (r.guards as string[]).join('、') : '';
+        out.push(`| ${cell(key)} | ${p.path}:${p.line}:${p.column} | ${cell(p.predicate)} | ${r ? String(r.verdict) : '未判'} | ${cell(guards)} | ${cell(String(r?.reason ?? ''))} |`);
+      }
+    }
+  }
+
+  const notes = outcomes.flatMap((o) => o.notes);
+  const problems = notes.filter((n) => n.severity === 'Warning');
+  const unfinished = notes.filter((n) => n.severity === 'Error');
+  out.push('', `## 问题（${problems.length} 条）`, '');
+  for (const n of problems) out.push(`- [${n.sub}] ${n.at}：${cell(n.message)}`);
+  out.push('', `## 还没判完（${unfinished.length} 处）`, '');
+  for (const n of unfinished) out.push(`- [${n.sub}] ${n.at}：${cell(n.message)}`);
+  console.log(out.join('\n'));
+  return unfinished.length > 0 ? 1 : 0;
 }
 
 function reviewOutcome(design: string, spec: Spec, root: string, scope: Scope, mode: StampMode, rel: (p: string) => string): Outcome {
@@ -1989,6 +2179,7 @@ export function judge(stage: 'draft' | 'design' | 'verify', args: readonly strin
         throw new UsageError(`ssot verify <${VERIFY_SUBS.join('|')}> <design> --as <验证方> [--dir 目录]… [--constraint 编号]… [--stamp [键]]`);
       }
       if (!as || !NAME.test(as)) throw new UsageError('verify 要用 --as 指明验证方（小写字母、数字与连字符），例如 --as fable。');
+      if (sub === 'report') return verifyReport(resolve(design), as);
       return printOutcomes(verifyOutcomes(resolve(design), sub as VerifySub, as, scope, mode));
     }
     default:

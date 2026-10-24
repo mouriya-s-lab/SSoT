@@ -130,7 +130,7 @@ npx skills update ssot ssot-migration ssot-draft ssot-design ssot-verify --globa
 | `ssot vdmj <design> [args...]` | 以设计里的全部规格直接运行 VDMJ（如 `-i` 进入解释器、`-e` 求值） |
 | `ssot draft <子命令> <repo>` | 逐项核对草稿 `.tmp/ssot-draft/draft.yaml`（需求去向、对象、约束、归属、不进 VDM 的内容、取舍） |
 | `ssot design <子命令> <design> [--stamp …]` | 逐项核对落点台账 `.tmp/ssot-design/`（每个规格元素的来由、每条草稿约束的落点） |
-| `ssot verify <子命令> <design> --as <验证方> [--dir …] [--constraint …] [--stamp …]` | 逐项核对验证台账 `.tmp/ssot-verify/<验证方>/`（应有长相与应有约束、三问、五种违反情形与生命周期四问、元素与场景反查、调用值流、文字与模块、归属、证明义务、模型审查、结论） |
+| `ssot verify <子命令> <design> --as <验证方> [--dir …] [--constraint …] [--stamp …]` | 逐项核对验证台账 `.tmp/ssot-verify/<验证方>/`（应有长相与应有约束、三问、五种违反情形与生命周期四问、元素与场景反查、调用值流、文字与模块、归属、证明义务、模型审查、结论）；`report` 把台账排成交付视图 |
 | `vdmj [args...] <files>` | VDMJ 本身（带 QuickCheck 插件），读 `.vdmsl` 文件 |
 
 在 omp 的 Python `eval` 中运行语义反模式审查；验证时用 `save` 把每条材料的判断存进验证方的台账根，交给 `ssot verify review`：

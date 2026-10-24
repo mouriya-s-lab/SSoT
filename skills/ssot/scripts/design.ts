@@ -131,7 +131,7 @@ const USAGE = `用法：
   ssot draft  <子命令> <仓库根>                    requirements | objects | constraints | owner | excluded | tradeoffs | status
   ssot design <子命令> <design> [--stamp …]        check | elements | constraints | status
   ssot verify <子命令> <design> --as <验证方> [--dir <目录>]… [--constraint <编号>]… [--stamp …]
-                                                 check | expect | gaps | attack | elements | scenarios | flows | prose | modules | owner | po | review | verdict | status
+                                                 check | expect | gaps | attack | elements | scenarios | flows | prose | modules | owner | po | review | verdict | status | report
   --stamp        核对无误的新记录与改过的记录盖章；--stamp <键> 逐条确认过期的记录仍然成立`;
 
 function assertNever(value: never): never {
@@ -645,13 +645,13 @@ function prose(design: string, places: readonly Place[], modules: readonly Locat
       }
     }
     if (place.readme) diagnostics.push(...readmeShape(place, file));
-    // 业务单元的需求要指出由哪个场景走通：每条需求（一个段落或一个列表项）至少引用一个规格元素。
+    // 业务单元的需求要指出兑现它的规格元素：每条需求（一个段落或一个列表项）至少引用一个规格元素。
     if (place.layer === 'business' && place.readme) {
       let section = '';
       let block: { readonly line: number; readonly text: string } | null = null;
       const flush = () => {
         if (block !== null && !codeSpans(block.text).some((name) => name.includes('`'))) {
-          fail(place.path, block.line, '这条需求没有指出由哪个场景走通它；写出规格里走通它的那个操作，例如 ``Report`Daily``。');
+          fail(place.path, block.line, '这条需求没有指出兑现它的规格元素；用双反引号写出兑现它的类型、谓词所在的操作或场景，例如 ``Report`Daily``。');
         }
         block = null;
       };
@@ -929,7 +929,8 @@ export function review(design: string): readonly ReviewItem[] {
     const text = paragraphs(design, place);
     for (const para of text.paragraphs) {
       items.push({ question: 'coined', path: para.path, line: para.line, state: { spec_names: names, paragraph: para.text } });
-      if (spec !== '' && para.section !== '') items.push({ question: 'prose_restates', path: para.path, line: para.line, state: { spec, paragraph: para.text } });
+      // README 首段写负责范围，不与规格比较；其余正文（含主题文件、规格文件里的文字）都看是否复述了规格。
+      if (spec !== '' && !(place.readme && para.section === '')) items.push({ question: 'prose_restates', path: para.path, line: para.line, state: { spec, paragraph: para.text } });
       if (para.section === '依据') items.push({ question: 'basis', path: para.path, line: para.line, state: { paragraph: para.text } });
     }
     for (const figure of text.figures) items.push({ question: 'figure_code', path: figure.path, line: figure.line, state: { block: figure.text } });

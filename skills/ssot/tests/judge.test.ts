@@ -31,7 +31,7 @@ function workspace(): { readonly root: string; readonly design: string } {
   put(
     root,
     '.tmp/ssot-verify/fable/expect/expect.yaml',
-    `shape: {requirements: 重复开始只产生一次运行, perspectives: 调用方与运行表, modules: Run 持有运行表}
+    `shape: {requirements: 重复开始只产生一次运行, perspectives: 调用方与运行表, modules: Run 持有运行表, readme: 依据有来源}
 requirements:
   - block: {path: request.md, heading: [需求], text: 调用方用同一个请求号重复开始运行，系统只产生一次运行。}
     constraints: [E1]
@@ -59,11 +59,9 @@ describe('verify', () => {
 
   test('盖章后依据改了就过期，逐条确认后恢复', () => {
     const { root, design } = workspace();
-    put(
-      root,
-      '.tmp/ssot-verify/fable/elements/report.yaml',
-      'elements:\n  - {element: "Report`Daily", verdict: guards, constraints: [E1], reason: 日报的先后, promise: {verdict: ok, reason: 说明与场景一致}, wording: {verdict: ok, reason: 用词无误导}}\n',
-    );
+    const ok = (slot: string) => `${slot}: {verdict: ok, reason: 看过}`;
+    const slots = ['comment_meaning', 'signature', 'predicate_promise', 'nonvacuous', 'wording', 'action_words', 'design_reason'].map(ok).join(', ');
+    put(root, '.tmp/ssot-verify/fable/elements/report.yaml', `elements:\n  - {element: "Report\`Daily", verdict: guards, constraints: [E1], reason: 日报的先后, ${slots}}\n`);
     const scope = ['verify', 'elements', design, '--as', 'fable', '--dir', 'business/report'];
     expect(cli(...scope).out).toContain('还没盖章');
     expect(cli(...scope, '--stamp').code).toBe(0);
@@ -77,6 +75,14 @@ describe('verify', () => {
     // 只写 --stamp 不会替判断者确认过期的记录。
     expect(cli(...scope, '--stamp').code).toBe(1);
     expect(cli(...scope, '--stamp', 'Report`Daily').code).toBe(0);
+  });
+
+  test('判为有问题却没给位置与修法，不算判完', () => {
+    const { root, design } = workspace();
+    put(root, '.tmp/ssot-verify/fable/modules/report.yaml', 'modules:\n  - {item: "business/report#composition", verdict: problem, reason: 日报持有了状态}\n');
+    const run = cli('verify', 'modules', design, '--as', 'fable', '--dir', 'business/report');
+    expect(run.out).toContain('business/report#composition.at：判为有问题，要指出设计里的位置');
+    expect(run.out).toContain('business/report#composition.fix：判为有问题，要写出修法');
   });
 
   test('反例改了没列进 ext wr 的分量，规格不允许，不算反例', () => {

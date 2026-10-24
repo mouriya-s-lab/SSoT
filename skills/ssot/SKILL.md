@@ -114,7 +114,7 @@ flowchart TB
 | `ssot review <design>` | 输出语义反模式模型审查的判断对象（JSON），由 `scripts/review.py` 在 omp `eval` 里交给 `jev` |
 | `ssot draft <子命令> <仓库根>` | 核对草稿 `.tmp/ssot-draft/draft.yaml`：`requirements`、`objects`、`constraints`、`owner`、`excluded`、`tradeoffs`、`status` |
 | `ssot design <子命令> <design> [--stamp …]` | 核对落点台账 `.tmp/ssot-design/`：`check`、`elements`、`constraints`、`status` |
-| `ssot verify <子命令> <design> --as <验证方> [--dir …] [--constraint …] [--stamp …]` | 核对验证台账 `.tmp/ssot-verify/<验证方>/`：`check`、`expect`、`gaps`、`attack`、`elements`、`scenarios`、`flows`、`prose`、`modules`、`owner`、`po`、`review`、`verdict`、`status` |
+| `ssot verify <子命令> <design> --as <验证方> [--dir …] [--constraint …] [--stamp …]` | 核对验证台账 `.tmp/ssot-verify/<验证方>/`：`check`、`expect`、`gaps`、`attack`、`elements`、`scenarios`、`flows`、`prose`、`modules`、`owner`、`po`、`review`、`verdict`、`status`、`report` |
 | `vdmj [参数] <文件>` | VDMJ 本身，带 QuickCheck 插件，读 `.vdmsl` 文件；设计目录里的 Markdown 用 `ssot vdmj` |
 
 ### 逐项判断的台账

@@ -7,6 +7,7 @@
 import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, dirname, join, relative, resolve } from 'node:path';
+import { judge } from './judge.ts';
 
 const SKILL = resolve(import.meta.dir, '..');
 /** setup 把命令装进这个目录；它必须在 PATH 上，命令才能直接调用。 */
@@ -19,20 +20,24 @@ const OUTLINE = join(SKILL, 'scripts', 'Outline.java');
 const TEMPLATE = join(SKILL, 'templates', 'README.md');
 const MAVEN = 'https://repo1.maven.org/maven2/dk/au/ece/vdmj';
 const ARTIFACTS = ['vdmj', 'quickcheck'] as const;
-const NAME = /^[a-z0-9][a-z0-9-]*$/;
-const SECTIONS = {
+export const NAME = /^[a-z0-9][a-z0-9-]*$/;
+export const SECTIONS = {
   architecture: ['依据', '为什么', '语义'],
   business: ['依据', '需求', '为什么', '语义'],
 } as const;
 
 type Layer = keyof typeof SECTIONS;
 type Stage = 'layout' | 'parse' | 'structure' | 'antipattern' | 'form' | 'prose' | 'typecheck' | 'quickcheck';
-type Diagnostic = { readonly stage: Stage; readonly path: string; readonly line: number; readonly message: string };
-type Place = { readonly path: string; readonly layer: Layer; readonly dir: string; readonly readme: boolean };
+export type Diagnostic = { readonly stage: Stage; readonly path: string; readonly line: number; readonly message: string };
+export type Place = { readonly path: string; readonly layer: Layer; readonly dir: string; readonly readme: boolean };
 type Field = { readonly name: string; readonly line: number };
 /** AST 反模式（findings）与交给模型审查的候选（candidates）共用的形状。 */
 type Hit = { readonly rule: string; readonly line: number; readonly detail: string };
-type Definition = {
+/** 隐式操作的一句 ext：模式与它列出的状态分量。 */
+type External = { readonly mode: string; readonly names: readonly string[] };
+/** 场景显式体里的一个节点：调用、分支、先后或挑选。path 由语句结构写成，不含行号。 */
+export type ScenarioNode = { readonly kind: 'call' | 'branch' | 'sequence' | 'choice'; readonly path: string; readonly line: number; readonly text: string };
+export type Definition = {
   readonly name: string;
   readonly kind: string;
   readonly line: number;
@@ -40,16 +45,26 @@ type Definition = {
   readonly commentLine: number;
   readonly comment: string;
   readonly explicit: boolean;
+  readonly hasPre: boolean;
+  readonly hasPost: boolean;
+  readonly hasInv: boolean;
+  /** `T = token` 或体为 `is not yet specified`：不展开的定义。 */
+  readonly unspecified: boolean;
+  readonly ext: readonly External[];
   readonly fields: readonly Field[];
+  readonly scenario: readonly ScenarioNode[];
   readonly findings: readonly Hit[];
   readonly candidates: readonly Hit[];
 };
-type Import = { readonly module: string; readonly line: number };
+type ImportItem = { readonly kind: 'all' | 'type' | 'value' | 'function' | 'operation'; readonly name: string | null; readonly renamed: string | null };
+type Import = { readonly module: string; readonly line: number; readonly items: readonly ImportItem[] };
+type ExportItem = { readonly kind: 'type' | 'struct' | 'value' | 'function' | 'operation'; readonly name: string; readonly line: number };
 type Module = {
   readonly name: string;
   readonly line: number;
   readonly flat: boolean;
   readonly imports: readonly Import[];
+  readonly exports: { readonly all: boolean; readonly items: readonly ExportItem[] };
   readonly definitions: readonly Definition[];
 };
 type ParsedFile = {
@@ -57,16 +72,28 @@ type ParsedFile = {
   readonly modules: readonly Module[];
   readonly errors: readonly { readonly line: number; readonly message: string }[];
 };
-type Located = Module & { readonly place: Place };
+export type Located = Module & { readonly place: Place };
 type Obligations = {
   readonly total: number;
   readonly provable: number;
   readonly maybe: readonly string[];
   readonly unchecked: readonly string[];
 };
+/** VDMJ 生成的一条证明义务，以及 QuickCheck 对它的结论；UNCHECKED 是 QuickCheck 没有评估。 */
+export type ProofObligation = {
+  readonly number: number;
+  readonly module: string;
+  readonly owner: string;
+  readonly kind: string;
+  readonly path: string;
+  readonly line: number;
+  readonly column: number;
+  readonly predicate: string;
+  readonly status: 'PROVABLE' | 'COUNTEREXAMPLE' | 'ERROR' | 'MAYBE' | 'UNCHECKED';
+};
 /** 设计正文里各种形式的行数：规格、规格里的说明注释、文字、图与文法。 */
 type Forms = { readonly spec: number; readonly comment: number; readonly figure: number; readonly prose: number };
-type Report =
+export type Report =
   | { readonly kind: 'Accepted'; readonly modules: number; readonly warnings: readonly string[]; readonly obligations: Obligations; readonly forms: Forms }
   | { readonly kind: 'Rejected'; readonly diagnostics: readonly Diagnostic[]; readonly warnings: readonly string[]; readonly forms: Forms };
 type Command =
@@ -77,9 +104,10 @@ type Command =
   | { readonly kind: 'Check'; readonly design: string; readonly json: boolean }
   | { readonly kind: 'Graph'; readonly design: string; readonly json: boolean }
   | { readonly kind: 'Vdmj'; readonly design: string; readonly args: readonly string[] }
-  | { readonly kind: 'Review'; readonly design: string };
+  | { readonly kind: 'Review'; readonly design: string }
+  | { readonly kind: 'Ledger'; readonly stage: 'draft' | 'design' | 'verify'; readonly args: readonly string[] };
 
-class UsageError extends Error {}
+export class UsageError extends Error {}
 /** 缺少 Java 或 VDMJ：报告缺什么、怎样装，不附用法。 */
 class MissingDependency extends Error {}
 /** 缺依赖时让读者去看的安装说明。 */
@@ -93,7 +121,14 @@ const USAGE = `用法：
   ssot check <design> [--json]    检查目录、说明、方向、文字引用、形式、类型与反例
   ssot graph <design> [--json]    输出模块与 import 关系
   ssot vdmj <design> [VDMJ 参数]  用全部规格运行 VDMJ，例如 -e 或 -i
-  ssot review <design>            输出模型审查的材料（JSON），由 scripts/review.py 在 omp eval 里交给 jev 判断`;
+  ssot review <design>            输出模型审查的材料（JSON），由 scripts/review.py 在 omp eval 里交给 jev 判断
+
+逐项判断（工具枚举义务，核对台账里每一项都判了、证据找得到；不替你判断）：
+  ssot draft  <子命令> <仓库根>                    requirements | objects | constraints | owner | excluded | tradeoffs | status
+  ssot design <子命令> <design> [--stamp …]        check | elements | constraints | status
+  ssot verify <子命令> <design> --as <验证方> [--dir <目录>]… [--constraint <编号>]… [--stamp …]
+                                                 check | expect | gaps | attack | elements | scenarios | owner | po | review | verdict | status
+  --stamp        核对无误的新记录与改过的记录盖章；--stamp <键> 逐条确认过期的记录仍然成立`;
 
 function assertNever(value: never): never {
   throw new Error(`程序错误：未处理的 variant ${String(value)}`);
@@ -106,6 +141,7 @@ function parseArguments(args: readonly string[]): Command {
     return rest.length === 1;
   };
   if (command === 'setup' && target === undefined) return { kind: 'Setup' };
+  if (command === 'draft' || command === 'design' || command === 'verify') return { kind: 'Ledger', stage: command, args: args.slice(1) };
   if (!command || !target) throw new UsageError('缺少命令或目录。');
   switch (command) {
     case 'init':
@@ -184,7 +220,7 @@ async function fetchText(url: string): Promise<string> {
 }
 
 /** PATH 上的 java 必须是 11 或更高版本；`java -version` 的版本号在旧版是 "1.8.0_…"，新版是 "11"、"27" 这样的主版本号。 */
-function requireJava(): void {
+export function requireJava(): void {
   const found = Bun.which('java');
   if (!found) throw new MissingDependency(`PATH 上没有 java：需要 Java 11 或更高版本，安装方法见 ${SETUP_GUIDE}。`);
   const run = Bun.spawnSync([found, '-version']);
@@ -195,13 +231,13 @@ function requireJava(): void {
   }
 }
 
-function classpath(): string {
+export function classpath(): string {
   const jars = ARTIFACTS.map((artifact) => join(LIB, `${artifact}.jar`));
   if (!jars.every(existsSync)) throw new MissingDependency(`VDMJ 尚未安装到 ${LIB}：先运行 ssot setup，见 ${SETUP_GUIDE}。`);
   return jars.join(delimiter);
 }
 
-function java(args: readonly string[], cwd: string, stdin?: string): { readonly code: number; readonly lines: string[] } {
+export function java(args: readonly string[], cwd: string, stdin?: string): { readonly code: number; readonly lines: string[] } {
   const run = Bun.spawnSync(['java', ...args], { cwd, stdin: stdin === undefined ? 'ignore' : Buffer.from(stdin) });
   const text = `${run.stdout.toString()}${run.stderr.toString()}`;
   // 新版 JDK 对 VDMJ 内部反射的提示与设计无关。
@@ -270,7 +306,7 @@ function fenceKind(info: string): FenceKind {
   return FIGURES.includes(info) ? 'Figure' : 'Other';
 }
 
-function markdown(text: string): MarkdownFile {
+export function markdown(text: string): MarkdownFile {
   const lines: MarkdownLine[] = [];
   const fences: Fence[] = [];
   let open: { marker: string; info: string; line: number; body: string[] } | null = null;
@@ -295,12 +331,12 @@ function markdown(text: string): MarkdownFile {
   return { lines, fences };
 }
 
-function readMarkdown(design: string, path: string): MarkdownFile {
+export function readMarkdown(design: string, path: string): MarkdownFile {
   return markdown(readFileSync(join(design, path), 'utf8'));
 }
 
 /** 整行都是 HTML 注释的行，例如 init 留下的提示。它不是正文。 */
-function htmlComment(raw: string): boolean {
+export function htmlComment(raw: string): boolean {
   return /^\s*<!--.*-->\s*$/.test(raw);
 }
 
@@ -335,7 +371,7 @@ function codeSpans(raw: string): string[] {
  */
 let shadowRoot: string | null = null;
 
-function shadow(design: string, places: readonly Place[]): string {
+export function shadow(design: string, places: readonly Place[]): string {
   if (shadowRoot) rmSync(shadowRoot, { recursive: true, force: true });
   const root = mkdtempSync('/tmp/ssot-');
   shadowRoot = root;
@@ -355,7 +391,7 @@ process.on('exit', () => {
   if (shadowRoot) rmSync(shadowRoot, { recursive: true, force: true });
 });
 
-function toShadow(path: string): string {
+export function toShadow(path: string): string {
   return path.replace(/\.md$/, '.vdmsl');
 }
 
@@ -761,7 +797,7 @@ function readmeShape(place: Place, file: MarkdownFile): Diagnostic[] {
 // ---------------------------------------------------------------- 模型审查材料
 
 /** 一条交给 jev 判断的材料：问题编号、位置与判断对象。问题的措辞与阈值只在 scripts/review.py 里。 */
-type ReviewItem = {
+export type ReviewItem = {
   readonly question: ReviewQuestion;
   readonly path: string;
   readonly line: number;
@@ -789,7 +825,7 @@ function plain(text: string): string {
 }
 
 /** 文字段落与图、文法块分开取：图与文法不按文字审查。段落所在的二级标题记为它的小节。 */
-function paragraphs(design: string, place: Place): { readonly paragraphs: readonly Paragraph[]; readonly figures: readonly Figure[] } {
+export function paragraphs(design: string, place: Place): { readonly paragraphs: readonly Paragraph[]; readonly figures: readonly Figure[] } {
   const file = readMarkdown(design, place.path);
   const result: Paragraph[] = [];
   let section = '';
@@ -814,7 +850,7 @@ function paragraphs(design: string, place: Place): { readonly paragraphs: readon
 }
 
 /** 每个定义的源码：从它的说明注释开始，到下一个定义的说明之前。 */
-function sources(design: string, module: Located): { readonly module: string; readonly definitions: ReadonlyMap<Definition, { readonly full: string; readonly body: string }> } {
+export function sources(design: string, module: Located): { readonly module: string; readonly definitions: ReadonlyMap<Definition, { readonly full: string; readonly body: string }> } {
   const lines = readFileSync(join(design, module.place.path), 'utf8').split('\n');
   const end = lines.findIndex((text, i) => i >= module.line - 1 && new RegExp(`^\\s*end\\s+${module.name}\\b`).test(text));
   const last = end < 0 ? lines.length : end + 1;
@@ -833,7 +869,7 @@ function sources(design: string, module: Located): { readonly module: string; re
   return { module: lines.slice(module.line - 1, last).join('\n'), definitions };
 }
 
-function review(design: string): readonly ReviewItem[] {
+export function review(design: string): readonly ReviewItem[] {
   const loaded = load(design);
   const blocking = loaded.diagnostics.filter((d) => d.stage === 'layout' || d.stage === 'parse');
   if (blocking.length > 0) {
@@ -901,7 +937,10 @@ function review(design: string): readonly ReviewItem[] {
 
 const LOCATION = /in '[^']*' \(([^)]+)\) at line (\d+):\d+/;
 
-function vdmj(design: string, modules: readonly Located[]): { readonly diagnostics: readonly Diagnostic[]; readonly warnings: readonly string[]; readonly obligations: Obligations } {
+export function vdmj(
+  design: string,
+  modules: readonly Located[],
+): { readonly diagnostics: readonly Diagnostic[]; readonly warnings: readonly string[]; readonly obligations: Obligations; readonly proofs: readonly ProofObligation[] } {
   const files = [...new Set(modules.map((m) => toShadow(m.place.path)))].sort();
   // qc 默认只看当前模块；模式 .* 覆盖全部模块。VDMJ 读的是与 Markdown 同行号的 .vdmsl 影子文件。
   const run = java(['-cp', classpath(), 'com.fujitsu.vdmj.plugins.VDMJ', '-vdmsl', '-q', '-i', ...files], shadow(design, modules.map((m) => m.place)), 'pog\nqc .*\nquit\n');
@@ -927,19 +966,33 @@ function vdmj(design: string, modules: readonly Located[]): { readonly diagnosti
   }
   if (diagnostics.length > 0 || run.code !== 0) {
     if (diagnostics.length === 0) diagnostics.push({ stage: 'typecheck', path: 'README.md', line: 1, message: lines.join('\n').trim() });
-    return { diagnostics, warnings, obligations: { total: 0, provable: 0, maybe: [], unchecked: [] } };
+    return { diagnostics, warnings, obligations: { total: 0, provable: 0, maybe: [], unchecked: [] }, proofs: [] };
   }
 
-  const titles = new Map<number, string>();
+  // 每条义务：「Proof Obligation N:」一行，接「属主: 种类 obligation in '模块' (文件) at line L:C」一行，再接谓词，到空行为止。
+  const generated = new Map<number, Omit<ProofObligation, 'status'>>();
   let total = 0;
   for (let i = 0; i < lines.length; i++) {
-    const generated = /^Generated (\d+) proof obligations/.exec(lines[i]!);
-    if (generated) total = Number(generated[1]);
+    const count = /^Generated (\d+) proof obligations/.exec(lines[i]!);
+    if (count) total = Number(count[1]);
     const po = /^Proof Obligation (\d+):/.exec(lines[i]!);
-    if (po) titles.set(Number(po[1]), lines[i + 1]!.trim());
+    if (!po) continue;
+    const header = /^(.*?): (.+?) obligation in '([^']+)' \(([^)]+)\) at line (\d+):(\d+)/.exec(lines[i + 1]!.trim());
+    const predicate: string[] = [];
+    for (let j = i + 2; j < lines.length && lines[j]!.trim() !== ''; j++) predicate.push(lines[j]!);
+    generated.set(Number(po[1]), {
+      number: Number(po[1]),
+      owner: header?.[1] ?? lines[i + 1]!.trim(),
+      kind: header?.[2] ?? '',
+      module: header?.[3] ?? '',
+      path: header?.[4] ?? 'README.md',
+      line: Number(header?.[5] ?? 1),
+      column: Number(header?.[6] ?? 1),
+      predicate: predicate.join('\n'),
+    });
   }
   // FAILED 只在求值返回 false 时才是反例；求值中途报错（例如生成了违反不变式的状态）只说明 QuickCheck 没能判断。
-  const status = new Map<number, 'PROVABLE' | 'COUNTEREXAMPLE' | 'ERROR' | 'MAYBE'>();
+  const status = new Map<number, ProofObligation['status']>();
   for (let i = 0; i < lines.length; i++) {
     const result = /^PO #(\d+), (\w+)/.exec(lines[i]!);
     if (!result) continue;
@@ -951,29 +1004,43 @@ function vdmj(design: string, modules: readonly Located[]): { readonly diagnosti
     else if (!block.some((l) => l.includes('--> returns false'))) status.set(number, 'ERROR');
     else {
       status.set(number, 'COUNTEREXAMPLE');
-      const where = block.find((l) => LOCATION.test(l)) ?? titles.get(number) ?? '';
+      const po = generated.get(number);
+      const where = block.find((l) => LOCATION.test(l)) ?? '';
       const at = LOCATION.exec(where);
       const witness = block.filter((l) => l.includes('-->')).map((l) => l.trim()).join(' ');
-      diagnostics.push({ stage: 'quickcheck', path: at?.[1] ?? 'README.md', line: Number(at?.[2] ?? 1), message: `证明义务有反例：${where.trim()} ${witness}`.trim() });
+      diagnostics.push({ stage: 'quickcheck', path: at?.[1] ?? po?.path ?? 'README.md', line: Number(at?.[2] ?? po?.line ?? 1), message: `证明义务有反例：${where.trim()} ${witness}`.trim() });
     }
   }
-  const pick = (predicate: (s: string | undefined) => boolean) =>
-    [...titles.entries()].filter(([n]) => predicate(status.get(n))).map(([, title]) => title);
+  const proofs = [...generated.values()].map((po): ProofObligation => ({ ...po, status: status.get(po.number) ?? 'UNCHECKED' }));
+  const title = (po: ProofObligation) => `${po.owner}: ${po.kind} obligation in '${po.module}' (${po.path}) at line ${po.line}:${po.column}`;
   return {
     diagnostics,
     warnings,
     obligations: {
       total,
-      provable: [...status.values()].filter((s) => s === 'PROVABLE').length,
-      maybe: pick((s) => s === 'MAYBE' || s === 'ERROR'),
-      unchecked: pick((s) => s === undefined),
+      provable: proofs.filter((po) => po.status === 'PROVABLE').length,
+      maybe: proofs.filter((po) => po.status === 'MAYBE' || po.status === 'ERROR').map(title),
+      unchecked: proofs.filter((po) => po.status === 'UNCHECKED').map(title),
     },
+    proofs,
   };
+}
+
+/** VDMJ 对一个表达式求值的结果：打印出的值，或求值、类型检查报的错。 */
+export type Evaluation = { readonly kind: 'Value'; readonly text: string } | { readonly kind: 'Failed'; readonly text: string };
+
+/** 以 module 为默认模块，用设计里的全部规格求一个表达式的值。每次一个 JVM：解释器报过一次运行时错误后会停在调试状态，不能接着求下一个。 */
+export function evaluate(design: string, modules: readonly Located[], module: string, expression: string): Evaluation {
+  const files = [...new Set(modules.map((m) => toShadow(m.place.path)))].sort();
+  const run = java(['-cp', classpath(), 'com.fujitsu.vdmj.plugins.VDMJ', '-vdmsl', '-q', '-default', module, '-e', expression, ...files], shadow(design, modules.map((m) => m.place)));
+  const lines = run.lines.map((l) => l.trim()).filter((l) => l !== '' && !l.startsWith('Wall time'));
+  const failed = run.code !== 0 || lines.some((l) => /^(Execution: )?Error \d+:|^Runtime: Error/.test(l));
+  return failed ? { kind: 'Failed', text: lines.join('\n') } : { kind: 'Value', text: lines.join('\n') };
 }
 
 // ---------------------------------------------------------------- 编排
 
-function load(design: string): { readonly places: readonly Place[]; readonly modules: readonly Located[]; readonly diagnostics: readonly Diagnostic[] } {
+export function load(design: string): { readonly places: readonly Place[]; readonly modules: readonly Located[]; readonly diagnostics: readonly Diagnostic[] } {
   const found = layout(design);
   if (found.diagnostics.length > 0) return { places: found.places, modules: [], diagnostics: found.diagnostics };
   const files = outline(design, found.places);
@@ -1014,7 +1081,7 @@ function antipatterns(modules: readonly Located[]): Diagnostic[] {
   );
 }
 
-function check(design: string): Report {
+export function check(design: string): Report {
   const loaded = load(design);
   const shape = form(design, loaded.places);
   if (loaded.diagnostics.some((d) => d.stage === 'layout' || d.stage === 'parse')) {
@@ -1051,7 +1118,7 @@ function unusedDefinitions(modules: readonly Located[], warnings: readonly strin
   return { diagnostics, warnings: rest };
 }
 
-function printDiagnostics(diagnostics: readonly Diagnostic[]): void {
+export function printDiagnostics(diagnostics: readonly Diagnostic[]): void {
   for (const d of diagnostics) console.error(`${d.path}:${d.line}: [${d.stage}] ${d.message}`);
   console.error(`未通过：${diagnostics.length} 处。`);
 }
@@ -1072,7 +1139,7 @@ function printReport(report: Report): void {
       console.log(`证明义务 ${o.total} 条：可证 ${o.provable}，未定 ${o.maybe.length}，未评估 ${o.unchecked.length}。`);
       for (const title of o.maybe) console.log(`  未定：${title}`);
       for (const title of o.unchecked) console.log(`  未评估：${title}`);
-      console.log('未定与未评估的义务、说明、依据和理由仍按 ssot-review-arch、ssot-review-flow、ssot-review-spec 审查。');
+      console.log('未定与未评估的义务逐条在 ssot verify po 里判断守卫；规格是否守住需求由 ssot verify 的各子命令逐项判断。');
       return;
     }
     default:
@@ -1160,19 +1227,24 @@ async function main(): Promise<number> {
       requireJava();
       console.log(JSON.stringify({ design: command.design, items: review(command.design) }, null, 2));
       return 0;
+    case 'Ledger':
+      requireJava();
+      return judge(command.stage, command.args);
     default:
       return assertNever(command);
   }
 }
 
-try {
-  process.exitCode = await main();
-} catch (error) {
-  if (error instanceof UsageError) {
-    console.error(`${error.message}\n\n${USAGE}`);
-    process.exitCode = 2;
-  } else if (error instanceof MissingDependency) {
-    console.error(error.message);
-    process.exitCode = 2;
-  } else throw error;
+if (import.meta.main) {
+  try {
+    process.exitCode = await main();
+  } catch (error) {
+    if (error instanceof UsageError) {
+      console.error(`${error.message}\n\n${USAGE}`);
+      process.exitCode = 2;
+    } else if (error instanceof MissingDependency) {
+      console.error(error.message);
+      process.exitCode = 2;
+    } else throw error;
+  }
 }

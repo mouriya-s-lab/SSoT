@@ -7,6 +7,34 @@ import com.fujitsu.vdmj.ast.definitions.ASTImplicitOperationDefinition;
 import com.fujitsu.vdmj.ast.definitions.ASTStateDefinition;
 import com.fujitsu.vdmj.ast.definitions.ASTTypeDefinition;
 import com.fujitsu.vdmj.ast.definitions.ASTValueDefinition;
+import com.fujitsu.vdmj.ast.expressions.ASTApplyExpression;
+import com.fujitsu.vdmj.ast.expressions.ASTVariableExpression;
+import com.fujitsu.vdmj.ast.lex.LexNameToken;
+import com.fujitsu.vdmj.ast.modules.ASTExport;
+import com.fujitsu.vdmj.ast.modules.ASTExportAll;
+import com.fujitsu.vdmj.ast.modules.ASTExportedFunction;
+import com.fujitsu.vdmj.ast.modules.ASTExportedOperation;
+import com.fujitsu.vdmj.ast.modules.ASTExportedType;
+import com.fujitsu.vdmj.ast.modules.ASTExportedValue;
+import com.fujitsu.vdmj.ast.modules.ASTImport;
+import com.fujitsu.vdmj.ast.modules.ASTImportAll;
+import com.fujitsu.vdmj.ast.modules.ASTImportedFunction;
+import com.fujitsu.vdmj.ast.modules.ASTImportedOperation;
+import com.fujitsu.vdmj.ast.modules.ASTImportedType;
+import com.fujitsu.vdmj.ast.statements.ASTCallStatement;
+import com.fujitsu.vdmj.ast.statements.ASTCaseStmtAlternative;
+import com.fujitsu.vdmj.ast.statements.ASTCasesStatement;
+import com.fujitsu.vdmj.ast.statements.ASTDefStatement;
+import com.fujitsu.vdmj.ast.statements.ASTElseIfStatement;
+import com.fujitsu.vdmj.ast.statements.ASTExternalClause;
+import com.fujitsu.vdmj.ast.statements.ASTIfStatement;
+import com.fujitsu.vdmj.ast.statements.ASTLetBeStStatement;
+import com.fujitsu.vdmj.ast.statements.ASTLetDefStatement;
+import com.fujitsu.vdmj.ast.statements.ASTNonDeterministicStatement;
+import com.fujitsu.vdmj.ast.statements.ASTSimpleBlockStatement;
+import com.fujitsu.vdmj.ast.statements.ASTStatement;
+import com.fujitsu.vdmj.ast.types.ASTNamedType;
+import com.fujitsu.vdmj.ast.types.ASTTokenType;
 import com.fujitsu.vdmj.ast.expressions.ASTAndExpression;
 import com.fujitsu.vdmj.ast.expressions.ASTBooleanLiteralExpression;
 import com.fujitsu.vdmj.ast.expressions.ASTEqualsExpression;
@@ -66,13 +94,35 @@ public class Outline {
 
   public static void main(String[] args) {
     Settings.dialect = Dialect.VDM_SL;
+    List<ModuleReader> readers = new ArrayList<>();
+    List<List<ASTModule>> parsed = new ArrayList<>();
+    for (String arg : args) {
+      ModuleReader reader = new ModuleReader(new LexTokenReader(new File(arg), Dialect.VDM_SL));
+      readers.add(reader);
+      parsed.add(reader.readModules());
+    }
+    // 场景里的调用可能写成表达式（`let x = Op(a)`、`cases Op(a):`），解析器分不出它是函数还是操作，按名字认：
+    // 任何模块定义的操作名，以及导入时给操作起的本地名。
+    Set<String> operations = new LinkedHashSet<>();
+    for (List<ASTModule> modules : parsed) {
+      for (ASTModule m : modules) {
+        for (ASTDefinition def : m.defs) {
+          if (def instanceof ASTExplicitOperationDefinition || def instanceof ASTImplicitOperationDefinition) operations.add(nameOf(def));
+        }
+        if (m.imports == null) continue;
+        for (ASTImportFromModule from : m.imports.imports) {
+          for (ASTImport imported : from.signatures) {
+            if (imported instanceof ASTImportedOperation) operations.add((imported.renamed != null ? imported.renamed : imported.name).name);
+          }
+        }
+      }
+    }
     StringBuilder out = new StringBuilder("[");
     for (int f = 0; f < args.length; f++) {
-      ModuleReader reader = new ModuleReader(new LexTokenReader(new File(args[f]), Dialect.VDM_SL));
       if (f > 0) out.append(',');
       out.append("{\"path\":").append(str(args[f])).append(",\"modules\":[");
       boolean firstModule = true;
-      for (ASTModule m : reader.readModules()) {
+      for (ASTModule m : parsed.get(f)) {
         if (!firstModule) out.append(',');
         firstModule = false;
         out.append("{\"name\":").append(str(m.name.name))
@@ -85,10 +135,21 @@ public class Outline {
             ASTImportFromModule from = m.imports.imports.get(i);
             if (i > 0) out.append(',');
             out.append("{\"module\":").append(str(from.name.name))
-              .append(",\"line\":").append(from.name.location.startLine).append('}');
+              .append(",\"line\":").append(from.name.location.startLine)
+              .append(",\"items\":[");
+            for (int j = 0; j < from.signatures.size(); j++) {
+              ASTImport imported = from.signatures.get(j);
+              if (j > 0) out.append(',');
+              out.append("{\"kind\":").append(str(importKind(imported)))
+                .append(",\"name\":").append(imported.name == null ? "null" : str(imported.name.name))
+                .append(",\"renamed\":").append(imported.renamed == null ? "null" : str(imported.renamed.name)).append('}');
+            }
+            out.append("]}");
           }
         }
-        out.append("],\"definitions\":[");
+        out.append("],\"exports\":");
+        exports(out, m);
+        out.append(",\"definitions\":[");
         for (int d = 0; d < m.defs.size(); d++) {
           ASTDefinition def = m.defs.get(d);
           if (d > 0) out.append(',');
@@ -96,9 +157,17 @@ public class Outline {
             .append(",\"kind\":").append(str(def.kind()))
             .append(",\"line\":").append(def.location.startLine)
             .append(",\"explicit\":").append(explicitBody(def))
-            .append(",\"fields\":[");
+            .append(",\"hasPre\":").append(precondition(def) != null)
+            .append(",\"hasPost\":").append(postcondition(def) != null)
+            .append(",\"hasInv\":").append(invariant(def) != null)
+            .append(",\"unspecified\":").append(unspecified(def))
+            .append(",\"ext\":");
+          externals(out, def);
+          out.append(",\"fields\":[");
           fields(out, fieldsOf(def));
-          out.append("],\"findings\":");
+          out.append("],\"scenario\":");
+          scenario(out, def, operations);
+          out.append(",\"findings\":");
           hits(out, findings(def));
           out.append(",\"candidates\":");
           hits(out, candidates(def));
@@ -106,6 +175,7 @@ public class Outline {
         }
         out.append("]}");
       }
+      ModuleReader reader = readers.get(f);
       out.append("],\"errors\":[");
       for (int e = 0; e < reader.getErrors().size(); e++) {
         VDMError error = reader.getErrors().get(e);
@@ -117,6 +187,166 @@ public class Outline {
       out.append("]}");
     }
     System.out.println(out.append(']'));
+  }
+
+  private static String importKind(ASTImport imported) {
+    if (imported instanceof ASTImportAll) return "all";
+    if (imported instanceof ASTImportedType) return "type";
+    if (imported instanceof ASTImportedOperation) return "operation";
+    if (imported instanceof ASTImportedFunction) return "function";
+    return "value";
+  }
+
+  /** 导出清单：`exports all`，或逐项的种类与名字。`struct` 类型与不透明类型是两种承诺，分开记。 */
+  private static void exports(StringBuilder out, ASTModule m) {
+    boolean all = false;
+    List<String> items = new ArrayList<>();
+    if (m.exports != null) {
+      for (ASTExport export : m.exports.exports) {
+        if (export instanceof ASTExportAll) all = true;
+        else if (export instanceof ASTExportedType type) items.add(item(type.struct ? "struct" : "type", type.name.name, export.location.startLine));
+        else if (export instanceof ASTExportedOperation op) for (LexNameToken n : op.nameList) items.add(item("operation", n.name, export.location.startLine));
+        else if (export instanceof ASTExportedFunction fn) for (LexNameToken n : fn.nameList) items.add(item("function", n.name, export.location.startLine));
+        else if (export instanceof ASTExportedValue value) for (LexNameToken n : value.nameList) items.add(item("value", n.name, export.location.startLine));
+      }
+    }
+    out.append("{\"all\":").append(all).append(",\"items\":[").append(String.join(",", items)).append("]}");
+  }
+
+  private static String item(String kind, String name, int line) {
+    return "{\"kind\":" + str(kind) + ",\"name\":" + str(name) + ",\"line\":" + line + "}";
+  }
+
+  private static ASTExpression precondition(ASTDefinition def) {
+    if (def instanceof ASTImplicitOperationDefinition op) return op.precondition;
+    if (def instanceof ASTExplicitOperationDefinition op) return op.precondition;
+    if (def instanceof ASTImplicitFunctionDefinition fn) return fn.precondition;
+    if (def instanceof ASTExplicitFunctionDefinition fn && !fn.isTypeInvariant) return fn.precondition;
+    return null;
+  }
+
+  private static ASTExpression postcondition(ASTDefinition def) {
+    if (def instanceof ASTImplicitOperationDefinition op) return op.postcondition;
+    if (def instanceof ASTExplicitOperationDefinition op) return op.postcondition;
+    if (def instanceof ASTImplicitFunctionDefinition fn) return fn.postcondition;
+    if (def instanceof ASTExplicitFunctionDefinition fn && !fn.isTypeInvariant) return fn.postcondition;
+    return null;
+  }
+
+  private static ASTExpression invariant(ASTDefinition def) {
+    if (def instanceof ASTTypeDefinition type) return type.invExpression;
+    if (def instanceof ASTStateDefinition state) return state.invExpression;
+    return null;
+  }
+
+  /** 不展开的定义：`T = token`，或体为 `is not yet specified`。约束不能藏在这里。 */
+  private static boolean unspecified(ASTDefinition def) {
+    if (def instanceof ASTTypeDefinition type) return type.type instanceof ASTNamedType named && named.type instanceof ASTTokenType && type.invExpression == null;
+    if (def instanceof ASTExplicitOperationDefinition op) return op.body instanceof ASTNotYetSpecifiedStatement;
+    if (def instanceof ASTExplicitFunctionDefinition fn) return !fn.isTypeInvariant && fn.body instanceof ASTNotYetSpecifiedExpression;
+    if (def instanceof ASTImplicitFunctionDefinition fn) return fn.body instanceof ASTNotYetSpecifiedExpression;
+    return false;
+  }
+
+  /** 隐式操作的 ext 子句：每一句的模式（rd、wr）与它列出的状态分量。 */
+  private static void externals(StringBuilder out, ASTDefinition def) {
+    out.append('[');
+    if (def instanceof ASTImplicitOperationDefinition op && op.externals != null) {
+      for (int i = 0; i < op.externals.size(); i++) {
+        ASTExternalClause clause = op.externals.get(i);
+        if (i > 0) out.append(',');
+        List<String> names = new ArrayList<>();
+        for (LexNameToken n : clause.identifiers) names.add(str(n.name));
+        out.append("{\"mode\":").append(str(clause.mode.toString().trim()))
+          .append(",\"names\":[").append(String.join(",", names)).append("]}");
+      }
+    }
+    out.append(']');
+  }
+
+  /**
+   * 场景显式体里的先后、分支、挑选与调用，各自一个节点。节点的 path 由语句结构写成（分支的模式、条件，块里的序号），
+   * 不含行号：在场景外插行不改变它。
+   */
+  private static void scenario(StringBuilder out, ASTDefinition def, Set<String> operations) {
+    List<String> nodes = new ArrayList<>();
+    if (def instanceof ASTExplicitOperationDefinition op && explicitBody(def)) statement(op.body, nameOf(def), nodes, operations);
+    out.append('[').append(String.join(",", nodes)).append(']');
+  }
+
+  private static void node(List<String> nodes, String kind, String path, int line, String text) {
+    nodes.add("{\"kind\":" + str(kind) + ",\"path\":" + str(path) + ",\"line\":" + line + ",\"text\":" + str(text) + "}");
+  }
+
+  private static void statement(ASTStatement s, String path, List<String> nodes, Set<String> operations) {
+    if (s == null) return;
+    int line = s.location.startLine;
+    if (s instanceof ASTCallStatement call) {
+      node(nodes, "call", path + "/call " + call.name.name, line, s.toString());
+      calls(call.args, path + "/call " + call.name.name, nodes, operations);
+    } else if (s instanceof ASTCasesStatement cases) {
+      String here = path + "/cases " + cases.exp;
+      calls(cases.exp, here, nodes, operations);
+      for (ASTCaseStmtAlternative alternative : cases.cases) {
+        String branch = here + "/when " + alternative.pattern;
+        node(nodes, "branch", branch, alternative.location.startLine, "cases " + cases.exp + ": " + alternative.pattern + " ->");
+        statement(alternative.statement, branch, nodes, operations);
+      }
+      if (cases.others != null) {
+        node(nodes, "branch", here + "/others", cases.others.location.startLine, "cases " + cases.exp + ": others ->");
+        statement(cases.others, here + "/others", nodes, operations);
+      }
+    } else if (s instanceof ASTIfStatement branch) {
+      String here = path + "/if " + branch.ifExp;
+      calls(branch.ifExp, here, nodes, operations);
+      node(nodes, "branch", here + "/then", line, "if " + branch.ifExp + " then");
+      statement(branch.thenStmt, here + "/then", nodes, operations);
+      if (branch.elseList != null) {
+        for (ASTElseIfStatement elseIf : branch.elseList) {
+          String alternative = here + "/elseif " + elseIf.elseIfExp;
+          calls(elseIf.elseIfExp, alternative, nodes, operations);
+          node(nodes, "branch", alternative, elseIf.location.startLine, "elseif " + elseIf.elseIfExp + " then");
+          statement(elseIf.thenStmt, alternative, nodes, operations);
+        }
+      }
+      if (branch.elseStmt != null) {
+        node(nodes, "branch", here + "/else", branch.elseStmt.location.startLine, "else");
+        statement(branch.elseStmt, here + "/else", nodes, operations);
+      }
+    } else if (s instanceof ASTNonDeterministicStatement choice) {
+      node(nodes, "choice", path + "/||", line, "||(" + choice.statements.size() + " 条语句，次序任选)");
+      for (int i = 0; i < choice.statements.size(); i++) statement(choice.statements.get(i), path + "/||" + (i + 1), nodes, operations);
+    } else if (s instanceof ASTSimpleBlockStatement block) {
+      if (block.statements.size() > 1) {
+        List<String> steps = new ArrayList<>();
+        for (ASTStatement step : block.statements) steps.add(step.toString().replaceAll("\\s+", " "));
+        node(nodes, "sequence", path + "/seq", line, String.join(" ; ", steps));
+      }
+      for (int i = 0; i < block.statements.size(); i++) {
+        statement(block.statements.get(i), block.statements.size() > 1 ? path + "/" + (i + 1) : path, nodes, operations);
+      }
+    } else if (s instanceof ASTLetDefStatement let) {
+      calls(let.localDefs, path + "/let", nodes, operations);
+      statement(let.statement, path + "/let", nodes, operations);
+    } else if (s instanceof ASTDefStatement define) {
+      calls(define.localDefs, path + "/def", nodes, operations);
+      statement(define.statement, path + "/def", nodes, operations);
+    } else if (s instanceof ASTLetBeStStatement pick) {
+      String here = path + "/let be " + pick.bind + (pick.suchThat == null ? "" : " st " + pick.suchThat);
+      node(nodes, "choice", here, line, "let " + pick.bind + (pick.suchThat == null ? "" : " be st " + pick.suchThat));
+      statement(pick.statement, here, nodes, operations);
+    } else {
+      calls(s, path, nodes, operations);
+    }
+  }
+
+  /** 表达式里对操作的调用（`Op(a)`），按操作名认出。 */
+  private static void calls(Object root, String path, List<String> nodes, Set<String> operations) {
+    walk(root, node -> {
+      if (node instanceof ASTApplyExpression apply && apply.root instanceof ASTVariableExpression variable && operations.contains(variable.name.name)) {
+        node(nodes, "call", path + "/call " + variable.name.name, apply.location.startLine, apply.toString());
+      }
+    });
   }
 
   /** Value definitions carry their name in the pattern, not in ASTDefinition.name. */

@@ -112,9 +112,9 @@ flowchart TB
 | `ssot graph <design> [--json]` | 输出目录、模块与 `imports` 关系的 Mermaid 图或 JSON |
 | `ssot vdmj <design> [参数]` | 用设计里的全部规格运行 VDMJ，例如 `-i` 进解释器、`-e` 求值 |
 | `ssot review <design>` | 输出语义反模式模型审查的判断对象（JSON），由 `scripts/review.py` 在 omp `eval` 里交给 `jev` |
-| `ssot draft <子命令> <仓库根>` | 核对草稿 `.tmp/ssot-draft/draft.yaml`：`requirements`、`objects`、`constraints`、`owner`、`excluded`、`tradeoffs`、`status` |
-| `ssot design <子命令> <design> [--stamp …]` | 核对落点台账 `.tmp/ssot-design/`：`check`、`elements`、`constraints`、`status` |
-| `ssot verify <子命令> <design> --as <验证方> [--dir …] [--constraint …] [--stamp …]` | 核对验证台账 `.tmp/ssot-verify/<验证方>/`：`check`、`expect`、`gaps`、`attack`、`elements`、`scenarios`、`flows`、`prose`、`modules`、`owner`、`po`、`review`、`verdict`、`status`、`report` |
+| `ssot draft <子命令> <仓库根>` | 核对草稿 `.tmp/ssot-draft/draft.yaml`：`requirements`、`objects`、`constraints`、`owner`、`excluded`、`tradeoffs`、`status`；第一次运行时记下本轮开始的设计基线 `.tmp/ssot-draft/baseline.yaml` |
+| `ssot design <子命令> <design> [--stamp …]` | 核对落点台账 `.tmp/ssot-design/`：`check`、`elements`（本轮新增、改动、删除的元素）、`constraints`、`status` |
+| `ssot verify <子命令> <design> --as <验证方> [--dir …] [--constraint …] [--stamp …]` | 核对验证台账 `.tmp/ssot-verify/<验证方>/`：`check`、`expect`、`gaps`、`overview`、`attack`、`elements`、`scenarios`、`flows`、`prose`、`modules`、`owner`、`po`、`review`、`verdict`、`status`、`report` |
 | `vdmj [参数] <文件>` | VDMJ 本身，带 QuickCheck 插件，读 `.vdmsl` 文件；设计目录里的 Markdown 用 `ssot vdmj` |
 
 ### 逐项判断的台账
@@ -125,6 +125,7 @@ flowchart TB
 - **台账只由判断者写。** 台账是 YAML，按子命令分目录；同一子命令可以拆成多个文件，便于分批与并行，一项义务只留一条记录。槽位没填、取值不在范围内、字段拼错、引用的元素或 `路径.md:行` 找不到，都是错误。
 - **盖章与过期。** 记录核对无误后加 `--stamp` 盖章：工具在同名的 `.stamp.yaml` 里记下记录本身与它依据的原文（被判断的对象、引用的元素、所属的约束）。之后记录改了要重新盖章；依据的原文变了，记录过期，工具并排给出盖章时与现在的原文。重新判断后改写记录再 `--stamp`，或确认结论不变后用 `--stamp <键>` 逐条确认；只写 `--stamp` 不会替你确认过期的记录。
 - **错误与警告。** 错误是没判完，退出码为 1；警告是判断本身给出的问题或不确定（遗漏、过强、未能判定、不该进 VDM、驳回模型审查等），逐条看过再交付。
-- **范围。** `ssot verify` 用 `--dir <目录>`（含子目录）与 `--constraint <编号>` 只核对一批义务；不带范围、没有错误，才算整份判完。`ssot check` 与 VDMJ 求值总是装入全部规格。
+- **范围。** `ssot design elements` 只枚举本轮相对基线新增、改动或删除的元素。`ssot verify` 用 `--dir <目录>`（含子目录）与 `--constraint <编号>` 只核对一批义务；不带范围、没有错误，才算整份判完。`ssot check` 与 VDMJ 求值总是装入全部规格。
+- **生命周期。** 草稿、基线与落点台账属于一轮设计，验证结论交付后删除；验证台账跨轮保留，下一轮只重判缺判、过期与孤儿（见 `ssot-verify` 第九节）。
 
 理论与方法论文献出处见 [`references/sources.md`](references/sources.md)。

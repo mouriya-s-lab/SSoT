@@ -512,8 +512,14 @@ function printOutcomes(outcomes: readonly Outcome[]): number {
     if (!o.missing) continue;
     console.log(`\n# [${o.sub}] 缺判 ${o.missing.items.length} 项：填好下面的骨架，写进 ${o.missing.file}（或同目录下其他 .yaml）的 ${o.missing.list} 列表。`);
     console.log(`${o.missing.list}:`);
+    // 同类义务的问题说明每次都一样：同一子命令里只打印第一次，后面只留各自的位置与骨架。
+    const shown = new Set<string>();
     for (const item of o.missing.items) {
-      if (item.hint) console.log(item.hint.split('\n').map((l) => `  # ${l}`).join('\n'));
+      const lines = item.hint ? item.hint.split('\n') : [];
+      const fresh = lines.filter((l) => !shown.has(l));
+      fresh.forEach((l) => shown.add(l));
+      if (fresh.length < lines.length) fresh.push('（其余问题说明同上）');
+      if (fresh.length > 0) console.log(fresh.map((l) => `  # ${l}`).join('\n'));
       console.log(Bun.YAML.stringify([item.skeleton], null, 2).trimEnd().split('\n').map((l) => `  ${l}`).join('\n'));
     }
   }
@@ -1107,7 +1113,9 @@ function readExpect(
     if (owner) {
       dir = owner.text('dir');
       owner.optionalText('connection');
-      if (dir && spec && !spec.dirs.has(dir)) owner.errors.push(`${where}.owner.dir：设计里没有目录 ${dir}；写 architecture、architecture/<子模块> 或 business/<单元>。`);
+      // 应有归属可以是设计里还没有的目录：那是设计缺目录，报警告；在 owner 一步只能判 absent。
+      if (dir && !/^(architecture(\/[a-z0-9-]+)*|business\/[a-z0-9-]+(\/[a-z0-9-]+)*)$/.test(dir)) owner.errors.push(`${where}.owner.dir：${dir} 不是设计目录的写法；写 architecture、architecture/<子模块> 或 business/<单元>。`);
+      else if (dir && spec && !spec.dirs.has(dir)) notes.push(warning(sub, where, `设计里没有目录 ${dir}：这条应有约束的持有者不存在，设计缺这个目录。`));
       slots.merge(owner);
     }
     slots.errors.forEach((e) => notes.push(error(sub, where, e)));
@@ -1495,16 +1503,26 @@ function directoryOutcome(
   );
 }
 
-/** 在 module 里叫 name 的被调连接（本模块定义的，或导入时起的本地名）的源码：调用记录依据它的契约。 */
+/**
+ * 在 module 里叫 name 的被调连接（本模块定义的，或导入时起的本地名）的契约：它自己的原文（含 pre、post），
+ * 加上结果类型的定义与这些定义直接提到的类型（并类型的各分支）。调用记录依据它：结局多了一支或 pre 改了，记录就过期。
+ */
 function calleeSource(spec: Spec, module: Located, name: string): string {
   const own = spec.elements.get(`${module.name}\`${name}`);
-  if (own) return own.source;
-  for (const imported of module.imports) {
-    for (const item of imported.items) {
-      if (item.name && (item.renamed ?? item.name) === name) return spec.elements.get(`${imported.module}\`${item.name}`)?.source ?? '';
-    }
-  }
-  return '';
+  const imported = own ? undefined : module.imports.flatMap((i) => i.items.filter((it) => it.name && (it.renamed ?? it.name) === name).map((it) => spec.elements.get(`${i.module}\`${it.name}`))).find((e) => e);
+  const callee = own ?? imported;
+  if (!callee) return '';
+  const typeOf = (id: string) => {
+    const e = spec.elements.get(`${callee.module.name}\`${id}`);
+    return e && e.field === null && e.definition.kind === 'type' ? e : undefined;
+  };
+  const names = (text: string) => [...new Set(text.match(/\b[A-Za-z][A-Za-z0-9_]*\b/g) ?? [])];
+  const signature = callee.source.split('\n').find((l) => !l.trim().startsWith('--') && /==>|->|\)\s*\w+\s*:/.test(l)) ?? '';
+  const result = /==>|->/.test(signature) ? signature.split(/==>|->/).pop()! : (/\)\s*\w+\s*:\s*(.+)$/.exec(signature)?.[1] ?? '');
+  const first = names(result).map(typeOf).filter((e) => e !== undefined);
+  const second = first.flatMap((t) => names(t.source).map(typeOf)).filter((e) => e !== undefined);
+  const types = [...new Map([...first, ...second].map((t) => [t.key, t])).values()];
+  return [callee.source, ...types.map((t) => t.source)].join('\n');
 }
 
 /** 正文里的一条：段落、列表项或表格行（表头不算），以及它所在的二级标题。 */
@@ -1981,6 +1999,7 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
               const warnings: string[] = [];
               const dir = expected.get(o.key)!.dir;
               if (verdict !== 'absent' && actual.length === 0) slots.errors.push(`${o.key}.actual：写出它实际写在哪里。`);
+              if (verdict === 'match' && !spec.dirs.has(dir)) slots.errors.push(`${o.key}：应有的持有目录 ${dir} 在设计里不存在，归属不可能一致；写在别处判 misplaced，没写判 absent。`);
               if (verdict === 'match') for (const f of found) if (f.dir !== dir) warnings.push(`判为归属一致，但实际位置在 ${f.dir}，应在 ${dir}。`);
               if (verdict === 'misplaced') warnings.push(`归属不对：${reason ?? ''}${placed(spec, actual)}`);
               if (verdict === 'duplicated') warnings.push(`同一个东西在两处展开：${reason ?? ''}${placed(spec, actual)}`);

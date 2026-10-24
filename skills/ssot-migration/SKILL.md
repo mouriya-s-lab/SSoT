@@ -208,9 +208,10 @@ flowchart TB
 | `HashMap<K, V>`、`BTreeMap<K, V>` | `map K to V`；原文依赖 `BTreeMap` 的键顺序时写 `seq of (K * V)` 加 `inv` 键有序且不重复 |
 | `HashSet<T>`、`BTreeSet<T>` | `set of T` |
 | `String`、`&str` | `seq of char` |
-| `u8` 到 `u128`、`usize` | `nat` |
-| `i8` 到 `i128`、`isize` | `int` |
-| `f32`、`f64` | `real` |
+| `u8`、`u16`、`u32`、`u64`、`u128` | `nat` 加上界 `inv`，例如 `u8` 写 `inv x == x <= 255`：迁移不判断位宽是不是领域事实，原样保留取值范围；范围是否该进设计，由之后的草稿与验证判断。`inv` 只能挂在具名类型上：字段或参数是这类整数时，按“没有名字的对象结构”那一行的规则给它起名（所在类型名加字段名），再加 `inv` |
+| `i8`、`i16`、`i32`、`i64`、`i128` | `int` 加上下界 `inv`，例如 `i8` 写 `inv x == -128 <= x and x <= 127` |
+| `usize`、`isize` | 原文写明目标平台宽度时，按那个宽度照上两行写；没写时写 `nat`、`int`，并把“取值范围取决于目标平台”搬进「语义」 |
+| `f32`、`f64` | `real`；原文依赖浮点的舍入、精度、`NaN` 或无穷时，把那句搬进「语义」 |
 | `bool` | `bool` |
 | `()` | 没有结果：`==> ()` |
 | `Result<T, E>`，以及带类型参数的自有类型（例如 `Journal<D>`） | 同 TypeScript 的泛型：每种用到的实参组合写一个具体类型，例如 `ResultRun`、`JournalTick`；`Result` 的结构是 `T \| E` 两支各自的记录 |

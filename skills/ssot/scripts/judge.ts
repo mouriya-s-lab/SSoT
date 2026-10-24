@@ -575,7 +575,7 @@ function listOf(value: Obj, field: string): Obj[] {
 
 function readDraft(repo: string): { readonly draft: Draft | null; readonly problem: string | null } {
   const file = join(repo, '.tmp', 'ssot-draft', 'draft.yaml');
-  if (!existsSync(file)) return { draft: null, problem: `没有草稿 ${relative(repo, file)}：先按 ssot-draft 写草稿。` };
+  if (!existsSync(file)) return { draft: null, problem: `没有草稿 ${relative(repo, file)}：先写出它的 materials（需求材料路径），再运行 ssot draft requirements 取需求块的骨架。` };
   const { value, problem } = readYaml(file);
   if (!value) return { draft: null, problem: `${relative(repo, file)}：${problem}` };
   const constraints = new Map<string, DraftConstraint>();

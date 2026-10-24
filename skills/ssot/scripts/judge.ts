@@ -314,6 +314,8 @@ type Element = {
   readonly definition: Definition;
   readonly field: string | null;
   readonly source: string;
+  /** 定义或字段在设计文件里的行号：交付时把元素引用落到「文件:行号」。 */
+  readonly line: number;
 };
 
 type Spec = {
@@ -334,9 +336,9 @@ function loadSpec(design: string): { readonly spec: Spec | null; readonly diagno
     const lines = readFileSync(join(design, module.place.path), 'utf8').split('\n');
     for (const definition of module.definitions) {
       const key = `${module.name}\`${definition.name}`;
-      elements.set(key, { key, module, definition, field: null, source: src.definitions.get(definition)?.full ?? '' });
+      elements.set(key, { key, module, definition, field: null, source: src.definitions.get(definition)?.full ?? '', line: definition.line });
       for (const field of definition.fields) {
-        elements.set(`${key}.${field.name}`, { key: `${key}.${field.name}`, module, definition, field: field.name, source: (lines[field.line - 1] ?? '').trim() });
+        elements.set(`${key}.${field.name}`, { key: `${key}.${field.name}`, module, definition, field: field.name, source: (lines[field.line - 1] ?? '').trim(), line: field.line });
       }
     }
   }
@@ -356,6 +358,12 @@ function resolveRef(spec: Spec, ref: string): { readonly text: string; readonly 
   const to = Number(lines[3] ?? lines[2]);
   if (from < 1 || to < from || to > all.length) return null;
   return { text: all.slice(from - 1, to).join('\n'), dir: place.dir, element: null };
+}
+
+/** 交付用的位置：元素引用补上它的「文件:行号」；路径引用原样。 */
+function locate(spec: Spec, ref: string): string {
+  const element = spec.elements.get(ref);
+  return element ? `${ref}（${element.module.place.path}:${element.line}）` : ref;
 }
 
 /** 一组引用：都要找得到；找到的原文记进依据。 */
@@ -1201,7 +1209,7 @@ function assessSlots(s: Slots, where: string, q: Question, spec: Spec, deps: Rec
   if (verdict === 'problem') {
     if (at.length === 0) s.errors.push(`${where}.at：判为有问题，要指出设计里的位置（规格元素或 路径.md:行）。`);
     if (!fix) s.errors.push(`${where}.fix：判为有问题，要写出修法（验证者不改设计，修法交给作者）。`);
-    warnings.push(`${q.slot}（${q.ask}）有问题：${reason ?? ''}｜位置：${at.join('、')}｜修法：${fix ?? ''}`);
+    warnings.push(`${q.slot}（${q.ask}）有问题：${reason ?? ''}｜位置：${at.map((ref) => locate(spec, ref)).join('、')}｜修法：${fix ?? ''}`);
   }
   if (verdict === 'undecided') warnings.push(`${q.slot}（${q.ask}）未能判定：${reason ?? ''}`);
 }
@@ -1231,12 +1239,18 @@ const DEFINITION_QUESTIONS: readonly Question[] = [
   ACTION_WORDS,
   DESIGN_REASON,
 ];
+/** 导出的类型与判定：下游是否真的消费。 */
+const CONSUMPTION: Question = { slot: 'consumption', ask: '导出后在下游确有消费：写出设计里使用它的位置，或系统外调用方使用它的契约与依据；没有导出时判 not_applicable' };
 const TYPE_QUESTIONS: readonly Question[] = [
   { slot: 'observation', ask: '只有观察者要按它分支或读字段时才展开结构；只原样传递的保持 token' },
   { slot: 'struct_exposure', ask: '导出时带不带 struct 与使用方是否读它的结构一致' },
   { slot: 'outcomes', ask: '作为结局时只列合法调用方必须区分处理的分支，不逐项列失败原因；不是结局时判 not_applicable' },
   { slot: 'recovery', ask: '可观察的失败分支写明了改走哪个连接恢复；没有失败分支时判 not_applicable' },
-  { slot: 'consumption', ask: '导出后在下游确有消费：写出设计里使用它的位置，或系统外调用方使用它的契约与依据；没有导出时判 not_applicable' },
+  CONSUMPTION,
+];
+const FUNCTION_QUESTIONS: readonly Question[] = [
+  { slot: 'decision_form', ask: '写法与判据相符：结果本身是约束、且两个独立实现对同一输入必须得出同一结果时写显式体；结果用性质刻画、允许多个合格结果或不想绑定算法时只写签名与 post；在 reason 里写明属于哪一种' },
+  CONSUMPTION,
 ];
 const STATE_QUESTIONS: readonly Question[] = [
   { slot: 'minimality', ask: '状态只放这个连接面要守住的事实，没有冗余分量，也没有观察者不读的内部结构' },
@@ -1249,6 +1263,7 @@ function elementQuestions(e: Element): readonly Question[] {
   if (e.field !== null) return FIELD_QUESTIONS;
   const d = e.definition;
   if (d.kind === 'type') return [...DEFINITION_QUESTIONS, ...TYPE_QUESTIONS];
+  if (d.kind.includes('function')) return [...DEFINITION_QUESTIONS, ...FUNCTION_QUESTIONS];
   if (d.kind === 'state') return [...DEFINITION_QUESTIONS, ...STATE_QUESTIONS];
   if (d.kind === 'implicit operation' && d.ext.some((x) => x.mode === 'wr')) return [...DEFINITION_QUESTIONS, FRAME_QUESTION];
   return DEFINITION_QUESTIONS;
@@ -1309,10 +1324,11 @@ const TOPIC_EXPANDS: Question = { slot: 'expands', ask: '主题文件开头一�
 /** 每个设计目录单独判断的问题；架构目录与业务单元各一组。每个问题是一项独立义务。 */
 const FILES_QUESTION: Question = { slot: 'files', ask: '一组一起变化的元素放在一个文件、按内容命名；各自独立变化的分开；不按篇幅拆分；没有迫使读者跨文件拼出同一个不变量、生命周期或失败窗口' };
 const CROSS_SEMANTICS: Question = { slot: 'cross_semantics', ask: '跨越多个连接的规律（定时与重试、进程边界、崩溃后由谁按哪份事实接管、哪些可以同时发生）在「语义」或它展开的主题文件里交代完整；没有这类规律时判 not_applicable' };
+const CONTAINMENT: Question = { slot: 'containment', ask: '适用的包含关系（同进程、同部署、同信任范围、同存续期）在「语义」或它展开的主题文件里写明了（模块树不代表运行期包含）；没有适用的包含关系时判 not_applicable' };
 const ARCHITECTURE_DIR_QUESTIONS: readonly Question[] = [
   { slot: 'partition', ask: '模块按抽象划分（对外陈述连接、对内隐藏决定），不按篇幅或执行步骤；拆出子模块的理由写进了 README；并列的底座彼此正交' },
   { slot: 'rationale_coverage', ask: '每个改变架构形状的决定都在「为什么」里写了理由并引用依据，存在可信替代时写了为什么不选；在 reason 里列出核对过的决定' },
-  { slot: 'containment', ask: '同进程、同部署、同信任范围、同存续期等包含关系在「语义」或它展开的主题文件里写明了（模块树不代表运行期包含）' },
+  CONTAINMENT,
   CROSS_SEMANTICS,
   { slot: 'boundary', ask: '没有只服务单一业务单元的规则，也没有连接不变时可以替换的实现做法写进架构' },
   { slot: 'accumulation', ask: '没有哪里积压了多个来源或视角的值与结构；没有整片定义脱离当前要观察的视角' },
@@ -1320,7 +1336,12 @@ const ARCHITECTURE_DIR_QUESTIONS: readonly Question[] = [
   { slot: 'shape', ask: '规格的实际长相与第一步写下的应有长相对得上，没有拧巴或没想通的设计思路' },
 ];
 const BUSINESS_DIR_QUESTIONS: readonly Question[] = [
-  { slot: 'composition', ask: '只经导出的连接单向组合；不持有持久 state；不承诺结构的 token 原样传递，不读结构、不自造；结果在本单元边界收敛' },
+  { slot: 'composition', ask: '只经导出的连接单向组合（点对点调用一个连接点，或点对面接入一个连接面），依赖单向无环' },
+  { slot: 'business_state', ask: '不持有持久 state' },
+  { slot: 'token_origin', ask: '不承诺结构的 token 只取自连接、原样传给别的连接，不自行制造' },
+  { slot: 'token_structure', ask: '不读取导出时没有承诺的结构（不带 struct 导出的类型）' },
+  { slot: 'convergence', ask: '结果在本单元边界收敛：在架构的一般规律内取子集或定细化策略，细化不越出架构的规律' },
+  CONTAINMENT,
   { slot: 'boundary', ask: '没有把常变的业务内容本身（应留在代码里的规则）写进规格' },
   CROSS_SEMANTICS,
   { slot: 'accumulation', ask: '没有哪里积压了多个来源或视角的值与结构；不属于本单元的来源拆回了各自的模块' },
@@ -1553,7 +1574,7 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
     else {
       const stateless = [...spec.elements.values()]
         .filter((e) => e.field === null && e.definition.kind === 'implicit operation' && e.definition.ext.length === 0 && inScope({ dir: e.module.place.dir, constraint: null }, scope))
-        .map((e) => warning('elements', e.key, '不读写任何状态的隐式操作：写成函数（functions），不写成 operations。'));
+        .map((e) => warning('elements', `${e.key}（${e.module.place.path}:${e.line}）`, '不读写任何状态的隐式操作：写成函数（functions），不写成 operations。'));
       const judged = runStamped(
           {
             sub: 'elements',
@@ -1696,7 +1717,7 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
           m.exports.items
             .filter((x) => x.kind === 'function')
             .filter((x) => !spec.modules.some((other) => other !== m && other.imports.some((i) => i.module === m.name && i.items.some((it) => it.kind === 'all' || it.name === x.name))))
-            .map((x) => warning('flows', `${m.name}\`${x.name}`, '导出的判定没有任何模块导入：下游没人消费它算出的结果，确认是否需要。')),
+            .map((x) => warning('flows', `${m.name}\`${x.name}（${m.place.path}:${x.line}）`, '导出的判定没有任何模块导入：下游没人消费它算出的结果，确认是否需要。')),
         );
       const judged = runStamped(
         {
@@ -1816,30 +1837,37 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
           : `${shape ?? ''}\n${all}`;
         add(`design#${q.slot}`, null, q, subject, q.slot === 'forms' ? subject : '整份设计（只在不带范围时要求）');
       }
-      outcomes.push(
-        runStamped(
-          {
-            sub: 'modules',
-            list: 'modules',
-            keyField: 'item',
-            target: target('modules'),
-            files: files('modules'),
-            obligations,
-            judge: (record, o) => {
-              const q = questions.get(o.key)!;
-              const slots = new Slots(record, o.key);
-              slots.only(['item', 'verdict', 'reason', 'at', 'fix']);
-              const deps: Record<string, string> = {};
-              const warnings: string[] = [];
-              assessSlots(slots, o.key, q, spec, deps, warnings);
-              return { errors: slots.errors, warnings, deps };
-            },
+      // imports 要逐项列出用到的名字：from … all 是机械可查的违反，直接警告，不另设判断槽。
+      const wildcard = spec.modules
+        .filter((m) => inScope({ dir: m.place.dir, constraint: null }, scope))
+        .flatMap((m) =>
+          m.imports
+            .filter((i) => i.items.some((it) => it.kind === 'all'))
+            .map((i) => warning('modules', `${m.name}（${m.place.path}）`, `from ${i.module} all：imports 逐项列出用到的名字，不整体导入。`)),
+        );
+      const judged = runStamped(
+        {
+          sub: 'modules',
+          list: 'modules',
+          keyField: 'item',
+          target: target('modules'),
+          files: files('modules'),
+          obligations,
+          judge: (record, o) => {
+            const q = questions.get(o.key)!;
+            const slots = new Slots(record, o.key);
+            slots.only(['item', 'verdict', 'reason', 'at', 'fix']);
+            const deps: Record<string, string> = {};
+            const warnings: string[] = [];
+            assessSlots(slots, o.key, q, spec, deps, warnings);
+            return { errors: slots.errors, warnings, deps };
           },
-          scope,
-          mode,
-          rel,
-        ),
+        },
+        scope,
+        mode,
+        rel,
       );
+      outcomes.push({ ...judged, notes: [...wildcard, ...judged.notes] });
     }
   }
 
@@ -2108,7 +2136,7 @@ function reviewOutcome(design: string, spec: Spec, root: string, scope: Scope, m
         slots.only(['item', 'verdict', 'reason']);
         const verdict = slots.choice('verdict', ['accept', 'reject'] as const);
         const reason = slots.text('reason');
-        const warnings = verdict === 'accept' ? [`采纳模型审查，交回作者修改：${reason ?? ''}`] : verdict === 'reject' ? [`驳回模型审查：${reason ?? ''}`] : [];
+        const warnings = verdict === 'accept' ? [`采纳模型审查（${o.hint}），交回作者修改：${reason ?? ''}`] : verdict === 'reject' ? [`驳回模型审查（${o.hint}）：${reason ?? ''}`] : [];
         return { errors: slots.errors, warnings, deps: {} };
       },
     },

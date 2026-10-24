@@ -85,6 +85,13 @@ describe('verify', () => {
     expect(run.out).toContain('business/report#composition.fix：判为有问题，要写出修法');
   });
 
+  test('问题位置写成规格元素时，报告补上它在设计源文的文件与行号', () => {
+    const { root, design } = workspace();
+    put(root, '.tmp/ssot-verify/fable/modules/report.yaml', 'modules:\n  - {item: "business/report#token_origin", verdict: problem, reason: 自造了运行号, at: ["Report`Daily"], fix: 运行号取自 Start 的结局}\n');
+    const run = cli('verify', 'modules', design, '--as', 'fable', '--dir', 'business/report');
+    expect(run.out).toMatch(/Report`Daily（business\/report\/report\.md:1[78]）/);
+  });
+
   test('反例改了没列进 ext wr 的分量，规格不允许，不算反例', () => {
     const { root, design } = workspace();
     const slot = '{verdict: not_applicable, reason: 测试}';

@@ -792,7 +792,7 @@ const LANDINGS = ['type', 'inv', 'pre', 'post', 'scenario', 'function', 'import'
 type Landing = (typeof LANDINGS)[number];
 /** 草稿的约束类别允许的写法（ssot-design 第一节）；「语义」任何类别都可以写，但要单独列出。 */
 const ALLOWED: Readonly<Record<Category, readonly Landing[]>> = {
-  invariant: ['type', 'inv', 'import', 'export', 'function', 'semantic'],
+  invariant: ['inv', 'post', 'pre', 'type', 'import', 'export', 'function', 'semantic'],
   admission: ['pre', 'function', 'semantic'],
   transition: ['post', 'function', 'semantic'],
   lifecycle: ['scenario', 'semantic'],
@@ -809,42 +809,45 @@ function elementObligations(spec: Spec): Obligation[] {
   }));
 }
 
-/** 基线里这个元素是不展开的占位（`= token` 或 `is not yet specified`）。 */
-function wasPlaceholder(source: string): boolean {
-  return /is not yet specified/.test(source) || /=\s*token\s*;?\s*$/m.test(source);
+/**
+ * 最小形式是默认：类型是 token，连接与判定是 is not yet specified。本轮新增或改动、却不是最小形式的元素，都要说明为什么不能缩回去。
+ * 结构（带结构的类型、状态、字段）还要指出读这份结构的别的元素；体与谓词（操作、函数、值）指出读它的元素可选。
+ */
+type Expansion = 'structure' | 'body';
+
+function expansionsOf(spec: Spec, baseline: Baseline): ReadonlyMap<string, Expansion> {
+  const out = new Map<string, Expansion>();
+  for (const e of spec.elements.values()) {
+    if (baseline.get(e.key) === e.source) continue;
+    if (e.field === null && e.definition.unspecified) continue;
+    out.set(e.key, e.field !== null || e.definition.kind === 'type' || e.definition.kind === 'state' ? 'structure' : 'body');
+  }
+  return out;
 }
 
-/** 本轮把基线里的占位展开了：token 写出了结构，或 is not yet specified 写出了体或 post。 */
-function expandedPlaceholders(spec: Spec, baseline: Baseline): ReadonlySet<string> {
-  return new Set(
-    [...spec.elements.values()]
-      .filter((e) => e.field === null && !e.definition.unspecified)
-      .filter((e) => {
-        const before = baseline.get(e.key);
-        return before !== undefined && before !== e.source && wasPlaceholder(before);
-      })
-      .map((e) => e.key),
-  );
-}
+const EXPANSION_HINT: Readonly<Record<Expansion, string>> = {
+  structure:
+    '它不是最小形式（token）：expansion.violation 写出缩回 token、删掉这个字段或分支之后，哪条草稿约束的哪种违反情形会重新可以构造；needed_by 写出读这份结构、按它分支的别的元素。写不出就缩回去，约束改落到使用它的操作的 pre/post 或状态的 inv 上。',
+  body:
+    '它不是最小形式（is not yet specified）：expansion.violation 写出退回 is not yet specified、删掉多余的参数、合取项或调用之后，哪条草稿约束的哪种违反情形会重新可以构造；needed_by 可选，写出要求它的体或谓词的别的元素。写不出就退回去。',
+};
 
 /** 本轮要交代来由的元素：相对基线新增或原文改动的，以及本轮删掉的。没动过的旧元素不归本轮草稿解释。 */
-function roundObligations(spec: Spec, baseline: Baseline, expanded: ReadonlySet<string>): Obligation[] {
-  const skeleton = (key: string) => ({ element: key, constraints: [], connection_for: [], reason: '', ...(expanded.has(key) ? { expansion: { needed_by: [], reason: '' } } : {}) });
+function roundObligations(spec: Spec, baseline: Baseline, expansions: ReadonlyMap<string, Expansion>): Obligation[] {
+  const skeleton = (key: string) => ({ element: key, constraints: [], connection_for: [], reason: '', ...(expansions.has(key) ? { expansion: { violation: '', needed_by: [] } } : {}) });
   const changed = [...spec.elements.values()]
     .filter((e) => baseline.get(e.key) !== e.source)
-    .map((e) => ({
-      key: e.key,
-      dir: e.module.place.dir,
-      constraint: null,
-      subject: e.source,
-      skeleton: skeleton(e.key),
-      hint: [
-        baseline.has(e.key) ? `本轮改动（${e.module.place.path}:${e.line}）` : `本轮新增（${e.module.place.path}:${e.line}）`,
-        ...(expanded.has(e.key)
-          ? ['本轮把占位展开了：expansion.needed_by 写出读它结构、按它分支或要求它的体的那个已有元素（谓词所在的操作、场景或判定），reason 写那条草稿约束为什么非读它不可；指不出就退回占位。']
-          : []),
-      ].join('\n'),
-    }));
+    .map((e) => {
+      const kind = expansions.get(e.key);
+      return {
+        key: e.key,
+        dir: e.module.place.dir,
+        constraint: null,
+        subject: e.source,
+        skeleton: skeleton(e.key),
+        hint: [baseline.has(e.key) ? `本轮改动（${e.module.place.path}:${e.line}）` : `本轮新增（${e.module.place.path}:${e.line}）`, ...(kind ? [EXPANSION_HINT[kind]] : [])].join('\n'),
+      };
+    });
   const removed = [...baseline.entries()]
     .filter(([key]) => !spec.elements.has(key))
     .map(([key, source]) => ({ key, dir: null, constraint: null, subject: `（已删除）\n${source}`, skeleton: skeleton(key), hint: '本轮删除' }));
@@ -967,7 +970,7 @@ function designOutcomes(design: string, sub: DesignSub, mode: StampMode): Outcom
   // 每个子命令一个目录：一个盖章文件只有一个子命令写，并行跑 elements 与 constraints 不会互相覆盖。
   const ledger = (s: string) => join(repo, '.tmp', 'ssot-design', s);
   const scope: Scope = { dirs: [], constraints: [] };
-  const expanded = expandedPlaceholders(spec, baseline);
+  const expansions = expansionsOf(spec, baseline);
   if (wants('elements')) {
     outcomes.push(
       runStamped(
@@ -977,10 +980,11 @@ function designOutcomes(design: string, sub: DesignSub, mode: StampMode): Outcom
           keyField: 'element',
           target: join(ledger('elements'), 'elements.yaml'),
           files: yamlFiles(ledger('elements')),
-          obligations: roundObligations(spec, baseline, expanded),
+          obligations: roundObligations(spec, baseline, expansions),
           judge: (record, o) => {
             const slots = new Slots(record, o.key);
-            slots.only(['element', 'constraints', 'connection_for', 'reason', ...(expanded.has(o.key) ? ['expansion'] : [])]);
+            const expansion = expansions.get(o.key);
+            slots.only(['element', 'constraints', 'connection_for', 'reason', ...(expansion ? ['expansion'] : [])]);
             const cs = slots.list('constraints');
             const conn = slots.list('connection_for');
             const removed = !spec.elements.has(o.key);
@@ -994,16 +998,19 @@ function designOutcomes(design: string, sub: DesignSub, mode: StampMode): Outcom
             for (const c of [...cs, ...conn]) if (!draft!.constraints.has(c)) slots.errors.push(`${o.key}：${c} 不在草稿的 constraints 里。`);
             slots.text('reason');
             const deps: Record<string, string> = {};
-            if (expanded.has(o.key)) {
+            if (expansion) {
               const x = slots.nested('expansion');
               if (x) {
-                x.only(['needed_by', 'reason']);
+                x.only(['violation', 'needed_by']);
+                x.text('violation');
                 const by = x.list('needed_by');
-                if (by.length === 0) x.errors.push(`${o.key}.expansion.needed_by：基线里它是占位，本轮展开了；写出读它结构、按它分支或要求它的体的已有元素，指不出就退回占位。`);
+                if (expansion === 'structure' && by.length === 0) x.errors.push(`${o.key}.expansion.needed_by：它带着结构（不是 token）；写出读这份结构、按它分支的别的元素，指不出就缩回 token 或删掉这个字段。`);
+                // 结构的读者不能是它自己、它所在的定义或它的字段：那是自证。
+                const own = spec.elements.get(o.key);
+                const owner = own && own.field !== null ? `${own.module.name}\`${own.definition.name}` : o.key;
                 for (const f of refs(spec, by, `${o.key}.expansion.needed_by`, x, deps)) {
-                  if (f.element && (f.element.key === o.key || f.element.key.startsWith(`${o.key}.`))) x.errors.push(`${o.key}.expansion.needed_by：要指出它以外读它结构的元素，不能指它自己或它的字段。`);
+                  if (f.element && (f.element.key === owner || f.element.key.startsWith(`${owner}.`))) x.errors.push(`${o.key}.expansion.needed_by：要指出它所在定义以外读它的元素，不能指它自己、它所在的定义或它的字段。`);
                 }
-                x.text('reason');
                 slots.merge(x);
               }
             }
@@ -1353,7 +1360,7 @@ const DEFINITION_QUESTIONS: readonly Question[] = [
 /** 导出的类型与判定：下游是否真的消费。 */
 const CONSUMPTION: Question = { slot: 'consumption', ask: '导出后在下游确有消费：写出设计里使用它的位置，或系统外调用方使用它的契约与依据；没有导出时判 not_applicable。没人消费时修法是取消导出或删掉它，不是造一个消费者', evidence: '使用它的位置，或写着系统外调用契约的那一行' };
 const TYPE_QUESTIONS: readonly Question[] = [
-  { slot: 'observation', ask: '只有观察者要按它分支或读字段时才展开结构；只原样传递的保持 token' },
+  { slot: 'observation', ask: '只有观察者要按它分支或读字段时才展开结构：每个字段、每个分支都有观察者读；缩回 token 或删掉某个字段、分支之后第一步的应有约束仍全部成立，就判 problem，修法是缩回去；只原样传递的保持 token', evidence: '读这份结构、按它分支的元素' },
   { slot: 'struct_exposure', ask: '导出时带不带 struct 与使用方是否读它的结构一致' },
   { slot: 'outcomes', ask: '作为结局时只列合法调用方必须区分处理的分支，不逐项列失败原因；不是结局时判 not_applicable' },
   { slot: 'recovery', ask: '可观察的失败分支写明了改走哪个连接恢复；没有失败分支时判 not_applicable', evidence: '负责恢复的连接' },
@@ -1370,14 +1377,25 @@ const STATE_QUESTIONS: readonly Question[] = [
 ];
 const FRAME_QUESTION: Question = { slot: 'frame', ask: '每个 or 分支都写齐了这一支没改的 wr 分量（x = x~）；没写的分量在那一支可以变成任意值' };
 
+/**
+ * 最小形式是默认：不是 token / is not yet specified 的定义与字段，都要回答能不能缩回去；占位本身不问。
+ * 类型由 observation 问，状态由 minimality 问，其余定义与字段问 minimal_form。
+ */
+const MINIMAL_FORM: Question = {
+  slot: 'minimal_form',
+  ask: '缩回最小形式后第一步的应有约束是否仍全部成立：显式体退回 is not yet specified，删掉多余的参数、结果结构、pre/post/inv 合取项、ext 分量或调用，删掉这个字段；约束仍成立就判 problem，修法是缩回去。reason 写缩回后哪种违反情形会重新可以构造',
+  evidence: '要求它展开的谓词或读它的元素',
+};
+
 function elementQuestions(e: Element): readonly Question[] {
-  if (e.field !== null) return FIELD_QUESTIONS;
+  if (e.field !== null) return [...FIELD_QUESTIONS, MINIMAL_FORM];
   const d = e.definition;
-  if (d.kind === 'type') return [...DEFINITION_QUESTIONS, ...TYPE_QUESTIONS];
-  if (d.kind.includes('function')) return [...DEFINITION_QUESTIONS, ...FUNCTION_QUESTIONS];
+  if (d.kind === 'type') return [...DEFINITION_QUESTIONS, ...TYPE_QUESTIONS.filter((q) => !(d.unspecified && q.slot === 'observation'))];
   if (d.kind === 'state') return [...DEFINITION_QUESTIONS, ...STATE_QUESTIONS];
-  if (d.kind === 'implicit operation' && d.ext.some((x) => x.mode === 'wr')) return [...DEFINITION_QUESTIONS, FRAME_QUESTION];
-  return DEFINITION_QUESTIONS;
+  const minimal = d.unspecified ? [] : [MINIMAL_FORM];
+  if (d.kind.includes('function')) return [...DEFINITION_QUESTIONS, ...FUNCTION_QUESTIONS, ...minimal];
+  if (d.kind === 'implicit operation' && d.ext.some((x) => x.mode === 'wr')) return [...DEFINITION_QUESTIONS, FRAME_QUESTION, ...minimal];
+  return [...DEFINITION_QUESTIONS, ...minimal];
 }
 
 const SCENARIO_RESULT: Question = { slot: 'result', ask: '场景交给自己调用方的结果区分了正常推进与故障' };

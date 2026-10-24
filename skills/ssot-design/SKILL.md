@@ -15,7 +15,7 @@ description: SSoT按草稿写设计：把ssot-draft定下的约束写成design/�
 
 | 约束类别 | 写法 | `landing.kind` |
 |---|---|---|
-| 任何时刻都成立的关系（`invariant`） | 类型结构，让违反情形构造不出来；类型表达不了时写状态的 `inv` | `type`、`inv` |
+| 任何时刻都成立的关系（`invariant`） | 先写在持有这份事实的状态的 `inv`，或产生它的操作的 `post`/`pre` 上；只有观察者本来就要按它分支或读字段时，才用类型结构让违反情形构造不出来 | `inv`、`post`、`pre`、`type` |
 | 一次调用的准入条件（`admission`） | 操作的 `pre` | `pre` |
 | 一次调用前后的关系（`transition`） | 隐式操作的 `post`，`ext` 只列要写的分量；没列进 `ext wr` 的分量调用前后不变 | `post` |
 | 生命周期的先后（`lifecycle`） | 显式场景操作，体内每一处先后都对应一条约束 | `scenario` |
@@ -57,7 +57,7 @@ elements:                                  # .tmp/ssot-design/elements/*.yaml
   - {element: "Run`Start", constraints: [C1], connection_for: [], reason: …}
 ```
 
-`token` 与 `is not yet specified` 只用于不展开的内容，是合法的终态。草稿里已经定下的约束必须出现在类型、`inv`、`pre` 或 `post` 上，不能藏进不展开的定义里：落点是这类定义时，工具报错，这时把落点改到产生或使用它的操作的 `pre`/`post`、状态的 `inv` 或「语义」，不要为此展开它。基线里是占位、本轮展开了的元素，`ssot design elements` 另要 `expansion`：`needed_by` 写出读它结构、按它分支或要求它的体的已有元素，`reason` 写那条草稿约束为什么非读它不可；指不出就退回占位。
+`token` 与 `is not yet specified` 只用于不展开的内容，是默认的、合法的终态。草稿里已经定下的约束必须出现在类型、`inv`、`pre` 或 `post` 上，不能藏进不展开的定义里：落点是这类定义时，工具报错，这时把落点改到产生或使用它的操作的 `pre`/`post`、状态的 `inv` 或「语义」，不要为此展开它。本轮新增或改动、却不是最小形式的元素（带结构的类型、状态、字段，有体或有 `pre`/`post` 的操作与函数），`ssot design elements` 都另要 `expansion`：`violation` 写缩回最小形式（退回 `token` / `is not yet specified`、删掉这个字段、分支、参数或合取项）之后，哪条草稿约束的哪种违反情形会重新可以构造；结构还要在 `needed_by` 写出读这份结构、按它分支的别的元素（不能是它自己或它所在的定义）。写不出就缩回去。是某条约束的落点不算理由：落点本身也可以选更小的位置。占位不用写理由，所以不展开总是最省事的写法。
 
 规格写不清、但确实属于约束的语义，写进 `README.md` 的「语义」；在 README 里展开会遮住架构时，写进它展开的主题文件（开头一段说明展开 README 的哪一节）。落点记成 `semantic` 并给出那一行。一条约束的落点全是「语义」时，工具给出警告，交付时单独列出。「语义」该写哪些内容、怎样写，见 `references/writing.md` 第一、四节。
 

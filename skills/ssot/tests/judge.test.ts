@@ -96,8 +96,9 @@ describe('verify', () => {
     overview(root, design, 'business/report');
     const slot = (name: string, verdict = 'ok') => `${name}: {verdict: ${verdict}, reason: 看过}`;
     const common = ['comment_meaning', 'signature', 'nonvacuous', 'wording', 'action_words', 'design_reason'].map((s) => slot(s));
-    const daily = [...common, slot('predicate_promise', 'not_applicable')].join(', ');
-    const outcome = [...common, slot('predicate_promise', 'not_applicable'), slot('observation'), slot('struct_exposure'), slot('outcomes'), slot('recovery', 'not_applicable'), slot('consumption', 'not_applicable')].join(', ');
+    const reads = (name: string) => `${name}: {verdict: ok, reason: 看过, at: ["Report\`Daily"]}`;
+    const daily = [...common, slot('predicate_promise', 'not_applicable'), reads('minimal_form')].join(', ');
+    const outcome = [...common, slot('predicate_promise', 'not_applicable'), reads('observation'), slot('struct_exposure'), slot('outcomes'), slot('recovery', 'not_applicable'), slot('consumption', 'not_applicable')].join(', ');
     put(
       root,
       '.tmp/ssot-verify/fable/elements/report.yaml',
@@ -118,7 +119,8 @@ describe('verify', () => {
     expect(stale.out).toContain('过期：主体');
     // 只写 --stamp 不会替判断者确认过期的记录。
     expect(cli(...scope, '--stamp').code).toBe(1);
-    expect(cli(...scope, '--stamp', 'Report`Daily').code).toBe(0);
+    // DailyOutcome 的判断引用了 Daily 的原文，一起过期，一起确认。
+    expect(cli(...scope, '--stamp', 'Report`Daily', '--stamp', 'Report`DailyOutcome').code).toBe(0);
   });
 
   test('判为有问题却没给位置与修法，不算判完', () => {
@@ -287,18 +289,32 @@ describe('design', () => {
     expect(cli('design', 'elements', design).out).toContain('没有本轮开始时的设计基线');
   });
 
-  test('把基线里的 token 展开了，要指出读它结构的别的元素，不能指它自己', () => {
+  test('新写的元素不是最小形式，要写出缩回去会让哪种违反情形重新可以构造；结构还要指出别的读者', () => {
     const { root, design } = workspace();
     draft(root);
     cli('draft', 'status', root);
     const run = join(design, 'architecture/run.md');
     writeFileSync(run, readFileSync(run, 'utf8').replace('RunId = token;', 'RunId ::\n    n : nat;  -- 编号'));
     const skeleton = cli('design', 'elements', design).out;
-    expect(skeleton).toContain('本轮把占位展开了');
-    expect(skeleton).toContain('needed_by');
-    put(root, '.tmp/ssot-design/elements/run.yaml', 'elements:\n  - {element: "Run`RunId", constraints: [C1], connection_for: [], reason: 要编号, expansion: {needed_by: ["Run`RunId"], reason: 要读}}\n');
-    expect(cli('design', 'elements', design).out).toContain('要指出它以外读它结构的元素');
+    expect(skeleton).toContain('它不是最小形式（token）');
+    expect(skeleton).toContain('violation');
+    put(root, '.tmp/ssot-design/elements/run.yaml', 'elements:\n  - {element: "Run`RunId", constraints: [C1], connection_for: [], reason: 要编号, expansion: {violation: 会重复, needed_by: ["Run`RunId"]}}\n');
+    expect(cli('design', 'elements', design).out).toContain('不能指它自己、它所在的定义或它的字段');
+    put(root, '.tmp/ssot-design/elements/run.yaml', 'elements:\n  - {element: "Run`RunId", constraints: [C1], connection_for: [], reason: 要编号, expansion: {violation: 会重复}}\n');
+    expect(cli('design', 'elements', design).out).toContain('Run`RunId.expansion.needed_by：它带着结构');
     put(root, '.tmp/ssot-design/elements/run.yaml', 'elements:\n  - {element: "Run`RunId", constraints: [C1], connection_for: [], reason: 要编号}\n');
     expect(cli('design', 'elements', design).out).toMatch(/Run`RunId.*expansion/);
+  });
+
+  test('改成占位的元素不用讲展开的理由', () => {
+    const { root, design } = workspace();
+    draft(root);
+    cli('draft', 'status', root);
+    const report = join(design, 'business/report/report.md');
+    const text = readFileSync(report, 'utf8');
+    writeFileSync(report, text.replace(/Daily\(request\) ==[\s\S]*?end;/, 'Daily(request) == is not yet specified;'));
+    const out = cli('design', 'elements', design).out;
+    expect(out).toContain('Report`Daily：缺判');
+    expect(out).not.toContain('它不是最小形式');
   });
 });

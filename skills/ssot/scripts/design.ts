@@ -1142,7 +1142,7 @@ function printReport(report: Report): void {
       console.log(`证明义务 ${o.total} 条：可证 ${o.provable}，未定 ${o.maybe.length}，未评估 ${o.unchecked.length}。`);
       for (const title of o.maybe) console.log(`  未定：${title}`);
       for (const title of o.unchecked) console.log(`  未评估：${title}`);
-      console.log('未定与未评估的义务逐条在 ssot verify po 里判断守卫；规格是否守住需求由 ssot verify 的各子命令逐项判断。');
+      console.log('未定与未评估的义务要逐条到 pre、inv 与分支条件里找守卫；ssot verify po 逐条记录这些判断。');
       return;
     }
     default:

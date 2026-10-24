@@ -7,7 +7,7 @@ description: SSoT设计真源（Markdown+VDM-SL文学式规格）总纲与路由
 
 完整通过检查的示例设计见 [`references/example/design/`](references/example/design/)。
 
-**默认工作边界：只专注 `design/` 本身。** 执行任何 `ssot` 任务时，**默认禁止查看目标仓库中 `design/` 之外的任何文件（包括实现代码、测试、配置文件、其他文档，以及 `legacy-design/`），也禁止查看 `git` 历史或 diff**；`legacy-design/` 仅在当前任务明确是执行 `ssot-migration` 存量迁移时才允许读取；`ssot-draft` 与 `ssot-verify` 另可读取用户明确提供的材料，`ssot-draft` 在目标仓库的 `.tmp/ssot-draft/` 写草稿，`ssot-design` 读取这份草稿。**禁止使用 `discuss`、`mentor`、`task:*` 等通用 subagent**（仅审查块按下方规则、`ssot-verify` 按其自身规则使用本 skill `agents/` 目录下预置的 `ssot:argon` 与 `ssot:fable`）。审查 `design/` 时只以 `ssot` 系列 skill 与 `design/` 自身为准，不受目标仓库 `.claude/rules/` 中既有模块划分或旧审查条文的预设绑架；运行 `ssot` 命令行工具直接用终端工具（如 `exec_command`），不绕用 Python `eval` 调 `subprocess`。不要找任何借口去翻看 `design/` 之外的内容；如果确实认为某一步非看某个外部文件不可，只能向用户提议并等待许可，绝不是默认行为。
+**默认工作边界：只专注 `design/` 本身。** 执行任何 `ssot` 任务时，**默认禁止查看目标仓库中 `design/` 之外的任何文件（包括实现代码、测试、配置文件、其他文档，以及 `legacy-design/`），也禁止查看 `git` 历史或 diff**；`legacy-design/` 仅在当前任务明确是执行 `ssot-migration` 存量迁移时才允许读取；`ssot-draft` 与 `ssot-verify` 另可读取用户明确提供的材料，`ssot-draft` 在目标仓库的 `.tmp/ssot-draft/` 写草稿，`ssot-design` 读取这份草稿并在 `.tmp/ssot-design/` 写落点台账，`ssot-verify` 在 `.tmp/ssot-verify/` 写各验证方的验证台账（不读草稿与落点台账）。**禁止使用 `discuss`、`mentor`、`task:*` 等通用 subagent**（仅审查块按下方规则、`ssot-verify` 按其自身规则使用本 skill `agents/` 目录下预置的 `ssot:argon` 与 `ssot:fable`）。审查 `design/` 时只以 `ssot` 系列 skill 与 `design/` 自身为准，不受目标仓库 `.claude/rules/` 中既有模块划分或旧审查条文的预设绑架；运行 `ssot` 命令行工具直接用终端工具（如 `exec_command`），不绕用 Python `eval` 调 `subprocess`。不要找任何借口去翻看 `design/` 之外的内容；如果确实认为某一步非看某个外部文件不可，只能向用户提议并等待许可，绝不是默认行为。
 
 ---
 
@@ -135,6 +135,19 @@ flowchart TB
 | `ssot graph <design> [--json]` | 输出目录、模块与 `imports` 关系的 Mermaid 图或 JSON |
 | `ssot vdmj <design> [参数]` | 用设计里的全部规格运行 VDMJ，例如 `-i` 进解释器、`-e` 求值 |
 | `ssot review <design>` | 输出语义反模式模型审查的判断对象（JSON），由 `scripts/review.py` 在 omp `eval` 里交给 `jev` |
+| `ssot draft <子命令> <仓库根>` | 核对草稿 `.tmp/ssot-draft/draft.yaml`：`requirements`、`objects`、`constraints`、`owner`、`excluded`、`tradeoffs`、`status` |
+| `ssot design <子命令> <design> [--stamp …]` | 核对落点台账 `.tmp/ssot-design/`：`check`、`elements`、`constraints`、`status` |
+| `ssot verify <子命令> <design> --as <验证方> [--dir …] [--constraint …] [--stamp …]` | 核对验证台账 `.tmp/ssot-verify/<验证方>/`：`check`、`expect`、`gaps`、`attack`、`elements`、`scenarios`、`owner`、`po`、`review`、`verdict`、`status` |
 | `vdmj [参数] <文件>` | VDMJ 本身，带 QuickCheck 插件，读 `.vdmsl` 文件；设计目录里的 Markdown 用 `ssot vdmj` |
+
+### 逐项判断的台账
+
+`ssot draft`、`ssot design`、`ssot verify` 不替判断者下结论，只保证每一项都判了。规则对三者相同：
+
+- **义务由工具枚举。** 需求块来自需求材料，元素、场景节点、`ext` 与导出来自规格的语法树，证明义务来自 VDMJ，应有约束与草稿约束来自判断者写下的清单。没有记录的义务报错（缺判），并打印可以照填的 YAML 骨架；记录对应的义务已不存在时也报错（孤儿），按骨架重判。
+- **台账只由判断者写。** 台账是 YAML，按子命令分目录；同一子命令可以拆成多个文件，便于分批与并行，一项义务只留一条记录。槽位没填、取值不在范围内、字段拼错、引用的元素或 `路径.md:行` 找不到，都是错误。
+- **盖章与过期。** 记录核对无误后加 `--stamp` 盖章：工具在同名的 `.stamp.yaml` 里记下记录本身与它依据的原文（被判断的对象、引用的元素、所属的约束）。之后记录改了要重新盖章；依据的原文变了，记录过期，工具并排给出盖章时与现在的原文。重新判断后改写记录再 `--stamp`，或确认结论不变后用 `--stamp <键>` 逐条确认；只写 `--stamp` 不会替你确认过期的记录。
+- **错误与警告。** 错误是没判完，退出码为 1；警告是判断本身给出的问题或不确定（遗漏、过强、未能判定、不该进 VDM、驳回模型审查等），逐条看过再交付。
+- **范围。** `ssot verify` 用 `--dir <目录>`（含子目录）与 `--constraint <编号>` 只核对一批义务；不带范围、没有错误，才算整份判完。`ssot check` 与 VDMJ 求值总是装入全部规格。
 
 理论与方法论文献出处见 [`references/sources.md`](references/sources.md)。

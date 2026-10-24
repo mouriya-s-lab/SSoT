@@ -37,6 +37,8 @@ type Hit = { readonly rule: string; readonly line: number; readonly detail: stri
 type External = { readonly mode: string; readonly names: readonly string[] };
 /** 场景显式体里的一个节点：调用、分支、先后或挑选。path 由语句结构写成，不含行号。 */
 export type ScenarioNode = { readonly kind: 'call' | 'branch' | 'sequence' | 'choice'; readonly path: string; readonly line: number; readonly text: string };
+/** 显式体里的一处调用：被调的操作或函数、实参原文与行号。 */
+export type CallSite = { readonly callee: string; readonly line: number; readonly text: string; readonly args: readonly string[] };
 export type Definition = {
   readonly name: string;
   readonly kind: string;
@@ -53,6 +55,8 @@ export type Definition = {
   readonly ext: readonly External[];
   readonly fields: readonly Field[];
   readonly scenario: readonly ScenarioNode[];
+  /** 显式函数与显式操作体里的每处调用（操作与函数），按源码次序。 */
+  readonly calls: readonly CallSite[];
   readonly findings: readonly Hit[];
   readonly candidates: readonly Hit[];
 };
@@ -709,7 +713,7 @@ function typescriptOnly(code: string): boolean {
  * 规格写成 VDM-SL，文字写规格说不清的语义。正文里的代码块只有 ```vdm（规格）与 ```mermaid、```ebnf、```text（图与文法）；
  * 图与文法块、文字段落里都不能出现 TypeScript 声明，否则设计就退化成了换了格式的旧文档。
  */
-function form(design: string, places: readonly Place[]): { readonly diagnostics: readonly Diagnostic[]; readonly forms: Forms } {
+export function form(design: string, places: readonly Place[]): { readonly diagnostics: readonly Diagnostic[]; readonly forms: Forms } {
   const diagnostics: Diagnostic[] = [];
   const fail = (path: string, line: number, message: string) => diagnostics.push({ stage: 'form', path, line, message });
   const counts = { spec: 0, comment: 0, figure: 0, prose: 0 };

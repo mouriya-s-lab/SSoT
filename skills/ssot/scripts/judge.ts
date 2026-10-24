@@ -12,9 +12,11 @@ import {
   UsageError,
   check,
   evaluate,
+  form,
   htmlComment,
   load,
   markdown,
+  paragraphs,
   readMarkdown,
   review,
   sources,
@@ -740,14 +742,17 @@ const ALLOWED: Readonly<Record<Category, readonly Landing[]>> = {
   lifecycle: ['scenario', 'semantic'],
 };
 
-function elementObligations(spec: Spec, verb: string): Obligation[] {
+function elementObligations(spec: Spec, verb: 'design' | 'verify'): Obligation[] {
   return [...spec.elements.values()].map((e) => ({
     key: e.key,
     dir: e.module.place.dir,
     constraint: null,
     subject: e.source,
-    skeleton: verb === 'design' ? { element: e.key, constraints: [], connection_for: [], reason: '' } : { element: e.key, verdict: '', constraints: [], reason: '' },
-    hint: '',
+    skeleton:
+      verb === 'design'
+        ? { element: e.key, constraints: [], connection_for: [], reason: '' }
+        : { element: e.key, verdict: '', constraints: [], reason: '', ...blankAssessments(elementQuestions(e)) },
+    hint: verb === 'design' ? '' : questionHint(elementQuestions(e)),
   }));
 }
 
@@ -950,7 +955,7 @@ function designOutcomes(design: string, sub: DesignSub, mode: StampMode): Outcom
 
 // ---------------------------------------------------------------- 验证
 
-const VERIFY_SUBS = ['check', 'expect', 'gaps', 'attack', 'elements', 'scenarios', 'owner', 'po', 'review', 'verdict', 'status'] as const;
+const VERIFY_SUBS = ['check', 'expect', 'gaps', 'attack', 'elements', 'scenarios', 'flows', 'prose', 'modules', 'owner', 'po', 'review', 'verdict', 'status'] as const;
 type VerifySub = (typeof VERIFY_SUBS)[number];
 const SLOTS = ['initial', 'call', 'compose', 'bypass', 'import'] as const;
 type Slot = (typeof SLOTS)[number];
@@ -969,7 +974,15 @@ function verifyRoot(design: string, as: string): string {
   return join(dirname(design), '.tmp', 'ssot-verify', as);
 }
 
-function readExpect(design: string, as: string, spec: Spec | null, sub: string): { readonly expected: ReadonlyMap<string, Expected>; readonly outcome: Outcome } {
+/** 第一步写下的应有长相：读规格之前，系统要满足什么、需要哪些视角与核心概念、各模块职责应怎样。 */
+const SHAPE_FIELDS = ['requirements', 'perspectives', 'modules'] as const;
+
+function readExpect(
+  design: string,
+  as: string,
+  spec: Spec | null,
+  sub: string,
+): { readonly expected: ReadonlyMap<string, Expected>; readonly shape: string | null; readonly outcome: Outcome } {
   const repo = dirname(design);
   const root = verifyRoot(design, as);
   const rel = (p: string) => relative(repo, p);
@@ -983,11 +996,27 @@ function readExpect(design: string, as: string, spec: Spec | null, sub: string):
   const files = yamlFiles(join(root, 'expect'));
   const requirementRecords: { record: Obj; where: string }[] = [];
   const constraintRecords: { record: Obj; where: string }[] = [];
+  const shapes: { record: unknown; where: string }[] = [];
   for (const file of files) {
     const { value, problem: p } = readYaml(file);
     if (p) notes.push(error(sub, rel(file), p));
     listOf(value ?? {}, 'requirements').forEach((r, i) => requirementRecords.push({ record: r, where: `${rel(file)} requirements[${i}]` }));
     listOf(value ?? {}, 'constraints').forEach((c, i) => constraintRecords.push({ record: c, where: `${rel(file)} constraints[${i}]` }));
+    if (value?.shape !== undefined) shapes.push({ record: value.shape, where: `${rel(file)} shape` });
+  }
+  let shape: string | null = null;
+  if (shapes.length === 0) {
+    notes.push(error(sub, 'expect shape', `缺判：读规格之前写下应有长相，在 expect 的某个文件里加 shape: {${SHAPE_FIELDS.map((f) => `${f}: …`).join(', ')}}（系统要满足什么、需要哪些视角与核心概念、各模块职责应怎样）。`));
+  } else if (shapes.length > 1) {
+    notes.push(error(sub, shapes[1]!.where, `shape 只写一处，${shapes[0]!.where} 已经有了。`));
+  } else if (!isObj(shapes[0]!.record)) {
+    notes.push(error(sub, shapes[0]!.where, `shape 要写成 {${SHAPE_FIELDS.join(', ')}}。`));
+  } else {
+    const slots = new Slots(shapes[0]!.record, 'shape');
+    slots.only(SHAPE_FIELDS);
+    for (const field of SHAPE_FIELDS) slots.text(field);
+    slots.errors.forEach((e) => notes.push(error(sub, shapes[0]!.where, e)));
+    if (slots.errors.length === 0) shape = canonical(shapes[0]!.record);
   }
   const expected = new Map<string, Expected>();
   for (const { record, where } of constraintRecords) {
@@ -1044,6 +1073,7 @@ function readExpect(design: string, as: string, spec: Spec | null, sub: string):
   const errors = notes.filter((n) => n.severity === 'Error').length;
   return {
     expected,
+    shape,
     outcome: {
       sub,
       notes,
@@ -1132,6 +1162,123 @@ function witness(spec: Spec, w: Obj, where: string, slots: Slots, deps: Record<s
   return expression;
 }
 
+// ---------------------------------------------------------------- 审查问题
+
+/**
+ * 一个审查问题：判断者对它单独下结论。ok 是没有问题，problem 是有问题（警告），not_applicable 写明为什么不适用，
+ * undecided 是看过但判定不了（警告）。每个问题一槽，结论不合并：一个 ok 只说明这一问看过了。
+ */
+type Question = { readonly slot: string; readonly ask: string };
+const ASSESSMENTS = ['ok', 'problem', 'not_applicable', 'undecided'] as const;
+
+function blankAssessments(questions: readonly Question[]): Obj {
+  return Object.fromEntries(questions.map((q) => [q.slot, { verdict: '', reason: '', at: [] }]));
+}
+
+function questionHint(questions: readonly Question[]): string {
+  return questions.map((q) => `${q.slot}：${q.ask}`).join('\n');
+}
+
+/** 核对一个问题的结论：取值在范围内、理由不空、at 引用找得到；有问题与判定不了记成警告。s 是这个问题自己的槽。 */
+function assessSlots(s: Slots, where: string, q: Question, spec: Spec, deps: Record<string, string>, warnings: string[]): void {
+  const verdict = s.choice('verdict', ASSESSMENTS);
+  const reason = s.text('reason');
+  refs(spec, s.list('at'), `${where}.at`, s, deps);
+  if (verdict === 'problem') warnings.push(`${q.slot}（${q.ask}）有问题：${reason ?? ''}`);
+  if (verdict === 'undecided') warnings.push(`${q.slot}（${q.ask}）未能判定：${reason ?? ''}`);
+}
+
+/** 记录里名为 q.slot 的子槽。 */
+function assess(slots: Slots, where: string, q: Question, spec: Spec, deps: Record<string, string>, warnings: string[]): void {
+  const s = slots.nested(q.slot);
+  if (!s) return;
+  s.only(['verdict', 'reason', 'at']);
+  assessSlots(s, `${where}.${q.slot}`, q, spec, deps, warnings);
+  slots.merge(s);
+}
+
+/** 每个规格元素都问的两件事：说明是否兑现、字面用词是否误导。 */
+const ELEMENT_QUESTIONS: readonly Question[] = [
+  { slot: 'promise', ask: '说明注释承诺的东西（要区分的结局、载荷、参数、“同一……只……”这类规则）都兑现在签名、字段与 inv/pre/post 上；没有用恒真子句假装用到参数' },
+  { slot: 'wording', ask: '名字与说明的字面意思不会让人误解成实例、指针、缓存、存储、拷贝或原地重跑等机制' },
+];
+const TYPE_QUESTIONS: readonly Question[] = [
+  { slot: 'observation', ask: '只有观察者要按它分支或读字段时才展开结构；只原样传递的保持 token' },
+  { slot: 'struct_exposure', ask: '导出时带不带 struct 与使用方是否读它的结构一致' },
+  { slot: 'outcomes', ask: '作为结局时只列合法调用方必须区分处理的分支，不逐项列失败原因' },
+  { slot: 'recovery', ask: '可观察的失败分支写明了改走哪个连接恢复' },
+];
+const STATE_QUESTIONS: readonly Question[] = [
+  { slot: 'minimality', ask: '状态只放这个连接面要守住的事实，没有冗余分量，也没有观察者不读的内部结构' },
+  { slot: 'surface_invariant', ask: '共享这份状态的操作共守同一条 inv，inv 简单' },
+  { slot: 'projection', ask: '能由事实算出的上层状态写成了纯函数投影，没有重复存储' },
+];
+const FRAME_QUESTION: Question = { slot: 'frame', ask: '每个 or 分支都写齐了这一支没改的 wr 分量（x = x~）；没写的分量在那一支可以变成任意值' };
+
+function elementQuestions(e: Element): readonly Question[] {
+  if (e.field !== null) return ELEMENT_QUESTIONS;
+  const d = e.definition;
+  if (d.kind === 'type') return [...ELEMENT_QUESTIONS, ...TYPE_QUESTIONS];
+  if (d.kind === 'state') return [...ELEMENT_QUESTIONS, ...STATE_QUESTIONS];
+  if (d.kind === 'implicit operation' && d.ext.some((x) => x.mode === 'wr')) return [...ELEMENT_QUESTIONS, FRAME_QUESTION];
+  return ELEMENT_QUESTIONS;
+}
+
+const SCENARIO_RESULT: Question = { slot: 'result', ask: '场景交给自己调用方的结果区分了正常推进与故障' };
+const CALL_OUTCOMES: Question = { slot: 'outcomes', ask: '被调连接返回的每一支可观察结局（尤其失败与结果未知）在本场景或配套的恢复场景里都有处理' };
+const SEQUENCE_ORDER: Question = { slot: 'order', ask: '会产生持久状态或外部动作的调用之前已完成合法性校验；后面要用的参数在需求所说的时点已经存在' };
+
+const FLOW_QUESTIONS: readonly Question[] = [
+  { slot: 'responsibility', ask: '参数多或传固定空值时，先判断那个参数代表的事是否本属另一个视角或模块；是就把它拆回原处，而不是要求上游一路透传' },
+  { slot: 'inputs', ask: '决定结果的关键值都传了进去，没有半路丢掉、传旧值或类型没接上' },
+  { slot: 'result', ask: '这次调用的产出（结局、判定结果）在下游被实际消费' },
+  { slot: 'timing', ask: '实参在需求所说的时点已经存在' },
+];
+
+/** 生命周期类应有约束在五种违反情形之外再问的四件事。 */
+const LIFECYCLE_QUESTIONS: readonly Question[] = [
+  { slot: 'anchors', ask: '这个生命周期对象由哪个连接开始、哪个连接结束、由谁确认，写清了' },
+  { slot: 'nesting', ask: '内层在外层开始之后才开始' },
+  { slot: 'evidence', ask: '外层的结束锚点在内层全部关闭并取回证据之后才写下' },
+  { slot: 'failure_close', ask: '内层关闭或取回证据失败时，没有伪造外层的结束锚点' },
+];
+
+/** README 每段按所在小节要问的事；每段都问字面用词。 */
+const PROSE_QUESTIONS: Readonly<Record<string, readonly Question[]>> = {
+  '': [{ slot: 'scope', ask: '写的负责什么、不负责什么与规格实际承担的一致' }],
+  依据: [
+    { slot: 'source', ask: '有真实的外部来源，不是结论复述自己，也不拿当前实现或技术选型当理由' },
+    { slot: 'implication', ask: '“所以……”能从这条事实推出它让设计多了或少了什么' },
+    { slot: 'quality', ask: '质量要求写成“在〈环境〉下，〈刺激〉发生时，〈响应〉满足〈度量〉”，数值有出处；不是质量要求时判 not_applicable' },
+  ],
+  需求: [
+    { slot: 'observable', ask: '是问题域里可以观察到的结果（用户或外部系统看到什么），不是机器的功能列表' },
+    { slot: 'walk', ask: '从它引用的规格元素一路走到需求所说的结果，没有断在中途' },
+  ],
+  为什么: [{ slot: 'alternatives', ask: '理由引用了依据；存在可信替代时写了为什么不选它' }],
+  语义: [{ slot: 'belongs', ask: '写的是规格说不清的语义（定时、调度、并发、进程、事实与副本、包含关系、崩溃接管、跨连接规律），没有复述规格' }],
+};
+const PROSE_WORDING: Question = { slot: 'wording', ask: '字面用词不会让人误解成实例、缓存、存储、拷贝或原地重跑等机制' };
+
+/** 每个设计目录单独判断的问题；架构目录与业务单元各一组。每个问题是一项独立义务。 */
+const ARCHITECTURE_DIR_QUESTIONS: readonly Question[] = [
+  { slot: 'partition', ask: '模块按抽象划分（对外陈述连接、对内隐藏决定），不按篇幅或执行步骤；拆出子模块的理由写进了 README；并列的底座彼此正交' },
+  { slot: 'containment', ask: '同进程、同部署、同信任范围、同存续期等包含关系在「语义」里写明了（模块树不代表运行期包含）' },
+  { slot: 'boundary', ask: '没有只服务单一业务单元的规则，也没有连接不变时可以替换的实现做法写进架构' },
+  { slot: 'accumulation', ask: '没有哪里积压了多个来源或视角的值与结构；没有整片定义脱离当前要观察的视角' },
+  { slot: 'shape', ask: '规格的实际长相与第一步写下的应有长相对得上，没有拧巴或没想通的设计思路' },
+];
+const BUSINESS_DIR_QUESTIONS: readonly Question[] = [
+  { slot: 'composition', ask: '只经导出的连接单向组合；不持有持久 state；不承诺结构的 token 原样传递，不读结构、不自造；结果在本单元边界收敛' },
+  { slot: 'boundary', ask: '没有把常变的业务内容本身（应留在代码里的规则）写进规格' },
+  { slot: 'accumulation', ask: '没有哪里积压了多个来源或视角的值与结构；不属于本单元的来源拆回了各自的模块' },
+  { slot: 'shape', ask: '规格的实际长相与第一步写下的应有长相对得上，没有拧巴或没想通的设计思路' },
+];
+const DESIGN_QUESTIONS: readonly Question[] = [
+  { slot: 'overall', ask: '整个设计的长相能自然立住需求：在本系统的视角下，需要定义的核心概念都定义了，值与动作的位置对' },
+  { slot: 'forms', ask: '规格没有退化成文字：规格行、说明注释行、文字行、图与文法行的占比合理' },
+];
+
 function attackHint(spec: Spec, e: Expected): string {
   const owned = spec.modules.filter((m) => m.place.dir === e.dir);
   const names = new Set(owned.map((m) => m.name));
@@ -1160,7 +1307,7 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
   if (sub === 'check') return outcomes;
   const { spec, diagnostics } = loadSpec(design);
   if (!spec) return [...outcomes, gate(sub, `设计读不进来：${diagnostics.map((d) => `${d.path}:${d.line} ${d.message}`).join('；')}`)];
-  const { expected, outcome: expectOutcome } = readExpect(design, as, spec, 'expect');
+  const { expected, shape, outcome: expectOutcome } = readExpect(design, as, spec, 'expect');
   if (wants('expect')) outcomes.push(expectOutcome);
   if (sub === 'expect') return outcomes;
   const expectBlocked = expectOutcome.notes.some((n) => n.severity === 'Error');
@@ -1217,11 +1364,19 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
             keyField: 'constraint',
             target: target('attack'),
             files: files('attack'),
-            obligations: expectedObligations((e) => ({ constraint: e.id, ...Object.fromEntries(SLOTS.map((s) => [s, { verdict: '', by: [], reason: '' }])) }), (e) => attackHint(spec, e)),
+            obligations: expectedObligations(
+              (e) => ({
+                constraint: e.id,
+                ...Object.fromEntries(SLOTS.map((s) => [s, { verdict: '', by: [], reason: '' }])),
+                ...(e.record.category === 'lifecycle' ? blankAssessments(LIFECYCLE_QUESTIONS) : {}),
+              }),
+              (e) => `${attackHint(spec, e)}${e.record.category === 'lifecycle' ? `\n生命周期约束另判：\n${questionHint(LIFECYCLE_QUESTIONS)}` : ''}`,
+            ),
             judge: (record) => {
               const id = String(record.constraint);
               const slots = new Slots(record, id);
-              slots.only(['constraint', ...SLOTS]);
+              const lifecycle = expected.get(id)?.record.category === 'lifecycle' ? LIFECYCLE_QUESTIONS : [];
+              slots.only(['constraint', ...SLOTS, ...lifecycle.map((q) => q.slot)]);
               const deps: Record<string, string> = {};
               const warnings: string[] = [];
               for (const slot of SLOTS) {
@@ -1258,6 +1413,7 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
                 }
                 slots.merge(s);
               }
+              for (const q of lifecycle) assess(slots, id, q, spec, deps, warnings);
               return { errors: slots.errors, warnings, deps };
             },
           },
@@ -1272,8 +1428,10 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
   if (wants('elements')) {
     if (expectBlocked) outcomes.push(needsExpect('elements'));
     else {
-      outcomes.push(
-        runStamped(
+      const stateless = [...spec.elements.values()]
+        .filter((e) => e.field === null && e.definition.kind === 'implicit operation' && e.definition.ext.length === 0 && inScope({ dir: e.module.place.dir, constraint: null }, scope))
+        .map((e) => warning('elements', e.key, '不读写任何状态的隐式操作：写成函数（functions），不写成 operations。'));
+      const judged = runStamped(
           {
             sub: 'elements',
             list: 'elements',
@@ -1283,7 +1441,9 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
             obligations: elementObligations(spec, 'verify'),
             judge: (record, o) => {
               const slots = new Slots(record, o.key);
-              slots.only(['element', 'verdict', 'constraints', 'reason']);
+              const element = spec.elements.get(o.key)!;
+              const questions = elementQuestions(element);
+              slots.only(['element', 'verdict', 'constraints', 'reason', ...questions.map((q) => q.slot)]);
               const verdict = slots.choice('verdict', ['guards', 'connection', 'extraneous'] as const);
               const cs = slots.list('constraints');
               const reason = slots.text('reason');
@@ -1291,29 +1451,50 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
               if ((verdict === 'guards' || verdict === 'connection') && cs.length === 0) slots.errors.push(`${o.key}.constraints：写出它守的（或作连接服务的）应有约束。`);
               for (const c of cs) if (!expected.has(c)) slots.errors.push(`${o.key}.constraints：${c} 不在 expect 里。`);
               if (verdict === 'extraneous') warnings.push(`不该进 VDM：${reason ?? ''}`);
-              return { errors: slots.errors, warnings, deps: Object.fromEntries(cs.filter((c) => expected.has(c)).map((c) => [`应有 ${c}`, expected.get(c)!.subject])) };
+              const deps: Record<string, string> = Object.fromEntries(cs.filter((c) => expected.has(c)).map((c) => [`应有 ${c}`, expected.get(c)!.subject]));
+              for (const q of questions) assess(slots, o.key, q, spec, deps, warnings);
+              return { errors: slots.errors, warnings, deps };
             },
           },
           scope,
           mode,
           rel,
-        ),
       );
+      outcomes.push({ ...judged, notes: [...stateless, ...judged.notes] });
     }
   }
 
   if (wants('scenarios')) {
     if (expectBlocked) outcomes.push(needsExpect('scenarios'));
     else {
-      const nodes: { module: Located; node: ScenarioNode }[] = spec.modules.flatMap((m) => m.definitions.flatMap((d) => d.scenario.map((node) => ({ module: m, node }))));
+      const questions = new Map<string, readonly Question[]>();
+      const obligations: Obligation[] = [];
       const counts = new Map<string, number>();
-      const obligations: Obligation[] = nodes.map(({ module, node }) => {
-        const base = `${module.name}\`${node.path}`;
-        const n = (counts.get(base) ?? 0) + 1;
-        counts.set(base, n);
-        const key = n > 1 ? `${base}#${n}` : base;
-        return { key, dir: module.place.dir, constraint: null, subject: `${node.kind}: ${node.text}`, skeleton: { node: key, verdict: '', constraints: [], reason: '' }, hint: `${node.kind}（${module.place.path}:${node.line}）：${node.text}` };
-      });
+      for (const module of spec.modules) {
+        for (const d of module.definitions) {
+          if (d.kind !== 'explicit operation' || !d.explicit) continue;
+          // 场景本身：它交给调用方的结果。
+          const root = `${module.name}\`${d.name}`;
+          questions.set(root, [SCENARIO_RESULT]);
+          obligations.push({ key: root, dir: module.place.dir, constraint: null, subject: spec.elements.get(root)?.source ?? '', skeleton: { node: root, ...blankAssessments([SCENARIO_RESULT]) }, hint: questionHint([SCENARIO_RESULT]) });
+          for (const node of d.scenario) {
+            const base = `${module.name}\`${node.path}`;
+            const n = (counts.get(base) ?? 0) + 1;
+            counts.set(base, n);
+            const key = n > 1 ? `${base}#${n}` : base;
+            const extra = node.kind === 'call' ? [CALL_OUTCOMES] : node.kind === 'sequence' ? [SEQUENCE_ORDER] : [];
+            questions.set(key, extra);
+            obligations.push({
+              key,
+              dir: module.place.dir,
+              constraint: null,
+              subject: `${node.kind}: ${node.text}`,
+              skeleton: { node: key, verdict: '', constraints: [], reason: '', ...blankAssessments(extra) },
+              hint: [`${node.kind}（${module.place.path}:${node.line}）：${node.text}`, ...(extra.length > 0 ? [questionHint(extra)] : [])].join('\n'),
+            });
+          }
+        }
+      }
       outcomes.push(
         runStamped(
           {
@@ -1325,13 +1506,194 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
             obligations,
             judge: (record, o) => {
               const slots = new Slots(record, o.key);
-              slots.only(['node', 'verdict', 'constraints', 'reason']);
+              const extra = questions.get(o.key) ?? [];
+              const deps: Record<string, string> = {};
+              const warnings: string[] = [];
+              if (extra.includes(SCENARIO_RESULT)) {
+                slots.only(['node', SCENARIO_RESULT.slot]);
+                assess(slots, o.key, SCENARIO_RESULT, spec, deps, warnings);
+                return { errors: slots.errors, warnings, deps };
+              }
+              slots.only(['node', 'verdict', 'constraints', 'reason', ...extra.map((q) => q.slot)]);
               const verdict = slots.choice('verdict', ['constraint', 'simulation'] as const);
               const cs = slots.list('constraints');
               const reason = slots.text('reason');
               if (verdict === 'constraint' && cs.length === 0) slots.errors.push(`${o.key}.constraints：写出这处先后、分支或挑选对应的应有约束。`);
-              for (const c of cs) if (!expected.has(c)) slots.errors.push(`${o.key}.constraints：${c} 不在 expect 里。`);
-              return { errors: slots.errors, warnings: verdict === 'simulation' ? [`在模拟业务怎样运行：${reason ?? ''}`] : [], deps: Object.fromEntries(cs.filter((c) => expected.has(c)).map((c) => [`应有 ${c}`, expected.get(c)!.subject])) };
+              for (const c of cs) {
+                if (!expected.has(c)) slots.errors.push(`${o.key}.constraints：${c} 不在 expect 里。`);
+                else deps[`应有 ${c}`] = expected.get(c)!.subject;
+              }
+              if (verdict === 'simulation') warnings.push(`在模拟业务怎样运行：${reason ?? ''}`);
+              for (const q of extra) assess(slots, o.key, q, spec, deps, warnings);
+              return { errors: slots.errors, warnings, deps };
+            },
+          },
+          scope,
+          mode,
+          rel,
+        ),
+      );
+    }
+  }
+
+  if (wants('flows')) {
+    if (expectBlocked) outcomes.push(needsExpect('flows'));
+    else {
+      const obligations: Obligation[] = [];
+      for (const module of spec.modules) {
+        for (const d of module.definitions) {
+          const counts = new Map<string, number>();
+          for (const call of d.calls) {
+            const base = `${module.name}\`${d.name}/${call.callee}`;
+            const n = (counts.get(base) ?? 0) + 1;
+            counts.set(base, n);
+            const key = n > 1 ? `${base}#${n}` : base;
+            const empty = call.args.filter((a) => ['{|->}', '{}', '[]'].includes(a.replace(/\s/g, '')));
+            obligations.push({
+              key,
+              dir: module.place.dir,
+              constraint: null,
+              subject: call.text,
+              skeleton: { call: key, ...blankAssessments(FLOW_QUESTIONS) },
+              hint: [
+                `${module.place.path}:${call.line}：${call.text}`,
+                ...(empty.length > 0 ? [`实参里有字面空值 ${empty.join('、')}：先判断 responsibility，这个参数是不是本属另一个视角`] : []),
+                questionHint(FLOW_QUESTIONS),
+              ].join('\n'),
+            });
+          }
+        }
+      }
+      // 导出了却没有任何模块导入的名字：导出的类型或判定在下游没人消费。业务单元的导出是对外入口，不算。
+      const unimported = spec.modules
+        .filter((m) => m.place.layer === 'architecture' && inScope({ dir: m.place.dir, constraint: null }, scope))
+        .flatMap((m) =>
+          m.exports.items
+            .filter((x) => !spec.modules.some((other) => other !== m && other.imports.some((i) => i.module === m.name && i.items.some((it) => it.kind === 'all' || it.name === x.name))))
+            .map((x) => warning('flows', `${m.name}\`${x.name}`, '导出了，但没有任何模块导入它：确认下游真的不需要，或删掉这个导出。')),
+        );
+      const judged = runStamped(
+        {
+          sub: 'flows',
+          list: 'flows',
+          keyField: 'call',
+          target: target('flows'),
+          files: files('flows'),
+          obligations,
+          judge: (record, o) => {
+            const slots = new Slots(record, o.key);
+            slots.only(['call', ...FLOW_QUESTIONS.map((q) => q.slot)]);
+            const deps: Record<string, string> = {};
+            const warnings: string[] = [];
+            for (const q of FLOW_QUESTIONS) assess(slots, o.key, q, spec, deps, warnings);
+            return { errors: slots.errors, warnings, deps };
+          },
+        },
+        scope,
+        mode,
+        rel,
+      );
+      outcomes.push({ ...judged, notes: [...unimported, ...judged.notes] });
+    }
+  }
+
+  if (wants('prose')) {
+    if (expectBlocked) outcomes.push(needsExpect('prose'));
+    else {
+      const questions = new Map<string, readonly Question[]>();
+      const obligations: Obligation[] = [];
+      for (const place of spec.places.filter((p) => p.readme)) {
+        const counts = new Map<string, number>();
+        for (const para of paragraphs(design, place).paragraphs) {
+          const first = para.text.length > 30 ? `${para.text.slice(0, 30)}…` : para.text;
+          const base = `${place.path}#${para.section || '首段'}:${first}`;
+          const n = (counts.get(base) ?? 0) + 1;
+          counts.set(base, n);
+          const key = n > 1 ? `${base} #${n}` : base;
+          const qs = [...(PROSE_QUESTIONS[para.section] ?? []), PROSE_WORDING];
+          questions.set(key, qs);
+          obligations.push({ key, dir: place.dir, constraint: null, subject: para.text, skeleton: { paragraph: key, ...blankAssessments(qs) }, hint: `${place.path}:${para.line}（${para.section || '首段'}）\n${questionHint(qs)}` });
+        }
+      }
+      outcomes.push(
+        runStamped(
+          {
+            sub: 'prose',
+            list: 'paragraphs',
+            keyField: 'paragraph',
+            target: target('prose'),
+            files: files('prose'),
+            obligations,
+            judge: (record, o) => {
+              const qs = questions.get(o.key)!;
+              const slots = new Slots(record, o.key);
+              slots.only(['paragraph', ...qs.map((q) => q.slot)]);
+              const deps: Record<string, string> = {};
+              const warnings: string[] = [];
+              for (const q of qs) assess(slots, o.key, q, spec, deps, warnings);
+              return { errors: slots.errors, warnings, deps };
+            },
+          },
+          scope,
+          mode,
+          rel,
+        ),
+      );
+    }
+  }
+
+  if (wants('modules')) {
+    if (expectBlocked) outcomes.push(needsExpect('modules'));
+    else {
+      const text = (path: string) => readFileSync(join(design, path), 'utf8');
+      const readme = (dir: string) => spec.places.filter((p) => p.dir === dir && p.readme).map((p) => text(p.path)).join('\n');
+      const specText = (dir: string) => spec.places.filter((p) => p.dir === dir && !p.readme).map((p) => `${p.path}\n${text(p.path)}`).join('\n');
+      const exportsOf = (dir: string) =>
+        spec.modules
+          .filter((m) => m.place.dir === dir)
+          .map((m) => `${m.name} exports ${m.exports.all ? 'all' : m.exports.items.map((x) => `${x.kind} ${x.name}`).join(', ')}`)
+          .join('\n');
+      const questions = new Map<string, Question>();
+      const obligations: Obligation[] = [];
+      const add = (key: string, dir: string | null, q: Question, subject: string, hint: string) => {
+        questions.set(key, q);
+        obligations.push({ key, dir, constraint: null, subject, skeleton: { item: key, verdict: '', reason: '', at: [] }, hint: `${hint}\n${q.ask}` });
+      };
+      for (const dir of [...spec.dirs].sort()) {
+        const layer = spec.places.find((p) => p.dir === dir)!.layer;
+        for (const q of layer === 'architecture' ? ARCHITECTURE_DIR_QUESTIONS : BUSINESS_DIR_QUESTIONS) {
+          // 每个问题只依据它要读的原文：拆分看 README 与导出，包含关系看 README，其余看本目录的规格（长相还要对照第一步的应有长相）。
+          const subject =
+            q.slot === 'partition' ? `${readme(dir)}\n${exportsOf(dir)}`
+            : q.slot === 'containment' ? readme(dir)
+            : q.slot === 'shape' ? `${shape ?? ''}\n${readme(dir)}\n${specText(dir)}`
+            : specText(dir);
+          add(`${dir}#${q.slot}`, dir, q, subject, dir);
+        }
+      }
+      const all = spec.places.map((p) => `${p.path}\n${text(p.path)}`).join('\n');
+      const forms = form(design, spec.places).forms;
+      for (const q of DESIGN_QUESTIONS) {
+        const subject = q.slot === 'forms' ? `规格 ${forms.spec} 行，说明注释 ${forms.comment} 行，文字 ${forms.prose} 行，图与文法 ${forms.figure} 行` : `${shape ?? ''}\n${all}`;
+        add(`design#${q.slot}`, null, q, subject, q.slot === 'forms' ? subject : '整份设计（只在不带范围时要求）');
+      }
+      outcomes.push(
+        runStamped(
+          {
+            sub: 'modules',
+            list: 'modules',
+            keyField: 'item',
+            target: target('modules'),
+            files: files('modules'),
+            obligations,
+            judge: (record, o) => {
+              const q = questions.get(o.key)!;
+              const slots = new Slots(record, o.key);
+              slots.only(['item', 'verdict', 'reason', 'at']);
+              const deps: Record<string, string> = {};
+              const warnings: string[] = [];
+              assessSlots(slots, o.key, q, spec, deps, warnings);
+              return { errors: slots.errors, warnings, deps };
             },
           },
           scope,

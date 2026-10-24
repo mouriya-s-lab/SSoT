@@ -104,19 +104,26 @@ public class Outline {
     // 场景里的调用可能写成表达式（`let x = Op(a)`、`cases Op(a):`），解析器分不出它是函数还是操作，按名字认：
     // 任何模块定义的操作名，以及导入时给操作起的本地名。
     Set<String> operations = new LinkedHashSet<>();
+    // 值流审查要看的调用：操作，以及函数（显式体里互相调用的纯函数）。
+    Set<String> functions = new LinkedHashSet<>();
     for (List<ASTModule> modules : parsed) {
       for (ASTModule m : modules) {
         for (ASTDefinition def : m.defs) {
           if (def instanceof ASTExplicitOperationDefinition || def instanceof ASTImplicitOperationDefinition) operations.add(nameOf(def));
+          if (def instanceof ASTImplicitFunctionDefinition || (def instanceof ASTExplicitFunctionDefinition fn && !fn.isTypeInvariant)) functions.add(nameOf(def));
         }
         if (m.imports == null) continue;
         for (ASTImportFromModule from : m.imports.imports) {
           for (ASTImport imported : from.signatures) {
-            if (imported instanceof ASTImportedOperation) operations.add((imported.renamed != null ? imported.renamed : imported.name).name);
+            String local = (imported.renamed != null ? imported.renamed : imported.name).name;
+            if (imported instanceof ASTImportedOperation) operations.add(local);
+            else if (imported instanceof ASTImportedFunction) functions.add(local);
           }
         }
       }
     }
+    Set<String> callables = new LinkedHashSet<>(operations);
+    callables.addAll(functions);
     StringBuilder out = new StringBuilder("[");
     for (int f = 0; f < args.length; f++) {
       if (f > 0) out.append(',');
@@ -167,6 +174,8 @@ public class Outline {
           fields(out, fieldsOf(def));
           out.append("],\"scenario\":");
           scenario(out, def, operations);
+          out.append(",\"calls\":");
+          callSites(out, def, callables);
           out.append(",\"findings\":");
           hits(out, findings(def));
           out.append(",\"candidates\":");
@@ -347,6 +356,36 @@ public class Outline {
         node(nodes, "call", path + "/call " + variable.name.name, apply.location.startLine, apply.toString());
       }
     });
+  }
+
+  /** 显式函数与显式操作体里的每处调用：被调者、实参与位置，按源码次序。值流审查逐个判断它们。 */
+  private static void callSites(StringBuilder out, ASTDefinition def, Set<String> callables) {
+    Object body = null;
+    if (def instanceof ASTExplicitOperationDefinition op && explicitBody(def)) body = op.body;
+    if (def instanceof ASTExplicitFunctionDefinition fn && explicitBody(def)) body = fn.body;
+    record Site(String callee, LexLocation at, String text, List<String> args) {}
+    List<Site> sites = new ArrayList<>();
+    if (body != null) {
+      walk(body, node -> {
+        if (node instanceof ASTCallStatement call && callables.contains(call.name.name)) {
+          List<String> args = new ArrayList<>();
+          for (Object a : call.args) args.add(a.toString());
+          sites.add(new Site(call.name.name, call.location, call.toString(), args));
+        } else if (node instanceof ASTApplyExpression apply && apply.root instanceof ASTVariableExpression variable && callables.contains(variable.name.name)) {
+          List<String> args = new ArrayList<>();
+          for (Object a : apply.args) args.add(a.toString());
+          sites.add(new Site(variable.name.name, apply.location, apply.toString(), args));
+        }
+      });
+    }
+    sites.sort((a, b) -> a.at().startLine != b.at().startLine ? Integer.compare(a.at().startLine, b.at().startLine) : Integer.compare(a.at().startPos, b.at().startPos));
+    List<String> items = new ArrayList<>();
+    for (Site s : sites) {
+      List<String> args = new ArrayList<>();
+      for (String a : s.args()) args.add(str(a));
+      items.add("{\"callee\":" + str(s.callee()) + ",\"line\":" + s.at().startLine + ",\"text\":" + str(s.text()) + ",\"args\":[" + String.join(",", args) + "]}");
+    }
+    out.append('[').append(String.join(",", items)).append(']');
   }
 
   /** Value definitions carry their name in the pattern, not in ASTDefinition.name. */

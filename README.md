@@ -9,7 +9,7 @@
 
 本仓库用两条硬边界锁死设计文档：
 
-1. **骨架与实现分离**：骨架（由什么组成、用什么组成、为什么）提供业务所依赖的连接，模块之间只经连接相接；**在连接不变时可以替换的做法属于实现，不写进设计**。依赖方向不等于写作顺序，草稿阶段同时确定架构与业务的职责。
+1. **骨架与实现分离**：骨架（由什么组成、用什么组成、为什么）先于业务，模块之间只经连接相接；**在连接不变时可以替换的做法属于实现，不写进设计**。
 2. **形式化规格与受控文字分工**：连接、数据类型、状态、前置/后置条件（`pre`/`post`）与不变量（`inv`）写成 ```` ```vdm ```` 代码块里的 VDM-SL 规格；规格表达不了的语义（定时、跨连接时序、进程/部署/信任边界、崩溃接管）写成同文件的自然语言。**规格里的名字是设计唯一的词汇**，文字只能用双反引号（如 ```` ``Run`Start`` ````）指认规格中已有的元素，禁止自造词或复述规格。
 
 ## 为什么分成 `architecture`、`business`、`appendix` 三个桶
@@ -33,12 +33,11 @@ flowchart TB
 
 ## 仓库构成
 
-本仓库由 `ssot` 阐述设计的思考思路（多视角下的权衡、值与动作的位置、积压感与责任边界、需要定义多少东西及定义得对不对），默认只专注于 `design/` 本身（不查看 `design/` 之外的仓库文件或 `git` 历史）；草稿块另可读写 `.tmp/ssot-draft.md` 或用户指定的草稿，并读取用户明确提供的材料。本仓库实行**显式单块路由**：用户未明确指定具体做哪一块时先询问并停止（不继续、不预读其他 skill）；用户明确指定后，必须完整读完并只执行对应的那一个子 skill：
+本仓库由 `ssot` 阐述设计的思考思路（多视角下的权衡、值与动作的位置、积压感与责任边界、需要定义多少东西及定义得对不对），默认只专注于 `design/` 本身（不查看 `design/` 之外的仓库文件或 `git` 历史），并实行**显式单块路由**：用户未明确指定具体做哪一块时先询问并停止（不继续、不预读其他 skill）；用户明确指定后，必须完整读完并只执行对应的那一个子 skill：
 
 | 目录 | 块 / 角色 | 说明 |
 |---|---|---|
 | [`skills/ssot`](skills/ssot/SKILL.md) | **总纲 · 思考思路与路由门控** | 阐述设计的思考思路、三桶目录结构、CLI 工具（`scripts/design.ts`）与模型审查脚本（`scripts/review.py`）、通过检查的[示例设计](skills/ssot/references/example/design/)，以及显式单块路由门控 |
-| [`skills/ssot-draft`](skills/ssot-draft/SKILL.md) | **设计草稿块** | 在正式 VDM 之前分清对象、允许变化与必须保持的关系，同时划分架构和业务；草稿默认写入 `.tmp/ssot-draft.md`，不修改正式设计、不运行检查或审查 |
 | [`skills/ssot-arch`](skills/ssot-arch/SKILL.md) | **写设计 · 架构块** | 核心抽象与架构设计：从外部依据出发，在多视角下权衡需要定义的核心概念、值与动作的位置，划分模块树、连接面、状态不变量与生命周期 |
 | [`skills/ssot-business`](skills/ssot-business/SKILL.md) | **写设计 · 业务块** | 业务单元、确定性判定与场景设计：在架构导出的连接之上划分业务单元，让各单元各司其职避免多来源集中积压，编写问题域需求、确定性判定（显式纯函数）与走通需求的场景（显式操作） |
 | [`skills/ssot-spec`](skills/ssot-spec/SKILL.md) | **写设计 · 规格块** | VDM-SL 形式化规格、受控文字与工具验收：先立最小 VDM 框架跑通 `ssot check`，再填完整谓词、纯函数、场景与受控文字跑通 `ssot check` 与 `review.py`；附[本地 VDM 文档](skills/ssot-spec/references/vdm/README.md) |
@@ -46,8 +45,9 @@ flowchart TB
 | [`skills/ssot-review-flow`](skills/ssot-review-flow/SKILL.md) | **审设计 · 业务分流与走通块** | 审业务分流、值与动作的配合及场景走通：顺着“看值流转是否因多来源积压而别扭 $\to$ 跟每条需求走纯函数判定与代表元场景 $\to$ 看生命周期开闭与跨连接语义”的思路，检验各模块协作是否顺畅走通 |
 | [`skills/ssot-review-spec`](skills/ssot-review-spec/SKILL.md) | **审设计 · 规格严密与用词块** | 审形式化规格严密性、证明义务与用词对齐：运行 `ssot check` 与 `review.py`，核对未定证明义务、说明注释与谓词的一致性、以及字面用词是否准确 |
 | [`skills/ssot-migration`](skills/ssot-migration/SKILL.md) | **存量旧文档迁移块** | 将混杂的存量设计文档无损迁入三桶目录：遵循“只搬运、不判断对错、不改原意”，先勘察概念定义处与设计中心，搬完骨架后按区域把每条陈述拆层归入 `architecture/`、`business/` 或 `appendix/`；搬完一条从旧文档删一条，旧文档清空即迁移完成 |
-
-新设计或需要重划对象、不变量与职责时，先执行 `ssot-draft`。草稿解决含义和归属，剩下表达问题时再进入落地；已有设计的局部修改若不改变这些结论，可直接执行对应落地块。草稿交付与独立审查分开，讨论一致不代表验证通过。
+| [`skills/ssot-draft`](skills/ssot-draft/SKILL.md) | **设计草稿块** | 写 VDM 之前，用基线图、架构图与文字定下设计的形状（对象、层、边界、不变量）及每条形状由架构还是业务持有；草稿写在目标仓库的 `.tmp/ssot-draft/` |
+| [`skills/ssot-design`](skills/ssot-design/SKILL.md) | **按草稿写设计块** | 把草稿定下的形状写进 `design/`，架构模块与业务单元一起写；VDM 只写守住形状的约束，写不进去时回草稿，不改归属 |
+| [`skills/ssot-verify`](skills/ssot-verify/SKILL.md) | **独立验证块** | 由未参与设计的 `ssot:fable` 与 `ssot:argon` 先写出预期形状，再逐条构造反例，核对 VDM 是否守住形状、有无不该进 VDM 的内容、归属与形式是否成立；只报告，不修改 |
 
 ## 三层检验机制
 
@@ -101,10 +101,10 @@ VDM-SL 在本仓库的核心价值是**抽象过滤**：只锚定多视角权衡
 
 ## 安装
 
-安装全部 9 个 skill：
+安装全部 11 个 skill：
 
 ```sh
-npx skills add mouriya-s-lab/SSoT --skill ssot ssot-draft ssot-arch ssot-business ssot-spec ssot-review-arch ssot-review-flow ssot-review-spec ssot-migration --global --agent codex claude-code --yes
+npx skills add mouriya-s-lab/SSoT --skill ssot ssot-arch ssot-business ssot-spec ssot-review-arch ssot-review-flow ssot-review-spec ssot-migration ssot-draft ssot-design ssot-verify --global --agent codex claude-code --yes
 ```
 
 检查依赖 **Java 11+** 与 **Bun**。装好 skill 后运行一次：
@@ -118,7 +118,7 @@ bun ~/.agents/skills/ssot/scripts/design.ts setup
 后续更新：
 
 ```sh
-npx skills update ssot ssot-draft ssot-arch ssot-business ssot-spec ssot-review-arch ssot-review-flow ssot-review-spec ssot-migration --global
+npx skills update ssot ssot-arch ssot-business ssot-spec ssot-review-arch ssot-review-flow ssot-review-spec ssot-migration ssot-draft ssot-design ssot-verify --global
 ```
 
 ## 使用

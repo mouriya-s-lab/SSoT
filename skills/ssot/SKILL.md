@@ -7,7 +7,7 @@ description: SSoT设计真源（Markdown+VDM-SL文学式规格）总纲与路由
 
 完整通过检查的示例设计见 [`references/example/design/`](references/example/design/)。
 
-**默认工作边界：只专注 `design/` 本身。** 执行任何 `ssot` 任务时，**默认禁止查看目标仓库中 `design/` 之外的任何文件（包括实现代码、测试、配置文件、其他文档，以及 `legacy-design/`），也禁止查看 `git` 历史或 diff**；草稿块 `ssot-draft` 另可读写目标仓库的 `.tmp/ssot-draft.md` 或用户指定的草稿，并读取用户明确提供的材料；`legacy-design/` 仅在当前任务明确是执行 `ssot-migration` 存量迁移时才允许读取。**禁止使用 `discuss`、`mentor`、`task:*` 等通用 subagent**（仅审查块按下方规则使用本 skill `agents/` 目录下预置的 `ssot:argon` 与 `ssot:fable`）。审查 `design/` 时只以 `ssot` 系列 skill 与 `design/` 自身为准，不受目标仓库 `.claude/rules/` 中既有模块划分或旧审查条文的预设绑架；运行 `ssot` 命令行工具直接用终端工具（如 `exec_command`），不绕用 Python `eval` 调 `subprocess`。除上述例外，不要找借口翻看 `design/` 之外的内容；如果确实认为某一步非看某个外部文件不可，只能向用户提议并等待许可，绝不是默认行为。
+**默认工作边界：只专注 `design/` 本身。** 执行任何 `ssot` 任务时，**默认禁止查看目标仓库中 `design/` 之外的任何文件（包括实现代码、测试、配置文件、其他文档，以及 `legacy-design/`），也禁止查看 `git` 历史或 diff**；`legacy-design/` 仅在当前任务明确是执行 `ssot-migration` 存量迁移时才允许读取；`ssot-draft` 与 `ssot-verify` 另可读取用户明确提供的材料，`ssot-draft` 在目标仓库的 `.tmp/ssot-draft/` 写草稿，`ssot-design` 读取这份草稿。**禁止使用 `discuss`、`mentor`、`task:*` 等通用 subagent**（仅审查块按下方规则、`ssot-verify` 按其自身规则使用本 skill `agents/` 目录下预置的 `ssot:argon` 与 `ssot:fable`）。审查 `design/` 时只以 `ssot` 系列 skill 与 `design/` 自身为准，不受目标仓库 `.claude/rules/` 中既有模块划分或旧审查条文的预设绑架；运行 `ssot` 命令行工具直接用终端工具（如 `exec_command`），不绕用 Python `eval` 调 `subprocess`。不要找任何借口去翻看 `design/` 之外的内容；如果确实认为某一步非看某个外部文件不可，只能向用户提议并等待许可，绝不是默认行为。
 
 ---
 
@@ -98,13 +98,10 @@ flowchart TB
   - 主 agent 自己独立执行审查；若当前主 agent 不是 `argon`，同时派发 `ssot:argon` 合作审查并汇总结果。
 - **派发时只传一句话指令：** 开启 `ssot:argon` 或 `ssot:fable` 时，只需告诉它要用 `ssot` skill 做哪一块的 review（如 `"用 ssot skill 做 ssot-review-arch 的 review"`），不需要额外定义任何规则、步骤或预设结论。
 
-### 2. 写设计 / 改设计的四个独立块
-
-新设计或需要重划对象、不变量与职责时，先做草稿块；草稿同时确定架构与业务归属，不先完成一份包办需求的架构。已有设计的局部修改若不改变这些结论，可直接执行对应落地块。草稿不是通过验证的规格，本块交付后停止，不自动执行落地或审查。
+### 2. 写设计 / 改设计的三个独立块
 
 | 块 | 对应 Skill | 设计重心（只选其一执行） |
 |---|---|---|
-| **设计草稿** | `ssot-draft` | 在正式 VDM 之前分清对象、允许变化与必须保持的关系，同时划分架构和业务；只写临时草稿，不修改正式设计、不运行检查或审查 |
 | **架构设计** | `ssot-arch` | 从外部依据出发，在多视角下权衡需要定义的核心概念、值与动作的位置，确定模块树、连接面、状态不变量与生命周期 |
 | **业务与场景设计** | `ssot-business` | 在架构导出的连接之上划分业务单元，让各单元各司其职避免多来源集中积压，编写问题域需求、确定性判定与走通需求的场景 |
 | **形式化规格落地** | `ssot-spec` | 先立最小 VDM 框架跑通 `ssot check`，再填入完整谓词、纯函数、场景与受控文字，通过 `ssot check` 与 `review.py` |
@@ -114,6 +111,14 @@ flowchart TB
 | 块 | 对应 Skill | 迁移重心 |
 |---|---|---|
 | **存量文档迁移** | `ssot-migration` | 只搬运、不判断对错、不改动原意，把 `legacy-design/` 原样拆层搬进 `design/` 直至搬空 |
+
+### 4. 草稿、设计与验证
+
+| 块 | 对应 Skill | 重心 |
+|---|---|---|
+| **设计草稿** | `ssot-draft` | 写 VDM 之前用基线图、架构图与文字定下设计的形状及每条形状的持有者；只写 `.tmp/ssot-draft/`，不改 `design/` |
+| **按草稿写设计** | `ssot-design` | 把草稿定下的形状写进 `design/`，架构模块与业务单元一起写；VDM 只写守住这些形状的约束 |
+| **独立验证** | `ssot-verify` | 由未参与设计的 `ssot:fable` 与 `ssot:argon` 核对 VDM 是否守住形状、有无不该进 VDM 的内容、归属与形式是否成立；只报告，不修改 |
 
 ---
 

@@ -39,6 +39,15 @@ flowchart TB
 module Run
 ````
 
+**分号。** 分号分隔同一块里的定义或语句，不是每行的结尾。下面这些位置，最后一项后面可以多写一个分号：`imports`、`exports` 的名字列表，`types`、`values`、`functions`、`operations` 块里的定义（模块最后一个定义后面也可以），`state … end`，`def … in`，块语句 `( …; …; )`。其余位置写分号，VDMJ 都报解析错误：
+
+- `end M` 之后；
+- `let` 的绑定之间与 `in` 之前（`let` 的绑定用逗号分隔）；
+- `cases` 分支之间与 `end` 之前（分支用逗号分隔）；
+- 同一个定义内部：`::` 记录字段之间，`inv` 之前，`ext`、`pre`、`post` 之间，`if … then … else` 的分支末尾；
+- `atomic( … )` 里最后一个赋值之后；
+- 连写两个分号。
+
 **模块头。** `exports` 列出别的模块能用的东西，`struct` 表示连同结构一起导出（不带 `struct` 则使用方不能读字段或分支匹配）；`imports` 逐项列出用到的名字，`renamed` 让本模块用短名：
 
 ```vdm

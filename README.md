@@ -39,7 +39,7 @@ flowchart TB
 |---|---|---|
 | [`skills/ssot`](skills/ssot/SKILL.md) | **总纲 · 思考思路与路由门控** | 阐述设计的思考思路、三桶目录结构、CLI 工具（`scripts/design.ts`）与模型审查脚本（`scripts/review.py`）、通过检查的[示例设计](skills/ssot/references/example/design/)，以及显式单块路由门控 |
 | [`skills/ssot-migration`](skills/ssot-migration/SKILL.md) | **存量旧文档迁移块** | 将混杂的存量设计文档无损迁入三桶目录：遵循“只搬运、不判断对错、不改原意”，先勘察概念定义处与设计中心，搬完骨架后按区域把每条陈述拆层归入 `architecture/`、`business/` 或 `appendix/`；搬完一条从旧文档删一条，旧文档清空即迁移完成 |
-| [`skills/ssot-draft`](skills/ssot-draft/SKILL.md) | **设计草稿块** | 写 VDM 之前分清定义、执行、事实与索引，给每条约束写出允许的变化、不变的关系与违反情形，经换跑法、删除、范围三项判定筛选，再判定由架构还是业务持有；草稿写成目标仓库的 `.tmp/ssot-draft/draft.yaml`，由 `ssot draft` 逐项核对 |
+| [`skills/ssot-draft`](skills/ssot-draft/SKILL.md) | **设计草稿块** | 写 VDM 之前分清定义、执行、事实与索引，给每条约束写出允许的变化、不变的关系与违反情形，经换跑法、删除、范围三项判定筛选，再判定由架构还是业务持有；有原始来源设计时不直接读它，由 `ssot:reader` 在独立上下文里代读，只交出概念、原文明说的需求与出处；草稿写成目标仓库的 `.tmp/ssot-draft/draft.yaml`，由 `ssot draft` 逐项核对 |
 | [`skills/ssot-design`](skills/ssot-design/SKILL.md) | **按草稿写设计块** | 按约束类别选写法，用违反情形自检规格是否排除了它；本轮新增、改动、删除的每个 VDM 元素都对应草稿中的一条约束（没动过的旧元素不归本轮解释），写不进去时区分换写法与回草稿；落点与元素来由记进台账，由 `ssot design` 逐项核对 |
 | [`skills/ssot-verify`](skills/ssot-verify/SKILL.md) | **独立验证块** | 由未参与本轮设计的 `ssot:fable` 与 `ssot:argon` 先不看规格写出应有长相与应有约束，读规格后先判整体长相，再逐条构造违反情形并用 VDMJ 求值核对，逐项审查元素、场景、调用、文字与模块，核对归属；每一步由 `ssot verify` 的子命令枚举判断义务，可按目录或约束分批，验证台账跨轮保留；只报告，不修改 |
 
@@ -94,7 +94,7 @@ VDM-SL 在本仓库的核心价值是**抽象过滤**：只锚定多视角权衡
 本仓库只兼容 omp，其他任何 harness 都需要当场改造。依赖 omp 的环节：
 
 - 语义反模式审查 `review.py` 在 omp 的 Python `eval` 里调用 `jev`；
-- 验证 subagent `ssot:argon` 与 `ssot:fable` 是 omp 的 agent 定义（[`skills/ssot/agents/`](skills/ssot/agents/)），模型按 omp 的模型名写定；
+- 验证 subagent `ssot:argon`、`ssot:fable` 与原始来源代读 subagent `ssot:reader` 是 omp 的 agent 定义（[`skills/ssot/agents/`](skills/ssot/agents/)），模型按 omp 的模型名写定（`ssot:reader` 写的是 `task:mid` 当前绑定的 `openai-codex/gpt-6-1-sol:high`，改 `task:mid` 的绑定时要同步改它）；
 - skill 内的脚本与参考文件经 omp 的 `skill://` 地址加载。
 
 ## 安装

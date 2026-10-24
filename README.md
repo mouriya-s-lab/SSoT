@@ -101,10 +101,10 @@ VDM-SL 在本仓库的核心价值是**抽象过滤**：只锚定多视角权衡
 
 ## 安装
 
-通过 GitHub 安装全部 9 个 skill。`npx skills` 把它们放进 `~/.agents/skills/`，`--agent claude-code` 再链接到 omp 会发现的 `~/.claude/skills/`：
+安装全部 9 个 skill：
 
 ```sh
-npx skills add mouriya-s-lab/SSoT --skill ssot ssot-draft ssot-arch ssot-business ssot-spec ssot-review-arch ssot-review-flow ssot-review-spec ssot-migration --global --agent claude-code --yes
+npx skills add mouriya-s-lab/SSoT --skill ssot ssot-draft ssot-arch ssot-business ssot-spec ssot-review-arch ssot-review-flow ssot-review-spec ssot-migration --global --agent codex claude-code --yes
 ```
 
 检查依赖 **Java 11+** 与 **Bun**。装好 skill 后运行一次：

@@ -366,6 +366,11 @@ function locate(spec: Spec, ref: string): string {
   return element ? `${ref}（${element.module.place.path}:${element.line}）` : ref;
 }
 
+/** 问题后缀：判断者给出的引用落到「文件:行号」；没有引用时为空。 */
+function placed(spec: Spec, list: readonly string[]): string {
+  return list.length > 0 ? `｜位置：${list.map((ref) => locate(spec, ref)).join('、')}` : '';
+}
+
 /** 一组引用：都要找得到；找到的原文记进依据。 */
 function refs(spec: Spec, list: readonly string[], where: string, slots: Slots, deps: Record<string, string>): { readonly dir: string; readonly element: Element | null }[] {
   const found: { dir: string; element: Element | null }[] = [];
@@ -1113,7 +1118,7 @@ function findings(slots: Slots, id: string, field: string, label: string, spec: 
   refs(spec, at, `${id}.${field}.at`, s, deps);
   const reason = s.text('reason');
   if (found === false && requireAtWhenClear && at.length === 0) s.errors.push(`${id}.${field}.at：判为没有${label}，要指出规格里写着这条约束的位置。`);
-  if (found === true && reason) warnings.push(`${label}：${reason}`);
+  if (found === true && reason) warnings.push(`${label}：${reason}${placed(spec, at)}`);
   slots.merge(s);
 }
 
@@ -1211,7 +1216,7 @@ function assessSlots(s: Slots, where: string, q: Question, spec: Spec, deps: Rec
     if (!fix) s.errors.push(`${where}.fix：判为有问题，要写出修法（验证者不改设计，修法交给作者）。`);
     warnings.push(`${q.slot}（${q.ask}）有问题：${reason ?? ''}｜位置：${at.map((ref) => locate(spec, ref)).join('、')}｜修法：${fix ?? ''}`);
   }
-  if (verdict === 'undecided') warnings.push(`${q.slot}（${q.ask}）未能判定：${reason ?? ''}`);
+  if (verdict === 'undecided') warnings.push(`${q.slot}（${q.ask}）未能判定：${reason ?? ''}${placed(spec, at)}`);
 }
 
 /** 记录里名为 q.slot 的子槽。 */
@@ -1549,7 +1554,7 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
                   case 'counterexample': {
                     const w = s.object('witness');
                     if (w) witness(spec, w, `${id}.${slot}.witness`, s, deps);
-                    if (s.errors.length === 0) warnings.push(`${slot} 有反例，约束不成立：${reason ?? ''}`);
+                    if (s.errors.length === 0) warnings.push(`${slot} 有反例，约束不成立：${reason ?? ''}${w && typeof w.operation === 'string' ? placed(spec, [w.operation]) : ''}`);
                     break;
                   }
                   default:
@@ -1594,7 +1599,7 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
               const warnings: string[] = [];
               if ((verdict === 'guards' || verdict === 'connection') && cs.length === 0) slots.errors.push(`${o.key}.constraints：写出它守的（或作连接服务的）应有约束。`);
               for (const c of cs) if (!expected.has(c)) slots.errors.push(`${o.key}.constraints：${c} 不在 expect 里。`);
-              if (verdict === 'extraneous') warnings.push(`不该进 VDM：${reason ?? ''}`);
+              if (verdict === 'extraneous') warnings.push(`不该进 VDM：${reason ?? ''}${placed(spec, [o.key])}`);
               const deps: Record<string, string> = Object.fromEntries(cs.filter((c) => expected.has(c)).map((c) => [`应有 ${c}`, expected.get(c)!.subject]));
               for (const q of questions) assess(slots, o.key, q, spec, deps, warnings);
               return { errors: slots.errors, warnings, deps };
@@ -1669,7 +1674,7 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
                 if (!expected.has(c)) slots.errors.push(`${o.key}.constraints：${c} 不在 expect 里。`);
                 else deps[`应有 ${c}`] = expected.get(c)!.subject;
               }
-              if (verdict === 'simulation') warnings.push(`在模拟业务怎样运行：${reason ?? ''}`);
+              if (verdict === 'simulation') warnings.push(`在模拟业务怎样运行：${reason ?? ''}｜位置：${o.hint.split('\n')[0]}`);
               for (const q of extra) assess(slots, o.key, q, spec, deps, warnings);
               return { errors: slots.errors, warnings, deps };
             },
@@ -1895,8 +1900,8 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
               const dir = expected.get(o.key)!.dir;
               if (verdict !== 'absent' && actual.length === 0) slots.errors.push(`${o.key}.actual：写出它实际写在哪里。`);
               if (verdict === 'match') for (const f of found) if (f.dir !== dir) warnings.push(`判为归属一致，但实际位置在 ${f.dir}，应在 ${dir}。`);
-              if (verdict === 'misplaced') warnings.push(`归属不对：${reason ?? ''}`);
-              if (verdict === 'duplicated') warnings.push(`同一个东西在两处展开：${reason ?? ''}`);
+              if (verdict === 'misplaced') warnings.push(`归属不对：${reason ?? ''}${placed(spec, actual)}`);
+              if (verdict === 'duplicated') warnings.push(`同一个东西在两处展开：${reason ?? ''}${placed(spec, actual)}`);
               if (verdict === 'absent') warnings.push(`规格里没有写这条约束：${reason ?? ''}`);
               return { errors: slots.errors, warnings, deps };
             },
@@ -1935,7 +1940,8 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
               const deps: Record<string, string> = {};
               refs(spec, guards, `${o.key}.guards`, slots, deps);
               if (verdict === 'guarded' && guards.length === 0) slots.errors.push(`${o.key}.guards：写出守住它的 pre、inv 或分支条件所在位置。`);
-              const warnings = verdict === 'missing_guard' ? [`缺前置条件或分支守卫：${reason ?? ''}`] : verdict === 'undecided' ? [`未能判定：${reason ?? ''}`] : [];
+              const where = `｜位置：${o.hint.split('\n')[0]}`;
+              const warnings = verdict === 'missing_guard' ? [`缺前置条件或分支守卫：${reason ?? ''}${where}`] : verdict === 'undecided' ? [`未能判定：${reason ?? ''}${where}`] : [];
               return { errors: slots.errors, warnings, deps };
             },
           },

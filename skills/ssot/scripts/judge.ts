@@ -827,9 +827,9 @@ function expansionsOf(spec: Spec, baseline: Baseline): ReadonlyMap<string, Expan
 
 const EXPANSION_HINT: Readonly<Record<Expansion, string>> = {
   structure:
-    '它不是最小形式（token）：expansion.violation 写出缩回 token、删掉这个字段或分支之后，哪条草稿约束的哪种违反情形会重新可以构造；needed_by 写出读这份结构、按它分支的别的元素，读者在系统外（调用方按它区分结局）时写 README 里说明这个读者的那一行（路径.md:行）。写不出就缩回去，约束改落到使用它的操作的 pre/post 或状态的 inv 上。',
+    '它不是最小形式（token）：先按 ssot-design/references/writing.md 第三节「用不展开的写法守住约束」找写法（身份只比相等、判定写成不展开的函数放进 pre/post、事实写成身份之间的映射与集合）。仍要展开时，expansion.violation 写出缩回 token、删掉这个字段或分支之后，哪条草稿约束的哪种违反情形会重新可以构造；needed_by 写出读这份结构、按它分支的别的元素，读者在系统外（调用方按它区分结局）时写 README 里说明这个读者的那一行（路径.md:行）。写不出就缩回去。',
   body:
-    '它不是最小形式（is not yet specified）：expansion.violation 写出退回 is not yet specified、删掉多余的参数、合取项或调用之后，哪条草稿约束的哪种违反情形会重新可以构造；needed_by 可选，写出要求它的体或谓词的别的元素。写不出就退回去。',
+    '它不是最小形式（is not yet specified）：先按 ssot-design/references/writing.md 第三节「用不展开的写法守住约束」找写法（判定写成不展开的函数、连接只留签名）。仍要展开时，expansion.violation 写出退回 is not yet specified、删掉多余的参数、合取项或调用之后，哪条草稿约束的哪种违反情形会重新可以构造；needed_by 可选，写出要求它的体或谓词的别的元素。写不出就退回去。',
 };
 
 /** 本轮要交代来由的元素：相对基线新增或原文改动的，以及本轮删掉的。没动过的旧元素不归本轮草稿解释。 */

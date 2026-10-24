@@ -166,6 +166,34 @@ end
 
 占位是合法的终态：`token` 与 `is not yet specified` 一直保留到有草稿约束要求观察它的结构或规定它的结果为止，不为通过检查而展开。草稿里已经定下的约束不能藏进 `token` 或 `is not yet specified`，落到产生或使用它的操作的 `pre`/`post`、状态的 `inv` 或「语义」上。连接的效果还没有约束时，写成显式的 `== is not yet specified`，也不为它预先建 `state`；有约束要求它读写状态时，才建出这条约束需要的最小 `state`，写成带 `ext` 与 `post` 的隐式操作。
 
+### 用不展开的写法守住约束
+
+约束要的是排除违反情形，不是把对象写完整。写任何结构之前，先按下面的次序找一种不展开就能排除违反情形的写法；前一种写不出，才用后一种。下面的例子放在一个模块里经 VDMJ 类型检查通过：
+
+1. **身份只比较相等。** 要守住的是“同一个”“不是同一个”时，类型保持 `token`，约束写成身份之间的等式或映射。“同一个请求号重复提交只产生一个订单”不需要订单的任何字段：
+   ```vdm
+   OrderId = token;
+   RequestNo = token;
+   ...
+   Place(request: RequestNo) order: OrderId
+   ext wr byRequest
+   post (request in set dom byRequest~ and order = byRequest~(request) and byRequest = byRequest~)
+        or (request not in set dom byRequest~ and byRequest = byRequest~ munion {request |-> order});
+   ```
+2. **判定写成不展开的函数，放进谓词。** 约束只说“满足某个条件才行”、条件的内容未定或不归本系统定时，写一个体为 `is not yet specified` 的判定函数，在 `pre`/`post` 里调用它。约束由谓词守住，判定的内容不展开：
+   ```vdm
+   Eligible: OrderId -> bool
+   Eligible(o) == is not yet specified;
+   ...
+   pre order in set rng byRequest and Eligible(order)
+   ```
+3. **事实写成身份之间的映射与集合，不写记录与状态字段。** 要记住的只是“哪些订单已扣款”“请求对应哪个订单”时，用 `set of OrderId`、`map RequestNo to OrderId`，不给订单建一个带状态字段的记录。状态分量只放约束要读的事实，`inv` 只写它们之间的关系（例如 `paid subset rng byRequest`）。
+4. **结局只列调用方要区分的分支。** 结果类型写成 quote 并类型，只列调用方会分别处理的几支（`<Paid> | <Declined> | <Unknown>`），失败原因、明细与载荷不进结果。调用方不分支的结果，返回 `()` 或 `token`。
+5. **连接与外部依赖只留签名。** 效果还没有约束的连接、外部系统提供的连接，写签名加 `== is not yet specified`；约束落在调用它的一方的 `pre`/`post` 或场景的先后上，不为它写内部效果。
+6. **数量与时间写进「语义」或常量。** 时限、次数、间隔这类数值写在 `values` 或「语义」里，不为它们建计时、计数的状态。
+
+到第六种都排除不了违反情形时，才展开结构；展开的那一处在 `expansion` 里写明缩回上一种写法会让哪种违反情形重新可以构造。
+
 ## 四、规格说不清的语义与受控文字
 
 文字只写 VDM-SL 规格说不清的语义，作为规格的补充约束：

@@ -286,4 +286,19 @@ describe('design', () => {
     expect(run.out).toContain('没有本轮开始时的设计基线');
     expect(cli('design', 'elements', design).out).toContain('没有本轮开始时的设计基线');
   });
+
+  test('把基线里的 token 展开了，要指出读它结构的别的元素，不能指它自己', () => {
+    const { root, design } = workspace();
+    draft(root);
+    cli('draft', 'status', root);
+    const run = join(design, 'architecture/run.md');
+    writeFileSync(run, readFileSync(run, 'utf8').replace('RunId = token;', 'RunId ::\n    n : nat;  -- 编号'));
+    const skeleton = cli('design', 'elements', design).out;
+    expect(skeleton).toContain('本轮把占位展开了');
+    expect(skeleton).toContain('needed_by');
+    put(root, '.tmp/ssot-design/elements/run.yaml', 'elements:\n  - {element: "Run`RunId", constraints: [C1], connection_for: [], reason: 要编号, expansion: {needed_by: ["Run`RunId"], reason: 要读}}\n');
+    expect(cli('design', 'elements', design).out).toContain('要指出它以外读它结构的元素');
+    put(root, '.tmp/ssot-design/elements/run.yaml', 'elements:\n  - {element: "Run`RunId", constraints: [C1], connection_for: [], reason: 要编号}\n');
+    expect(cli('design', 'elements', design).out).toMatch(/Run`RunId.*expansion/);
+  });
 });

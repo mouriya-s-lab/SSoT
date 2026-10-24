@@ -809,12 +809,42 @@ function elementObligations(spec: Spec): Obligation[] {
   }));
 }
 
+/** 基线里这个元素是不展开的占位（`= token` 或 `is not yet specified`）。 */
+function wasPlaceholder(source: string): boolean {
+  return /is not yet specified/.test(source) || /=\s*token\s*;?\s*$/m.test(source);
+}
+
+/** 本轮把基线里的占位展开了：token 写出了结构，或 is not yet specified 写出了体或 post。 */
+function expandedPlaceholders(spec: Spec, baseline: Baseline): ReadonlySet<string> {
+  return new Set(
+    [...spec.elements.values()]
+      .filter((e) => e.field === null && !e.definition.unspecified)
+      .filter((e) => {
+        const before = baseline.get(e.key);
+        return before !== undefined && before !== e.source && wasPlaceholder(before);
+      })
+      .map((e) => e.key),
+  );
+}
+
 /** 本轮要交代来由的元素：相对基线新增或原文改动的，以及本轮删掉的。没动过的旧元素不归本轮草稿解释。 */
-function roundObligations(spec: Spec, baseline: Baseline): Obligation[] {
-  const skeleton = (key: string) => ({ element: key, constraints: [], connection_for: [], reason: '' });
+function roundObligations(spec: Spec, baseline: Baseline, expanded: ReadonlySet<string>): Obligation[] {
+  const skeleton = (key: string) => ({ element: key, constraints: [], connection_for: [], reason: '', ...(expanded.has(key) ? { expansion: { needed_by: [], reason: '' } } : {}) });
   const changed = [...spec.elements.values()]
     .filter((e) => baseline.get(e.key) !== e.source)
-    .map((e) => ({ key: e.key, dir: e.module.place.dir, constraint: null, subject: e.source, skeleton: skeleton(e.key), hint: baseline.has(e.key) ? `本轮改动（${e.module.place.path}:${e.line}）` : `本轮新增（${e.module.place.path}:${e.line}）` }));
+    .map((e) => ({
+      key: e.key,
+      dir: e.module.place.dir,
+      constraint: null,
+      subject: e.source,
+      skeleton: skeleton(e.key),
+      hint: [
+        baseline.has(e.key) ? `本轮改动（${e.module.place.path}:${e.line}）` : `本轮新增（${e.module.place.path}:${e.line}）`,
+        ...(expanded.has(e.key)
+          ? ['本轮把占位展开了：expansion.needed_by 写出读它结构、按它分支或要求它的体的那个已有元素（谓词所在的操作、场景或判定），reason 写那条草稿约束为什么非读它不可；指不出就退回占位。']
+          : []),
+      ].join('\n'),
+    }));
   const removed = [...baseline.entries()]
     .filter(([key]) => !spec.elements.has(key))
     .map(([key, source]) => ({ key, dir: null, constraint: null, subject: `（已删除）\n${source}`, skeleton: skeleton(key), hint: '本轮删除' }));
@@ -866,7 +896,7 @@ function landingCheck(spec: Spec, item: Obj, where: string, slots: Slots, deps: 
           : kind === 'scenario' ? d.kind === 'explicit operation' && d.explicit
           : d.kind.includes('function');
         if (!fits) s.errors.push(`${where}：${ref} 没有可作 ${kind} 的部分（它是 ${d.kind}${kind === 'inv' || kind === 'pre' || kind === 'post' ? `，没有写 ${kind}` : ''}）。`);
-        if (d.unspecified && element.field === null) s.errors.push(`${where}：${ref} 是不展开的定义（token 或 is not yet specified）；草稿里定下的约束不能藏在这里。`);
+        if (d.unspecified && element.field === null) s.errors.push(`${where}：${ref} 是不展开的定义（token 或 is not yet specified）；草稿里定下的约束不能藏在这里。不要为此展开它：把落点改到产生或使用它的那个操作的 pre/post、状态的 inv，或「语义」；只有这条约束确实要求观察者读它的结构时，才展开它。`);
       }
       break;
     }
@@ -937,6 +967,7 @@ function designOutcomes(design: string, sub: DesignSub, mode: StampMode): Outcom
   // 每个子命令一个目录：一个盖章文件只有一个子命令写，并行跑 elements 与 constraints 不会互相覆盖。
   const ledger = (s: string) => join(repo, '.tmp', 'ssot-design', s);
   const scope: Scope = { dirs: [], constraints: [] };
+  const expanded = expandedPlaceholders(spec, baseline);
   if (wants('elements')) {
     outcomes.push(
       runStamped(
@@ -946,10 +977,10 @@ function designOutcomes(design: string, sub: DesignSub, mode: StampMode): Outcom
           keyField: 'element',
           target: join(ledger('elements'), 'elements.yaml'),
           files: yamlFiles(ledger('elements')),
-          obligations: roundObligations(spec, baseline),
+          obligations: roundObligations(spec, baseline, expanded),
           judge: (record, o) => {
             const slots = new Slots(record, o.key);
-            slots.only(['element', 'constraints', 'connection_for', 'reason']);
+            slots.only(['element', 'constraints', 'connection_for', 'reason', ...(expanded.has(o.key) ? ['expansion'] : [])]);
             const cs = slots.list('constraints');
             const conn = slots.list('connection_for');
             const removed = !spec.elements.has(o.key);
@@ -963,6 +994,19 @@ function designOutcomes(design: string, sub: DesignSub, mode: StampMode): Outcom
             for (const c of [...cs, ...conn]) if (!draft!.constraints.has(c)) slots.errors.push(`${o.key}：${c} 不在草稿的 constraints 里。`);
             slots.text('reason');
             const deps: Record<string, string> = {};
+            if (expanded.has(o.key)) {
+              const x = slots.nested('expansion');
+              if (x) {
+                x.only(['needed_by', 'reason']);
+                const by = x.list('needed_by');
+                if (by.length === 0) x.errors.push(`${o.key}.expansion.needed_by：基线里它是占位，本轮展开了；写出读它结构、按它分支或要求它的体的已有元素，指不出就退回占位。`);
+                for (const f of refs(spec, by, `${o.key}.expansion.needed_by`, x, deps)) {
+                  if (f.element && (f.element.key === o.key || f.element.key.startsWith(`${o.key}.`))) x.errors.push(`${o.key}.expansion.needed_by：要指出它以外读它结构的元素，不能指它自己或它的字段。`);
+                }
+                x.text('reason');
+                slots.merge(x);
+              }
+            }
             for (const c of [...cs, ...conn]) {
               const dc = draft!.constraints.get(c);
               if (dc) deps[`草稿 ${c}`] = canonical(dc.record);
@@ -1291,8 +1335,8 @@ function assess(slots: Slots, where: string, q: Question, spec: Spec, deps: Reco
 }
 
 /** 说明注释与用词：定义与字段都问。说明是否写意义、提到的东西是否在签名里、字面会不会误导。 */
-const COMMENT_MEANING: Question = { slot: 'comment_meaning', ask: '说明写它是什么、承诺什么，不只复述类型形状' };
-const SIGNATURE: Question = { slot: 'signature', ask: '说明里提到的参数、载荷字段、要区分的结局或状态，都在签名与字段里真实存在，没有用一个 bool 混掉要区分的几种结局' };
+const COMMENT_MEANING: Question = { slot: 'comment_meaning', ask: '说明写它是什么，不只复述类型形状；有草稿约束要求的承诺时写出承诺，没有来源的承诺不写' };
+const SIGNATURE: Question = { slot: 'signature', ask: '说明与签名、字段一致：说明里提到的参数、载荷字段、要区分的结局或状态，签名里都有，没有用一个 bool 混掉要区分的几种结局。不一致时先问说明是不是多说了：没有草稿约束要求的，修法是删掉说明里的那句，不是往签名里加' };
 const WORDING: Question = { slot: 'wording', ask: '名字与说明不会让人误解成实例、指针、成员变量、缓存或存储；改用函数、值、静态定义、不可变事实记录与凭据的说法' };
 const ACTION_WORDS: Question = { slot: 'action_words', ask: '动作与状态词与实际定义一致：按等价引用已发布事实不叫“拷贝/复用”，输入变了构成新调用不叫“原地重跑”' };
 const DESIGN_REASON: Question = { slot: 'design_reason', ask: '写出的理由是设计层面的（单一展开避免多重解释、源头事实上的纯函数投影等），不拿“不存储副本、避免同步负担、不作可变字段”这类存储或实现优化当理由；没写理由时判 not_applicable' };
@@ -1300,14 +1344,14 @@ const FIELD_QUESTIONS: readonly Question[] = [COMMENT_MEANING, SIGNATURE, WORDIN
 const DEFINITION_QUESTIONS: readonly Question[] = [
   COMMENT_MEANING,
   SIGNATURE,
-  { slot: 'predicate_promise', ask: '说明里的行为承诺（“同一……只……”“已关闭时必拒绝”“保持一致”等）有 inv、pre 或 post 的合取项真正排除违规情形；跨操作的先后由场景规定，不要求在单个被调操作里重复设防；说明里没有行为承诺时判 not_applicable', evidence: '兑现承诺的 inv、pre 或 post 所在位置' },
+  { slot: 'predicate_promise', ask: '说明里的行为承诺（“同一……只……”“已关闭时必拒绝”“保持一致”等）有 inv、pre 或 post 的合取项真正排除违规情形；跨操作的先后由场景规定，不要求在单个被调操作里重复设防；说明里没有行为承诺时判 not_applicable。承诺没有草稿约束来源时，修法是删掉说明里的承诺，不是补谓词', evidence: '兑现承诺的 inv、pre 或 post 所在位置' },
   { slot: 'nonvacuous', ask: '没有为挂住参数名而写恒真子句（如 and (x = {} or x <> {})），每个参数都真正参与约束' },
   WORDING,
   ACTION_WORDS,
   DESIGN_REASON,
 ];
 /** 导出的类型与判定：下游是否真的消费。 */
-const CONSUMPTION: Question = { slot: 'consumption', ask: '导出后在下游确有消费：写出设计里使用它的位置，或系统外调用方使用它的契约与依据；没有导出时判 not_applicable', evidence: '使用它的位置，或写着系统外调用契约的那一行' };
+const CONSUMPTION: Question = { slot: 'consumption', ask: '导出后在下游确有消费：写出设计里使用它的位置，或系统外调用方使用它的契约与依据；没有导出时判 not_applicable。没人消费时修法是取消导出或删掉它，不是造一个消费者', evidence: '使用它的位置，或写着系统外调用契约的那一行' };
 const TYPE_QUESTIONS: readonly Question[] = [
   { slot: 'observation', ask: '只有观察者要按它分支或读字段时才展开结构；只原样传递的保持 token' },
   { slot: 'struct_exposure', ask: '导出时带不带 struct 与使用方是否读它的结构一致' },
@@ -1344,7 +1388,7 @@ const SEQUENCE_ORDER: Question = { slot: 'order', ask: '这些调用的先后与
 const FLOW_QUESTIONS: readonly Question[] = [
   { slot: 'responsibility', ask: '参数多或传固定空值时，先判断那个参数代表的事是否本属另一个视角或模块；是就把它拆回原处，而不是要求上游一路透传' },
   { slot: 'inputs', ask: '决定结果的关键值都传了进去，没有半路丢掉、传旧值或类型没接上' },
-  { slot: 'result', ask: '这次调用的产出（结局、判定结果）在下游被实际消费', evidence: '消费这份产出的位置' },
+  { slot: 'result', ask: '这次调用的产出（结局、判定结果）在下游被实际消费；这里有意不需要它、而别处需要时判 not_applicable 并写明；任何地方都不需要时判 problem，修法是删掉这个返回值或这次调用，不是加一个消费者', evidence: '消费这份产出的位置' },
   { slot: 'timing', ask: '实参在需求所说的时点已经存在' },
 ];
 
@@ -2043,7 +2087,7 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
               refs(spec, guards, `${o.key}.guards`, slots, deps);
               if (verdict === 'guarded' && guards.length === 0) slots.errors.push(`${o.key}.guards：写出守住它的 pre、inv 或分支条件所在位置。`);
               const where = `｜位置：${o.hint.split('\n')[0]}`;
-              const warnings = verdict === 'missing_guard' ? [`缺前置条件或分支守卫：${reason ?? ''}${where}`] : verdict === 'undecided' ? [`未能判定：${reason ?? ''}${where}`] : [];
+              const warnings = verdict === 'missing_guard' ? [`没有东西守住这条证明义务：${reason ?? ''}${where}｜先看产生它的表达式或结构是否本该存在，不该存在就删掉或退回占位；草稿约束要求它时才补 pre、inv 或分支`] : verdict === 'undecided' ? [`未能判定：${reason ?? ''}${where}`] : [];
               return { errors: slots.errors, warnings, deps };
             },
           },
@@ -2244,7 +2288,8 @@ function reviewOutcome(design: string, spec: Spec, root: string, scope: Scope, m
         slots.only(['item', 'verdict', 'reason']);
         const verdict = slots.choice('verdict', ['accept', 'reject'] as const);
         const reason = slots.text('reason');
-        const warnings = verdict === 'accept' ? [`采纳模型审查（${o.hint}），交回作者修改：${reason ?? ''}`] : verdict === 'reject' ? [`驳回模型审查（${o.hint}）：${reason ?? ''}`] : [];
+        // 驳回是验证者判定的误报：记进台账即可，不再当作要交回作者的问题。
+        const warnings = verdict === 'accept' ? [`采纳模型审查（${o.hint}），交回作者修改：${reason ?? ''}`] : [];
         return { errors: slots.errors, warnings, deps: {} };
       },
     },

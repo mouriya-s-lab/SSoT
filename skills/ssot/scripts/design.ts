@@ -651,7 +651,7 @@ function prose(design: string, places: readonly Place[], modules: readonly Locat
       let block: { readonly line: number; readonly text: string } | null = null;
       const flush = () => {
         if (block !== null && !codeSpans(block.text).some((name) => name.includes('`'))) {
-          fail(place.path, block.line, '这条需求没有指出兑现它的规格元素；用双反引号写出兑现它的类型、谓词所在的操作或场景，例如 ``Report`Daily``。');
+          fail(place.path, block.line, '这条需求没有指出兑现它的规格元素：用双反引号写出已有的、兑现它的类型、谓词所在的操作或场景（不展开的连接也可以，例如 ``Report`Daily``）。规格里没有任何元素兑现它，说明它不属于本系统的承诺或草稿漏了约束，回到 ssot-draft；不为了让这里有引用而新造元素。');
         }
         block = null;
       };
@@ -1063,15 +1063,15 @@ function antipatterns(modules: readonly Located[]): Diagnostic[] {
   const message = (rule: string, details: string): string => {
     switch (rule) {
       case 'string-literal':
-        return '规格里出现了字符串字面量：设计靠类型与谓词表达含义，不比较字符串内容，两个相同的字符串是不是同一样东西也无从判断；提升为 quote、token 或记录。';
+        return '规格里出现了字符串字面量：设计靠类型与谓词表达含义，不比较字符串内容。先问规格要不要观察它：是实现值、自由文本或展示内容，移出 VDM；规格只需要知道有这么个值，写 token；只有规格要按它分支时才写 quote 并类型，要读多个字段时才写记录。';
       case 'implementation':
-        return `显式体里有${details}：这是实现。连接写成隐式定义的 post；显式体只用于场景与判定，不改状态、不写循环。`;
+        return `显式体里有${details}：这是实现。没有约束要求它就删掉这个体，写成 is not yet specified；有约束时写成隐式定义的 post；显式体只用于场景与判定，不改状态、不写循环。`;
       case 'no-promise':
-        return `隐式定义的 ${details}，不承诺任何东西：写出它做到什么；写在代码或文字里的，改成 is not yet specified 并在说明里留“索引：路径:行号”；还没定的，只写 is not yet specified。`;
+        return `隐式定义的 ${details}，不承诺任何东西。还没定的，改成显式的 is not yet specified；写在代码或文字里的，同样改成 is not yet specified 并在说明里留“索引：路径:行号”；只有草稿约束定下了它做到什么，才写 post。不为消掉这条诊断编一个 post。`;
       case 'tautology':
-        return `${details}，恒真，等于什么也没说：约束要排除一些情形才算承诺；写出它排除什么，写不出就说明这条连接或这个类型还没有内容。`;
+        return `${details}，恒真，等于什么也没说。删掉这条（合取项）；整条约束都是这样，就把定义退回 is not yet specified 或 token。只有草稿约束定下了它要排除的情形，才写出排除它的谓词；不为消掉这条诊断编一个条件。`;
       case 'contradiction':
-        return `${details}，恒不可满足，什么也不允许：写出它允许什么、这个类型可以有哪些值。`;
+        return `${details}，恒不可满足，什么也不允许。删掉这条（合取项）；整条约束都是这样，就把定义退回 is not yet specified 或 token。只有草稿约束定下了它允许什么，才写出那个谓词。`;
       default:
         throw new Error(`程序错误：Outline.java 给出了未知的反模式 ${rule}`);
     }
@@ -1119,7 +1119,7 @@ function unusedDefinitions(modules: readonly Located[], warnings: readonly strin
         stage: 'antipattern',
         path: owner.place.path,
         line: Number(unused[4]),
-        message: `${owner.name}\`${unused[1]}：规格里没有任何地方用到它，它只是一个名字。导出它给别的模块用，或在本模块里用它；只为文字引用而存在的名字不是设计。`,
+        message: `${owner.name}\`${unused[1]}：规格里没有任何地方用到它，它只是一个名字。删掉它；只有草稿里有约束要求某个连接用到它时，才写出那个连接。不为消掉这条诊断新增导出、导入、调用或场景。`,
       });
     } else rest.push(warning);
   }

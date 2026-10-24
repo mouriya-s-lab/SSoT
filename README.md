@@ -45,9 +45,9 @@ flowchart TB
 | [`skills/ssot-review-flow`](skills/ssot-review-flow/SKILL.md) | **审设计 · 业务分流与走通块** | 审业务分流、值与动作的配合及场景走通：顺着“看值流转是否因多来源积压而别扭 $\to$ 跟每条需求走纯函数判定与代表元场景 $\to$ 看生命周期开闭与跨连接语义”的思路，检验各模块协作是否顺畅走通 |
 | [`skills/ssot-review-spec`](skills/ssot-review-spec/SKILL.md) | **审设计 · 规格严密与用词块** | 审形式化规格严密性、证明义务与用词对齐：运行 `ssot check` 与 `review.py`，核对未定证明义务、说明注释与谓词的一致性、以及字面用词是否准确 |
 | [`skills/ssot-migration`](skills/ssot-migration/SKILL.md) | **存量旧文档迁移块** | 将混杂的存量设计文档无损迁入三桶目录：遵循“只搬运、不判断对错、不改原意”，先勘察概念定义处与设计中心，搬完骨架后按区域把每条陈述拆层归入 `architecture/`、`business/` 或 `appendix/`；搬完一条从旧文档删一条，旧文档清空即迁移完成 |
-| [`skills/ssot-draft`](skills/ssot-draft/SKILL.md) | **设计草稿块** | 写 VDM 之前，用基线图、架构图与文字定下设计的形状（对象、层、边界、不变量）及每条形状由架构还是业务持有；草稿写在目标仓库的 `.tmp/ssot-draft/` |
-| [`skills/ssot-design`](skills/ssot-design/SKILL.md) | **按草稿写设计块** | 把草稿定下的形状写进 `design/`，架构模块与业务单元一起写；VDM 只写守住形状的约束，写不进去时回草稿，不改归属 |
-| [`skills/ssot-verify`](skills/ssot-verify/SKILL.md) | **独立验证块** | 由未参与设计的 `ssot:fable` 与 `ssot:argon` 先写出预期形状，再逐条构造反例，核对 VDM 是否守住形状、有无不该进 VDM 的内容、归属与形式是否成立；只报告，不修改 |
+| [`skills/ssot-draft`](skills/ssot-draft/SKILL.md) | **设计草稿块** | 写 VDM 之前分清定义、执行、事实与索引，给每条约束写出允许的变化、不变的关系与违反情形，经换跑法、删除、范围三项判定筛选，再判定由架构还是业务持有；草稿写在目标仓库的 `.tmp/ssot-draft/` |
+| [`skills/ssot-design`](skills/ssot-design/SKILL.md) | **按草稿写设计块** | 按约束类别选写法，用违反情形自检规格是否排除了它；每个 VDM 元素都对应草稿中的一条约束，写不进去时区分换写法与回草稿 |
+| [`skills/ssot-verify`](skills/ssot-verify/SKILL.md) | **独立验证块** | 由未参与设计的 `ssot:fable` 与 `ssot:argon` 先不看规格写出应有约束，再逐条构造违反情形并用 VDMJ 求值核对，反查元素与归属；只报告，不修改 |
 
 ## 三层检验机制
 

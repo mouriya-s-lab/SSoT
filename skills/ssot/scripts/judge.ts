@@ -351,8 +351,9 @@ function resolveRef(spec: Spec, ref: string): { readonly text: string; readonly 
   if (element) return { text: element.source, dir: element.module.place.dir, element };
   const lines = /^(.+\.md):(\d+)(?:-(\d+))?$/.exec(ref);
   if (!lines) return null;
-  const place = spec.places.find((p) => p.path === lines[1]);
-  if (!place) return null;
+  // 根 README.md 只列阅读次序，不属于任何设计目录；design#navigation 这类问题要能引用它的行。
+  const place = lines[1] === 'README.md' ? { path: 'README.md', dir: '' } : spec.places.find((p) => p.path === lines[1]);
+  if (!place || !existsSync(join(spec.design, place.path))) return null;
   const all = readFileSync(join(spec.design, place.path), 'utf8').split('\n');
   const from = Number(lines[2]);
   const to = Number(lines[3] ?? lines[2]);

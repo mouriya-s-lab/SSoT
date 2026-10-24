@@ -146,6 +146,15 @@ describe('verify', () => {
     expect(run.out).toMatch(/Report`Daily（business\/report\/report\.md:2[23]）/);
   });
 
+  test('根 README.md 的行可以作为位置引用', () => {
+    const { root, design } = workspace();
+    overview(root, design, null);
+    put(root, '.tmp/ssot-verify/fable/modules/design.yaml', 'modules:\n  - {item: "design#navigation", verdict: problem, reason: 写了规则, at: ["README.md:1"], fix: 只留阅读次序}\n');
+    const run = cli('verify', 'modules', design, '--as', 'fable');
+    expect(run.out).not.toContain('README.md:1 找不到');
+    expect(run.out).toContain('navigation（design/README.md 只列阅读次序，不写规则）有问题');
+  });
+
   test('应有的持有目录设计里还没有：报设计缺目录，归属不能判为一致', () => {
     const { root, design } = workspace();
     const expectFile = join(root, '.tmp/ssot-verify/fable/expect/expect.yaml');

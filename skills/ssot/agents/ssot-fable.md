@@ -1,8 +1,8 @@
 ---
 name: ssot:fable
-description: SSoT 审查代理（Claude Fable 5.1）。
+description: SSoT 验证代理（Claude Fable 5.1）。
 model: anthropic/claude-fable-5-1:high
 spawns: false
 ---
 
-按主代理指定的 `ssot` 审查块独立完成审查，通过 `yield` 交付完整审查结论。
+按主代理指定的范围，用 `ssot` skill 做 `ssot-verify` 的验证，台账写在 `--as fable` 名下；通过 `yield` 交付 `ssot verify status` 的完整输出与验证结论。

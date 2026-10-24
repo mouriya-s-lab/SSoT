@@ -1564,13 +1564,14 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
           }
         }
       }
-      // 导出了却没有任何模块导入的名字：导出的类型或判定在下游没人消费。业务单元的导出是对外入口，不算。
+      // 导出的判定（函数）却没有任何模块导入：算出的判定在下游没人消费。导出的类型与操作可能由系统外的调用方使用，是否被消费由 result 槽判断。
       const unimported = spec.modules
         .filter((m) => m.place.layer === 'architecture' && inScope({ dir: m.place.dir, constraint: null }, scope))
         .flatMap((m) =>
           m.exports.items
+            .filter((x) => x.kind === 'function')
             .filter((x) => !spec.modules.some((other) => other !== m && other.imports.some((i) => i.module === m.name && i.items.some((it) => it.kind === 'all' || it.name === x.name))))
-            .map((x) => warning('flows', `${m.name}\`${x.name}`, '导出了，但没有任何模块导入它：确认下游真的不需要，或删掉这个导出。')),
+            .map((x) => warning('flows', `${m.name}\`${x.name}`, '导出的判定没有任何模块导入：下游没人消费它算出的结果，确认是否需要。')),
         );
       const judged = runStamped(
         {

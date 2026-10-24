@@ -34,12 +34,12 @@
 ## 文字与文学式规格
 
 - Knuth, D. E. (1984). "Literate Programming." *The Computer Journal* 27(2)：程序与解释它的文字写在同一份文档里。据此把规格块与文字放在同一个 Markdown 文件里。
-- Battle, N. *VDMJ Tool Support: User Guide*（本地版 [`../../ssot-spec/references/vdm/vdmj-user-guide.md`](../../ssot-spec/references/vdm/vdmj-user-guide.md)）：文学式源文件里规格块之外的行按空行处理，报错的行号因此与原文件一致。`check` 照这个办法从 Markdown 生成同样行数的 `.vdmsl` 文件交给 VDMJ。
+- Battle, N. *VDMJ Tool Support: User Guide*（本地版 [`vdm/vdmj-user-guide.md`](vdm/vdmj-user-guide.md)）：文学式源文件里规格块之外的行按空行处理，报错的行号因此与原文件一致。`check` 照这个办法从 Markdown 生成同样行数的 `.vdmsl` 文件交给 VDMJ。
 
 ## 场景
 
 - Kruchten, P. (1995)，出处见「架构与优先级」：以关键场景走查架构，走不通就修改架构。
-- Cockburn, A. (2000). *Writing Effective Use Cases*：主流程之外，每个失败分支都是一条扩展。据此要求每种失败结局都有场景。
+- Cockburn, A. (2000). *Writing Effective Use Cases*：主流程之外，每个失败分支都是一条扩展。据此要求需求关心的每种失败都是调用方能区分的结局，并且场景里被调连接返回的每一支结局都有处理；失败之后的恢复次序只有需求要求时才写成场景。
 
 ## 依据与理由
 

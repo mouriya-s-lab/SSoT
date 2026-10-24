@@ -31,7 +31,8 @@ function workspace(): { readonly root: string; readonly design: string } {
   put(
     root,
     '.tmp/ssot-verify/fable/expect/expect.yaml',
-    `requirements:
+    `shape: {requirements: 重复开始只产生一次运行, perspectives: 调用方与运行表, modules: Run 持有运行表}
+requirements:
   - block: {path: request.md, heading: [需求], text: 调用方用同一个请求号重复开始运行，系统只产生一次运行。}
     constraints: [E1]
 constraints:
@@ -58,7 +59,11 @@ describe('verify', () => {
 
   test('盖章后依据改了就过期，逐条确认后恢复', () => {
     const { root, design } = workspace();
-    put(root, '.tmp/ssot-verify/fable/elements/report.yaml', 'elements:\n  - {element: "Report`Daily", verdict: guards, constraints: [E1], reason: 日报的先后}\n');
+    put(
+      root,
+      '.tmp/ssot-verify/fable/elements/report.yaml',
+      'elements:\n  - {element: "Report`Daily", verdict: guards, constraints: [E1], reason: 日报的先后, promise: {verdict: ok, reason: 说明与场景一致}, wording: {verdict: ok, reason: 用词无误导}}\n',
+    );
     const scope = ['verify', 'elements', design, '--as', 'fable', '--dir', 'business/report'];
     expect(cli(...scope).out).toContain('还没盖章');
     expect(cli(...scope, '--stamp').code).toBe(0);

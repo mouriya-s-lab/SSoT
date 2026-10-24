@@ -1,6 +1,6 @@
 ---
 name: ssot-migration
-description: SSoT存量旧文档迁移块：只搬运不改原意，将legacy-design/迁入design/。先读ssot与ssot-spec再读本skill；非迁移任务禁读。
+description: SSoT存量旧文档迁移块：只搬运不改原意，将legacy-design/迁入design/。先读ssot与ssot-design/references/writing.md再读本skill；非迁移任务禁读。
 ---
 
 # ssot-migration
@@ -241,4 +241,4 @@ flowchart TB
 
 `legacy-design/` 搬空时，迁移就结束了。在同一个提交里删掉 `legacy-design/`，并把仓库说明与规则里指向它、为迁移而放宽的地方改回只指 `design/`。
 
-`check` 里剩下的诊断、模型审查的结果，以及对设计的审查与修改，属于后续阶段，按 `ssot` 的审查流水线（`ssot-review-arch` → `ssot-review-flow` → `ssot-review-spec`）与设计流水线（`ssot-arch` → `ssot-business` → `ssot-spec`）进行，那已经不是迁移。
+`check` 里剩下的诊断、模型审查的结果，以及对设计的审查与修改，属于后续阶段：审查用 `ssot-verify`，修改按 `ssot-draft` → `ssot-design` 进行，那已经不是迁移。

@@ -7,7 +7,7 @@ description: SSoT设计真源（Markdown+VDM-SL文学式规格）总纲与路由
 
 完整通过检查的示例设计见 [`references/example/design/`](references/example/design/)。
 
-**默认工作边界：只专注 `design/` 本身。** 执行任何 `ssot` 任务时，**默认禁止查看目标仓库中 `design/` 之外的任何文件（包括实现代码、测试、配置文件、其他文档，以及 `legacy-design/`），也禁止查看 `git` 历史或 diff**；`legacy-design/` 仅在当前任务明确是执行 `ssot-migration` 存量迁移时才允许读取；`ssot-draft` 与 `ssot-verify` 另可读取用户明确提供的材料，`ssot-draft` 在目标仓库的 `.tmp/ssot-draft/` 写草稿，`ssot-design` 读取这份草稿并在 `.tmp/ssot-design/` 写落点台账，`ssot-verify` 在 `.tmp/ssot-verify/` 写各验证方的验证台账（不读草稿与落点台账）。**禁止使用 `discuss`、`mentor`、`task:*` 等通用 subagent**（仅审查块按下方规则、`ssot-verify` 按其自身规则使用本 skill `agents/` 目录下预置的 `ssot:argon` 与 `ssot:fable`）。审查 `design/` 时只以 `ssot` 系列 skill 与 `design/` 自身为准，不受目标仓库 `.claude/rules/` 中既有模块划分或旧审查条文的预设绑架；运行 `ssot` 命令行工具直接用终端工具（如 `exec_command`），不绕用 Python `eval` 调 `subprocess`。不要找任何借口去翻看 `design/` 之外的内容；如果确实认为某一步非看某个外部文件不可，只能向用户提议并等待许可，绝不是默认行为。
+**默认工作边界：只专注 `design/` 本身。** 执行任何 `ssot` 任务时，**默认禁止查看目标仓库中 `design/` 之外的任何文件（包括实现代码、测试、配置文件、其他文档，以及 `legacy-design/`），也禁止查看 `git` 历史或 diff**；`legacy-design/` 仅在当前任务明确是执行 `ssot-migration` 存量迁移时才允许读取；`ssot-draft` 与 `ssot-verify` 另可读取用户明确提供的材料，`ssot-draft` 在目标仓库的 `.tmp/ssot-draft/` 写草稿，`ssot-design` 读取这份草稿并在 `.tmp/ssot-design/` 写落点台账，`ssot-verify` 在 `.tmp/ssot-verify/` 写各验证方的验证台账（不读草稿与落点台账）。**禁止使用 `discuss`、`mentor`、`task:*` 等通用 subagent**（仅 `ssot-verify` 按其自身规则使用本 skill `agents/` 目录下预置的 `ssot:argon` 与 `ssot:fable`）。验证 `design/` 时只以 `ssot` 系列 skill 与 `design/` 自身为准，不受目标仓库 `.claude/rules/` 中既有模块划分或旧审查条文的预设绑架；运行 `ssot` 命令行工具直接用终端工具（如 `exec_command`），不绕用 Python `eval` 调 `subprocess`。不要找任何借口去翻看 `design/` 之外的内容；如果确实认为某一步非看某个外部文件不可，只能向用户提议并等待许可，绝不是默认行为。
 
 ---
 
@@ -47,7 +47,7 @@ VDM 只是写设计稿的一种形式，用来把想法写准确，但它不是�
 - **设计只写核心，常变的业务留在代码里。** 核心定下之后不再常改；建在核心之上、随需求变动的业务写在代码里。在连接不变时可以替换的做法属于实现，不写进设计；一段细节保护某条不变量时，设计只写这条不变量。
 - **架构与优先级。** 架构回答三个问题：**由什么组成**（有哪些模块，谁在谁里面）、**用什么组成**（模块由哪些核心元素拼成，经哪些连接相接）、**为什么**（依据哪些外部事实、约束与需求）。业务建在架构上，只经连接接入；业务引用架构，架构不引用业务。
 - **两条轴。** 抽象层级是模块树的深度（父模块粗、子模块细，父不依赖子，共用材料放共同父模块）；模块划分是每个架构模块固定的三部分（外部连接、核心代码、内部设计）。业务单元不分这三部分，但业务也有抽象：业务单元之间只经导出的连接点对点或点对面组合。
-- **连接、状态与生命周期。** 连接点是可以被调用的操作或函数；共享同一份状态与同一条不变量的一组操作构成连接面。说做到什么（隐式 `pre`/`post`），不说怎么做；两个实现必须算出同一结果的判定写成显式纯函数（`functions`）；按次序调用连接走通需求、失败结局或生命周期中断的路径写成场景（`operations`）。不变量、前置条件、后置条件各管一件事，不变量越简单越好。
+- **连接、状态与生命周期。** 连接点是可以被调用的操作或函数；共享同一份状态与同一条不变量的一组操作构成连接面。说做到什么（隐式 `pre`/`post`），不说怎么做；两个实现必须算出同一结果的判定写成显式纯函数（`functions`）；需求要求的跨连接先后（包括失败之后的恢复次序与生命周期中断）写成场景（`operations`），失败结局本身写进结局类型与 `post`。不变量、前置条件、后置条件各管一件事，不变量越简单越好。
 - **读懂 VDM 形式的三个基本约定（不用写业务代码的习惯误读规格）：**
   1. **从函数与值出发，不从持久化存储出发：** 连接面的 `state` 是用来直观陈述本面不变量（`inv`）与操作前后关系（`post`）的说明性数学模型，不是内存结构体或数据库表（不对连接面内部的集合/映射做“合并字段”式重构，也不追问外部环境句柄如 `Config = token` 在重启后从哪张数据库表里读取）；跨概念的上层业务状态则写成源头事实上的纯函数投影。
   2. **显式体不写循环，集合需求由“全集纯函数 + 单步代表元场景”配合表达：** VDM-SL 显式体禁止写局部变量、赋值与循环。涉及集合元素的需求，由显式纯函数（`functions`）算出全集划分或候选集合，再由显式场景操作（`operations`）接收单个代表元参数走通单步连接调用——不把接收单个代表元参数的场景误判为“与全集需求形状不符”或“漏写循环”，也不把场景里重复出现的收尾分支当成“代码重复没抽共用辅助函数”。
@@ -81,44 +81,21 @@ flowchart TB
    - 用户在指令中已指明、或在追问后选择了具体哪一块后，**必须读取且完整读完那一个对应的子 skill**；
    - **严禁顺手读取其他块的子 skill**，完成当前块并交付结果后即停下。
 
-### 1. 审设计（Review）的三个独立块
+### 1. 写设计与验证设计
 
-| 块 | 对应 Skill | 审查重心（只选其一执行） |
-|---|---|---|
-| **架构与概念定义** | `ssot-review-arch` | 不迁就现有大体框架，从“顺眼与积压感”出发审视在这套软件的视角下到底有多少东西需要被定义、定义得对不对，值与动作的位置及架构/业务分工是否成立（不跑 `ssot check` / `review.py`） |
-| **业务分流与场景走通** | `ssot-review-flow` | 看值与动作在模块间的流转是否自然，识别因责任混杂造成的积压或断链，核对每条需求、失败结局与生命周期开闭能否顺畅走通 |
-| **形式化规格与用词** | `ssot-review-spec` | 运行 `ssot check` 与 `review.py`，核对未定证明义务、说明注释与签名/谓词的一致性、以及字面用词是否准确 |
-
-**审查块的模型协作与 Subagent 规则：**
-- **拷贝预置 Subagent 文件：** 需要派发审查 subagent 时，直接将本 skill 目录下的 `agents/ssot-argon.md` 与 `agents/ssot-fable.md` 拷入当前项目的 `.omp/agents/` 目录（直接拷贝现成文件，不在运行时手写或修改内容；审查完成交付前删掉拷入的 `.omp/agents/ssot-*.md` 保持工作区干净）。
-- **架构审查（`ssot-review-arch`）必须有 `fable`（`claude-fable-5-1`）与 `argon`（`gemini-4-argon`）同时参加：**
-  - 若当前主 agent 是 `argon` 或 `fable`：主 agent 自己独立执行审查，同时派发另一方的 subagent（`ssot:fable` 或 `ssot:argon`）补齐，汇总两方结果；
-  - 若当前主 agent 既不是 `argon` 也不是 `fable`：主 agent 用 subagent 全权委托调查——同时派发 `ssot:argon` 与 `ssot:fable` 两个 subagent，汇总两方结果。
-- **其他审查（`ssot-review-flow`、`ssot-review-spec`）由主 agent 与 `argon` 合作（不限定主 agent 模型）：**
-  - 主 agent 自己独立执行审查；若当前主 agent 不是 `argon`，同时派发 `ssot:argon` 合作审查并汇总结果。
-- **派发时只传一句话指令：** 开启 `ssot:argon` 或 `ssot:fable` 时，只需告诉它要用 `ssot` skill 做哪一块的 review（如 `"用 ssot skill 做 ssot-review-arch 的 review"`），不需要额外定义任何规则、步骤或预设结论。
-
-### 2. 写设计 / 改设计的三个独立块
-
-| 块 | 对应 Skill | 设计重心（只选其一执行） |
-|---|---|---|
-| **架构设计** | `ssot-arch` | 从外部依据出发，在多视角下权衡需要定义的核心概念、值与动作的位置，确定模块树、连接面、状态不变量与生命周期 |
-| **业务与场景设计** | `ssot-business` | 在架构导出的连接之上划分业务单元，让各单元各司其职避免多来源集中积压，编写问题域需求、确定性判定与走通需求的场景 |
-| **形式化规格落地** | `ssot-spec` | 先立最小 VDM 框架跑通 `ssot check`，再填入完整谓词、纯函数、场景与受控文字，通过 `ssot check` 与 `review.py` |
-
-### 3. 存量旧文档迁移
-
-| 块 | 对应 Skill | 迁移重心 |
-|---|---|---|
-| **存量文档迁移** | `ssot-migration` | 只搬运、不判断对错、不改动原意，把 `legacy-design/` 原样拆层搬进 `design/` 直至搬空 |
-
-### 4. 草稿、设计与验证
+写设计按 `ssot-draft` → `ssot-design` 的次序；审查、检查设计对不对用 `ssot-verify`。
 
 | 块 | 对应 Skill | 重心 |
 |---|---|---|
 | **设计草稿** | `ssot-draft` | 写 VDM 之前分清对象，写出每条约束允许的变化与不变的关系，判定由架构还是业务持有；只写 `.tmp/ssot-draft/`，不改 `design/` |
-| **按草稿写设计** | `ssot-design` | 把草稿里的约束写进 `design/`，架构模块与业务单元一起写；每个 VDM 元素都对应草稿中的一条约束 |
-| **独立验证** | `ssot-verify` | 由未参与设计的 `ssot:fable` 与 `ssot:argon` 从需求独立写出应有约束，在规格里逐条找违反情形，核对元素与归属；只报告，不修改 |
+| **按草稿写设计** | `ssot-design` | 把草稿里的约束写进 `design/`，架构模块与业务单元一起写；每个 VDM 元素都对应草稿中的一条约束；附写法参考与落地判据 |
+| **独立验证** | `ssot-verify` | 由未参与设计的 `ssot:fable` 与 `ssot:argon` 先写出应有长相与应有约束，再逐条找违反情形，逐项审查元素、场景、调用、文字与模块，核对归属；只报告，不修改 |
+
+### 2. 存量旧文档迁移
+
+| 块 | 对应 Skill | 迁移重心 |
+|---|---|---|
+| **存量文档迁移** | `ssot-migration` | 只搬运、不判断对错、不改动原意，把 `legacy-design/` 原样拆层搬进 `design/` 直至搬空 |
 
 ---
 
@@ -137,14 +114,14 @@ flowchart TB
 | `ssot review <design>` | 输出语义反模式模型审查的判断对象（JSON），由 `scripts/review.py` 在 omp `eval` 里交给 `jev` |
 | `ssot draft <子命令> <仓库根>` | 核对草稿 `.tmp/ssot-draft/draft.yaml`：`requirements`、`objects`、`constraints`、`owner`、`excluded`、`tradeoffs`、`status` |
 | `ssot design <子命令> <design> [--stamp …]` | 核对落点台账 `.tmp/ssot-design/`：`check`、`elements`、`constraints`、`status` |
-| `ssot verify <子命令> <design> --as <验证方> [--dir …] [--constraint …] [--stamp …]` | 核对验证台账 `.tmp/ssot-verify/<验证方>/`：`check`、`expect`、`gaps`、`attack`、`elements`、`scenarios`、`owner`、`po`、`review`、`verdict`、`status` |
+| `ssot verify <子命令> <design> --as <验证方> [--dir …] [--constraint …] [--stamp …]` | 核对验证台账 `.tmp/ssot-verify/<验证方>/`：`check`、`expect`、`gaps`、`attack`、`elements`、`scenarios`、`flows`、`prose`、`modules`、`owner`、`po`、`review`、`verdict`、`status` |
 | `vdmj [参数] <文件>` | VDMJ 本身，带 QuickCheck 插件，读 `.vdmsl` 文件；设计目录里的 Markdown 用 `ssot vdmj` |
 
 ### 逐项判断的台账
 
 `ssot draft`、`ssot design`、`ssot verify` 不替判断者下结论，只保证每一项都判了。规则对三者相同：
 
-- **义务由工具枚举。** 需求块来自需求材料，元素、场景节点、`ext` 与导出来自规格的语法树，证明义务来自 VDMJ，应有约束与草稿约束来自判断者写下的清单。没有记录的义务报错（缺判），并打印可以照填的 YAML 骨架；记录对应的义务已不存在时也报错（孤儿），按骨架重判。
+- **义务由工具枚举。** 需求块来自需求材料，元素、场景节点、调用点、`ext` 与导出来自规格的语法树，段落来自 `README.md`，目录来自设计目录，证明义务来自 VDMJ，应有约束与草稿约束来自判断者写下的清单。没有记录的义务报错（缺判），并打印可以照填的 YAML 骨架；记录对应的义务已不存在时也报错（孤儿），按骨架重判。
 - **台账只由判断者写。** 台账是 YAML，按子命令分目录；同一子命令可以拆成多个文件，便于分批与并行，一项义务只留一条记录。槽位没填、取值不在范围内、字段拼错、引用的元素或 `路径.md:行` 找不到，都是错误。
 - **盖章与过期。** 记录核对无误后加 `--stamp` 盖章：工具在同名的 `.stamp.yaml` 里记下记录本身与它依据的原文（被判断的对象、引用的元素、所属的约束）。之后记录改了要重新盖章；依据的原文变了，记录过期，工具并排给出盖章时与现在的原文。重新判断后改写记录再 `--stamp`，或确认结论不变后用 `--stamp <键>` 逐条确认；只写 `--stamp` 不会替你确认过期的记录。
 - **错误与警告。** 错误是没判完，退出码为 1；警告是判断本身给出的问题或不确定（遗漏、过强、未能判定、不该进 VDM、驳回模型审查等），逐条看过再交付。

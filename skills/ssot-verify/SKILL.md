@@ -1,6 +1,6 @@
 ---
 name: ssot-verify
-description: SSoT独立验证：由未参与设计的上下文，从需求独立写出应有的约束，再在design/的规格里逐条找违反情形，并核对每个元素与归属；只报告不修改。先读ssot再读本skill；用户未明确指定验证块时禁读。
+description: SSoT独立验证：由未参与设计的上下文，从需求独立写出应有的约束与应有长相，再在design/的规格里逐条找违反情形，逐项审查元素、场景、调用、文字与模块；只报告不修改。先读ssot再读本skill；用户未明确指定验证块时禁读。
 ---
 
 # ssot-verify：独立验证设计
@@ -10,18 +10,21 @@ description: SSoT独立验证：由未参与设计的上下文，从需求独立
 | 步骤 | 子命令 | 台账（`.tmp/ssot-verify/<验证方>/` 下） | 逐项判断的对象 |
 |---|---|---|---|
 | 工具检查 | `check` | 无 | `ssot check` 的全部诊断 |
-| 第一步 | `expect` | `materials.yaml`、`expect/` | 每个需求块；写下的每条应有约束 |
+| 第一步 | `expect` | `materials.yaml`、`expect/` | 应有长相；每个需求块；写下的每条应有约束 |
 | 第一步 | `gaps` | `gaps/` | 每条应有约束的遗漏、过强、误当必需 |
-| 第二步 | `attack` | `attack/` | 每条应有约束的五种违反情形 |
-| 第三步 | `elements`、`scenarios` | `elements/`、`scenarios/` | 每个规格元素；场景体里每处调用、先后、分支与挑选 |
-| 第四步 | `owner` | `owner/` | 每条应有约束的归属 |
-| 第五步 | `po`、`review` | `po/`、`review/`、`review.json` | 每条未定或未评估的证明义务；模型审查报出的每个反模式 |
+| 第二步 | `attack` | `attack/` | 每条应有约束的五种违反情形；生命周期约束另判四问 |
+| 第三步 | `elements`、`scenarios`、`flows` | `elements/`、`scenarios/`、`flows/` | 每个规格元素；每个场景与场景体里每处调用、先后、分支与挑选；显式体里每处调用的值流 |
+| 第四步 | `prose`、`modules` | `prose/`、`modules/` | `README.md` 的每段文字；每个设计目录的每个模块问题；整份设计 |
+| 第五步 | `owner` | `owner/` | 每条应有约束的归属 |
+| 第六步 | `po`、`review` | `po/`、`review/`、`review.json` | 每条未定或未评估的证明义务；模型审查报出的每个反模式 |
 | 结论 | `verdict` | `verdict/` | 每条应有约束成立、不成立或未能判定 |
 | 汇总 | `status` | 无 | 以上全部 |
 
+第三、四步的每个问题单独一槽，结论是 `ok`、`problem`（有问题，报警告）、`not_applicable`（写明为什么不适用）或 `undecided`（看过但判定不了，报警告），附 `reason` 与可选的 `at`（规格元素或 `路径.md:行`）。工具在缺判骨架里给出每一槽要问的问题；一槽 `ok` 只说明这一问看过了。
+
 ## 一、谁来验证
 
-主 agent 按总纲把 `agents/ssot-fable.md` 与 `agents/ssot-argon.md` 拷入当前项目的 `.omp/agents/`，同时派发 `ssot:fable` 与 `ssot:argon`。派发时只告诉它们“用 ssot skill 做 ssot-verify 的验证”、`design/` 与需求材料的位置，以及它们的 `--as` 名字（`fable`、`argon`）。验证范围大时分批：每个验证方先不分范围完成第一步的 `expect`（它只读需求材料、`README.md` 与依赖图，并给出全部应有约束及其持有目录，后面的分批靠它）；之后按 `--dir <目录>` 或 `--constraint <编号>` 分批派发 `gaps` 及以后的子命令，同一验证方的各批写各自的台账文件。被派发的代理从第二节开始执行，不再派发。
+验证必须有 `fable`（`claude-fable-5-1`）与 `argon`（`gemini-4-argon`）两方同时参加：`fable` 擅长从依赖方向看出视角倒置、有判定无主人的悬空责任与只写在文字里的生命周期缺口；`argon` 擅长顺着“谁观察值结构”看出过度展开、多来源积压与信任边界失守，并用模块类型可见性筛掉不成立的提议。两方长处正交，结论合拢才完整。主 agent 把 `ssot` skill 目录下的 `agents/ssot-fable.md` 与 `agents/ssot-argon.md` 原样拷入当前项目的 `.omp/agents/`（直接拷贝现成文件，不在运行时手写或修改内容）。主 agent 本身是 `fable` 或 `argon` 时，自己担任这一方，只派发另一方；都不是时同时派发 `ssot:fable` 与 `ssot:argon`。派发时只告诉它们“用 ssot skill 做 ssot-verify 的验证”、`design/` 与需求材料的位置，以及它们的 `--as` 名字（`fable`、`argon`），不另加规则、步骤或预设结论。验证范围大时分批：每个验证方先不分范围完成第一步的 `expect`（它只读需求材料、`README.md` 与依赖图，给出应有长相与全部应有约束及其持有目录，后面的分批靠它）；之后按 `--dir <目录>` 或 `--constraint <编号>` 分批派发 `gaps` 及以后的子命令，同一验证方的各批写各自的台账文件；整份设计的两项（`modules` 的 `design#overall` 与 `design#forms`）只在不带范围时判。被派发的代理从第二节开始执行，不再派发。
 
 主 agent 只汇总，不加自己的结论：两方的 `ssot verify status` 完整列出，标明出自哪一方；两方判断相反时并列，不裁决。交付前删掉拷入的 `.omp/agents/ssot-*.md`。
 
@@ -29,12 +32,24 @@ description: SSoT独立验证：由未参与设计的上下文，从需求独立
 
 只用需求材料、`design/`、`ssot` 与本 skill。作者的草稿、设计台账、推理与“检查通过”的汇报都不作依据，也不向作者询问。一条约束要靠作者另外解释才成立，按“不成立”处理。
 
-## 三、第一步：不看规格，写出应有的约束（`expect`、`gaps`）
+VDM 只是设计的一种写法，不按 VDM 的字面去审：先想清需求要满足什么、设计本来应该长什么样，再看规格；不把审查退化成在既有规格里找“删哪个变量、接哪根参数、抽哪个辅助函数”。
 
-在 `materials.yaml` 列出需求材料（`materials: [路径]`，路径相对仓库根）。先只读需求材料、`design/README.md` 与各模块、单元的 `README.md`，并运行 `ssot graph <design>`，不读任何含 VDM 的文件。`ssot verify expect` 把需求材料切成需求块，每块要写出它要求的应有约束，或说明它不约束任何对象的理由（`none`）；每条应有约束包括：约束哪个对象、对象种类、允许什么变化、什么关系不变、一个违反情形、类别、应由哪个目录持有。
+## 三、第一步：不看规格，写出应有长相与应有约束（`expect`、`gaps`）
+
+在 `materials.yaml` 列出需求材料（`materials: [路径]`，路径相对仓库根）。先只读需求材料、`design/README.md` 与各模块、单元的 `README.md`，并运行 `ssot graph <design>`，不读任何含 VDM 的文件。读完立刻写下应有长相（`shape`），想清楚之前不读规格：
+
+- `requirements`：这个系统面对什么外部约束，在问题域里要达成什么效果、满足什么需求；
+- `perspectives`：为了自然地满足这些需求，要站在哪几个视角看问题，需要定义哪几样核心概念；
+- `modules`：各模块的职责边界应该是什么样。
+
+`ssot verify expect` 要求有这份 `shape`，并把需求材料切成需求块，每块写出它要求的应有约束，或说明它不约束任何对象的理由（`none`）。每条应有约束包括：约束哪个对象、对象种类、允许什么变化、什么关系不变、一个违反情形、类别、应由哪个目录持有。
 
 ```yaml
-requirements:                              # expect/*.yaml
+shape:                                     # expect/*.yaml 里写一处
+  requirements: …
+  perspectives: …
+  modules: …
+requirements:
   - block: {path: request.md, heading: [需求], text: …}
     constraints: [E1]
 constraints:
@@ -48,11 +63,11 @@ constraints:
     owner: {dir: architecture, connection: …}   # dir 是设计里的目录
 ```
 
-写对象时分清定义、执行、事实与索引：两份内容相同的它算一个还是两个，答案不同就是不同的对象。`expect` 有错误时，后面的子命令拒绝往下核对。
+写对象时分清定义、执行、事实与索引：两份内容相同的它算一个还是两个，答案不同就是不同的对象。失败结局是 `transition`；只有需求要求失败之后的恢复次序或生命周期中断的收尾时，才另写 `lifecycle` 约束。`expect` 有错误（包括没写 `shape`）时，后面的子命令拒绝往下核对。
 
 写下之后再读规格，读完对照第一步，`ssot verify gaps` 要求每条应有约束回答三问，每问写 `found`、`at`（规格里的位置）与 `reason`：
 
-- **遗漏（`missing`）：** 需求要求的约束，规格里没有。判为没有遗漏时，`at` 要指出规格里写着它的位置；
+- **遗漏（`missing`）：** 需求要求的约束，规格里没有。判为没有遗漏时，`at` 要指出规格里写着它的位置；规格写不清、本该写进「语义」却没写的，也算遗漏；
 - **过强（`overstrong`）：** 规格写了需求没要求的更强约束，例如把本应独立的多次执行当成同一个；
 - **误当必需（`misnecessary`）：** 规格把怎样运行写成了约束。判定方法：换一种实现或调用先后，需求仍然满足，规格却不再满足。
 
@@ -83,11 +98,43 @@ witness: {module: Run, expression: "…"}    # 其余情形：以 module 为默�
 
 调用式反例里，`pre_Op` 与 `post_Op` 由工具按操作有没有写 `pre`、`post` 拼出；`post_Op` 返回 `true` 才说明规格允许这次变化。`post_Op` 不检查 `ext`，工具另外核对没列进 `ext wr` 的状态分量前后相同。`mk_` 构造状态时会检查 `inv`，违反 `inv` 的状态构造不出来，求值报错。求值出错、为 false 或改了帧外分量，都不算反例。类型在默认模块里不可见、构造不出值时，判 `undecided` 并写明原因。
 
-## 五、第三步：逐个元素反查（`elements`、`scenarios`）
+`lifecycle` 类约束另判四问：`anchors`（由哪个连接开始、哪个连接结束、由谁确认）、`nesting`（内层在外层开始之后才开始）、`evidence`（外层结束锚点在内层全部关闭并取回证据之后才写下）、`failure_close`（内层关闭或取回证据失败时，没有伪造外层结束锚点）。
 
-反过来，`ssot verify elements` 对规格里的每个类型、字段、函数、操作与场景，要求判为守着第一步里的哪条约束（`guards`）、是哪条约束所需的连接（`connection`），或不该进 VDM（`extraneous`）。`ssot verify scenarios` 对场景体里的每处调用、先后、分支与挑选，要求判为对应哪条应有约束（`constraint`），或是在模拟业务怎样运行（`simulation`）。
+## 五、第三步：逐个元素、场景与调用反查（`elements`、`scenarios`、`flows`）
 
-## 六、第四步：核对归属（`owner`）
+`ssot verify elements` 对规格里的每个类型、字段、函数、操作与场景，要求判为守着第一步里的哪条约束（`guards`）、是哪条约束所需的连接（`connection`），或不该进 VDM（`extraneous`；常变的业务内容本身写进了规格也判这一项）。每个元素再问：
+
+- `promise`：说明注释承诺的东西（要区分的结局、载荷、参数、“同一……只……”这类规则）都兑现在签名、字段与 `inv`/`pre`/`post` 上；没有用恒真子句假装用到参数；
+- `wording`：名字与说明的字面意思不会让人误解成实例、指针、缓存、存储、拷贝或原地重跑等机制；
+- 类型另问 `observation`（只有观察者要分支或读字段才展开，只原样传递的保持 `token`）、`struct_exposure`（导出带不带 `struct` 与使用方是否读结构一致）、`outcomes`（作为结局时只列合法调用方必须区分处理的分支，不逐项列失败原因）、`recovery`（可观察的失败分支写明改走哪个连接恢复）；
+- 状态另问 `minimality`（只放连接面要守住的事实）、`surface_invariant`（共享状态的操作共守同一条 `inv`，`inv` 简单）、`projection`（能由事实算出的上层状态写成纯函数投影，没有重复存储）；
+- 有 `ext wr` 的隐式操作另问 `frame`：每个 `or` 分支都写齐了这一支没改的 `wr` 分量（`x = x~`）。
+
+不读写任何状态的隐式操作，工具直接警告应写成函数。
+
+`ssot verify scenarios` 对每个场景问 `result`（交给调用方的结果区分了正常推进与故障）；对场景体里的每处调用、先后、分支与挑选，要求判为对应哪条应有约束（`constraint`）或是在模拟业务怎样运行（`simulation`）。为闭合被调连接的结局而写的分支，对应它所服务的那条约束。调用另问 `outcomes`（被调连接返回的每一支可观察结局在本场景或配套的恢复场景里都有处理），先后另问 `order`（产生持久状态或外部动作的调用之前已完成校验；后面要用的参数在需求所说的时点已经存在）。
+
+`ssot verify flows` 对显式函数与场景体里的每处调用问四件事：`responsibility`（参数多或传固定空值时，先判断那个参数代表的事是否本属另一个视角或模块；是就该拆回原处，而不是要求上游一路透传）、`inputs`（决定结果的关键值都传了进去，没有半路丢掉、传旧值或类型没接上）、`result`（这次调用的产出在下游被实际消费）、`timing`（实参在需求所说的时点已经存在）。实参是字面空值（`{|->}`、`{}`、`[]`）时工具在骨架里标出来；架构模块导出的判定（函数）没有任何模块导入时，工具直接警告。导出的类型与操作可能由系统外的调用方使用，下游有没有消费它们，在调用它们的 `result` 槽里判。
+
+## 六、第四步：文字与模块（`prose`、`modules`）
+
+`ssot verify prose` 对每个 `README.md` 的每段文字按所在小节提问，每段都问 `wording`：
+
+- 首段：`scope`（负责什么、不负责什么与规格实际承担的一致）；
+- 「依据」：`source`（有真实的外部来源，不是结论复述自己，也不拿当前实现或技术选型当理由）、`implication`（“所以……”能推出它让设计多了或少了什么）、`quality`（质量要求写成“在〈环境〉下，〈刺激〉发生时，〈响应〉满足〈度量〉”且数值有出处）；
+- 「需求」：`observable`（是问题域里可以观察到的结果，不是机器的功能列表）、`walk`（从它引用的规格元素一路走到需求所说的结果）；
+- 「为什么」：`alternatives`（理由引用了依据；存在可信替代时写了为什么不选）；
+- 「语义」：`belongs`（写的是规格说不清的语义，没有复述规格）。
+
+`ssot verify modules` 对每个设计目录逐个问，每个问题是一项义务，只依据它要读的原文：
+
+- 架构目录：`partition`（按抽象划分，不按篇幅或执行步骤；拆出子模块的理由写进了 README；并列底座彼此正交）、`containment`（同进程、同部署、同信任范围、同存续期等包含关系写进了「语义」）、`boundary`（没有只服务单一业务的规则或可替换的实现做法写进架构）、`accumulation`（没有哪里积压了多个来源或视角的值与结构，没有整片定义脱离当前要观察的视角）、`shape`（实际长相与第一步的应有长相对得上，没有拧巴或没想通的设计思路）；
+- 业务单元：`composition`（只经导出的连接单向组合，不持有持久 `state`，`token` 原样传递，结果在本单元边界收敛）、`boundary`（常变的业务内容本身没有写进规格）、`accumulation`、`shape`；
+- 整份设计：`design#overall`（整个设计的长相能自然立住需求，需要定义的核心概念都定义了，值与动作的位置对）、`design#forms`（按 `ssot check` 的形式统计，规格没有退化成文字）。
+
+判 `accumulation` 时追问背后的原因：为什么这么多来源或视角的事堆到一处，按各自的视角责任本来应该怎么分；判 `problem` 时在 `reason` 写出拆回各处的建议。
+
+## 七、第五步：核对归属（`owner`）
 
 对每条约束问：连接的提供方无论服务哪个合法使用方都必须保证它吗？还是某项业务在连接之上加的条件、选择或组合？按答案核对它实际写在哪里（`actual`），判为 `match`、`misplaced`、`duplicated` 或 `absent`。下面几种都判为 `misplaced` 或 `duplicated`：
 
@@ -95,7 +142,7 @@ witness: {module: Run, expression: "…"}    # 其余情形：以 module 为默�
 - 因为写成 `pre` 更方便、事实存放在架构里、业务没有 `state` 或架构不能导入业务，而被放进架构的业务判定；
 - 同一个东西在两处展开。
 
-## 七、第五步：工具（`check`、`po`、`review`）
+## 八、第六步：工具（`check`、`po`、`review`）
 
 `ssot verify check` 运行 `ssot check`，只报它的错误。`ssot verify po` 对每条未定或未评估的证明义务，要求找出守住它的东西：`pre`、`inv`、分支条件，或使它必然成立的类型与 `post`。找到就判 `guarded`，在 `guards` 写出位置，并在 `reason` 说明怎样守住；找不到就判 `missing_guard`，即缺了前置条件或分支守卫。
 
@@ -108,7 +155,7 @@ await review("/path/to/repo/design", save="/path/to/repo/.tmp/ssot-verify/<验�
 
 `ssot verify review` 核对当前设计的每条材料都判过（设计改了就要重跑），并要求对每个反模式判为采纳（`accept`，交回作者修改）或驳回（`reject`，写出理由）。工具通过不代表约束成立；工具报出的问题也不由验证者修改。
 
-## 八、结论（`verdict`、`status`）
+## 九、结论（`verdict`、`status`）
 
 `ssot verify verdict` 要求每条约束在 `gaps`、`attack` 与 `owner` 都判完之后，给出三种结论之一，附证据：
 
@@ -116,6 +163,6 @@ await review("/path/to/repo/design", save="/path/to/repo/.tmp/ssot-verify/<验�
 - **不成立（`fails`）：** `counterexample` 指出 `attack` 里的反例槽，或 `contradiction` 写出规格内部的矛盾；
 - **未能判定（`undecided`）：** `reason` 写出缺少的定义、依据或需求。
 
-`ssot verify status <design> --as <验证方>` 汇总全部子命令。错误是没判完：缺判、槽位没填、证据找不到、反例求值不成立、记录过期或没盖章。警告就是验证报出的问题：不成立与未能判定的约束，第三步的遗漏、过强与误当必需，第四步的归属问题，第五步不该进 VDM 的元素与模拟运行的场景节点，缺守卫的证明义务，以及采纳或驳回的模型审查。不带范围运行、没有错误，才算整份验证完；带 `--dir` 或 `--constraint` 只说明那一批判完。问题交回 `ssot-design` 或 `ssot-draft` 修改。
+`ssot verify status <design> --as <验证方>` 汇总全部子命令。错误是没判完：缺判、槽位没填、证据找不到、反例求值不成立、记录过期或没盖章。警告就是验证报出的问题：不成立与未能判定的约束，遗漏、过强与误当必需，有反例或未能判定的攻击与生命周期问题，不该进 VDM 的元素、模拟运行的场景节点，元素、场景、调用、文字与模块上判为 `problem` 或 `undecided` 的每一问，归属问题，缺守卫的证明义务，采纳或驳回的模型审查，以及工具直接给出的警告。不带范围运行、没有错误，才算整份验证完；带 `--dir` 或 `--constraint` 只说明那一批判完。问题交回 `ssot-design` 或 `ssot-draft` 修改。
 
-修改后的设计不必从头重判：依据变了的记录会过期，新出现的元素、场景节点与证明义务会缺判，重判这些即可；没过期的记录仍然有效。某个问题只有在新一轮 `status` 里不再出现，才算解决。两方的 `status` 都没有错误、也没有问题交回作者时，删除 `.tmp/ssot-draft/`、`.tmp/ssot-design/` 与 `.tmp/ssot-verify/`；还有问题交回作者时保留它们，供下一轮只重判变了的部分。
+修改后的设计不必从头重判：依据变了的记录会过期，新出现的元素、场景节点、调用、段落与证明义务会缺判，重判这些即可；没过期的记录仍然有效。某个问题只有在新一轮 `status` 里不再出现，才算解决。两方的 `status` 都没有错误、也没有问题交回作者时，删除 `.tmp/ssot-draft/`、`.tmp/ssot-design/` 与 `.tmp/ssot-verify/`；还有问题交回作者时保留它们，供下一轮只重判变了的部分。

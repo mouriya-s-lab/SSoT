@@ -38,20 +38,14 @@ flowchart TB
 | 目录 | 块 / 角色 | 说明 |
 |---|---|---|
 | [`skills/ssot`](skills/ssot/SKILL.md) | **总纲 · 思考思路与路由门控** | 阐述设计的思考思路、三桶目录结构、CLI 工具（`scripts/design.ts`）与模型审查脚本（`scripts/review.py`）、通过检查的[示例设计](skills/ssot/references/example/design/)，以及显式单块路由门控 |
-| [`skills/ssot-arch`](skills/ssot-arch/SKILL.md) | **写设计 · 架构块** | 核心抽象与架构设计：从外部依据出发，在多视角下权衡需要定义的核心概念、值与动作的位置，划分模块树、连接面、状态不变量与生命周期 |
-| [`skills/ssot-business`](skills/ssot-business/SKILL.md) | **写设计 · 业务块** | 业务单元、确定性判定与场景设计：在架构导出的连接之上划分业务单元，让各单元各司其职避免多来源集中积压，编写问题域需求、确定性判定（显式纯函数）与走通需求的场景（显式操作） |
-| [`skills/ssot-spec`](skills/ssot-spec/SKILL.md) | **写设计 · 规格块** | VDM-SL 形式化规格、受控文字与工具验收：先立最小 VDM 框架跑通 `ssot check`，再填完整谓词、纯函数、场景与受控文字跑通 `ssot check` 与 `review.py`；附[本地 VDM 文档](skills/ssot-spec/references/vdm/README.md) |
-| [`skills/ssot-review-arch`](skills/ssot-review-arch/SKILL.md) | **审设计 · 架构与概念块** | 审大体框架、多视角权衡与概念定义：从“看着顺不顺眼、有没有被积压”的直觉出发，审视在这套软件的视角下到底有多少东西需要被定义、定义得对不对，值与动作的位置及架构与业务的分工是否成立 |
-| [`skills/ssot-review-flow`](skills/ssot-review-flow/SKILL.md) | **审设计 · 业务分流与走通块** | 审业务分流、值与动作的配合及场景走通：顺着“看值流转是否因多来源积压而别扭 $\to$ 跟每条需求走纯函数判定与代表元场景 $\to$ 看生命周期开闭与跨连接语义”的思路，检验各模块协作是否顺畅走通 |
-| [`skills/ssot-review-spec`](skills/ssot-review-spec/SKILL.md) | **审设计 · 规格严密与用词块** | 审形式化规格严密性、证明义务与用词对齐：运行 `ssot check` 与 `review.py`，核对未定证明义务、说明注释与谓词的一致性、以及字面用词是否准确 |
 | [`skills/ssot-migration`](skills/ssot-migration/SKILL.md) | **存量旧文档迁移块** | 将混杂的存量设计文档无损迁入三桶目录：遵循“只搬运、不判断对错、不改原意”，先勘察概念定义处与设计中心，搬完骨架后按区域把每条陈述拆层归入 `architecture/`、`business/` 或 `appendix/`；搬完一条从旧文档删一条，旧文档清空即迁移完成 |
 | [`skills/ssot-draft`](skills/ssot-draft/SKILL.md) | **设计草稿块** | 写 VDM 之前分清定义、执行、事实与索引，给每条约束写出允许的变化、不变的关系与违反情形，经换跑法、删除、范围三项判定筛选，再判定由架构还是业务持有；草稿写成目标仓库的 `.tmp/ssot-draft/draft.yaml`，由 `ssot draft` 逐项核对 |
 | [`skills/ssot-design`](skills/ssot-design/SKILL.md) | **按草稿写设计块** | 按约束类别选写法，用违反情形自检规格是否排除了它；每个 VDM 元素都对应草稿中的一条约束，写不进去时区分换写法与回草稿；落点与元素来由记进台账，由 `ssot design` 逐项核对 |
-| [`skills/ssot-verify`](skills/ssot-verify/SKILL.md) | **独立验证块** | 由未参与设计的 `ssot:fable` 与 `ssot:argon` 先不看规格写出应有约束，再逐条构造违反情形并用 VDMJ 求值核对，反查元素与归属；每一步由 `ssot verify` 的子命令枚举判断义务，可按目录或约束分批；只报告，不修改 |
+| [`skills/ssot-verify`](skills/ssot-verify/SKILL.md) | **独立验证块** | 由未参与设计的 `ssot:fable` 与 `ssot:argon` 先不看规格写出应有长相与应有约束，再逐条构造违反情形并用 VDMJ 求值核对，逐项审查元素、场景、调用、文字与模块，核对归属；每一步由 `ssot verify` 的子命令枚举判断义务，可按目录或约束分批；只报告，不修改 |
 
 ## 检验机制
 
-为防止 AI 用“合法但空洞”的规格敷衍（例如把规格写成空名字登记表、用字符串装一切状态、写 `post true` 或 `post r = r` 这类恒真条件），或审查时跳过抽象逻辑直接逐行找茬，验收由四层组成：
+为防止 AI 用“合法但空洞”的规格敷衍（例如把规格写成空名字登记表、用字符串装一切状态、写 `post true` 或 `post r = r` 这类恒真条件），或审查时跳过抽象逻辑直接逐行找茬，验收由三层组成：
 
 1. **确定性检查与形式化验证（`ssot check`）**
    - **布局与文字（`layout` / `form` / `prose`）**：核对目录与 `README.md` 小节次序、根 `README.md` 阅读次序完整性；正文只允许 `vdm` 与图/文法代码块（`mermaid`、`ebnf`、`text`），并用转译器拦截混入文字或图表块的 TypeScript 声明；校验双反引号引用的限定名全部存在，业务单元「需求」的每条都引用了走通它的场景；校验“索引：路径:行号”指向的文件与行存在（不写进 VDM 的内容要么留索引，要么写 `is not yet specified` 表示未定义）。
@@ -61,11 +55,10 @@ flowchart TB
 2. **语义反模式模型审查（`review.py`）**
    - 在 omp 的 `eval` 中调用 `jev`，对程序无法单凭语法判定的 12 类反模式做概率审查（问题与阈值经 [`review-calibration.json`](skills/ssot/scripts/review-calibration.json) 的调参集零误判校准，留出集只报误报与漏报）：用 `seq of char` 偷藏状态/身份、多 `bool` 字段堆叠互斥状态、逐项枚举失败原因、说明注释只复述类型形状、显式体写实现过程、空名字登记表、模拟时钟/进程等运行机制、把单一业务塞进架构、文字复述规格、文字自造词、依据无来源或拿技术选型当理由、图表块里塞其他语言代码。
 3. **逐项判断台账（`ssot draft` / `ssot design` / `ssot verify`）**
-   - 语义判断仍由人或 agent 做，工具保证每一项都判了：从需求材料、草稿、规格语法树（元素、字段、`ext`、导出、场景里的调用与分支）与 VDMJ 证明义务里枚举判断义务，要求台账逐项写下结论与证据；缺判、槽位没填、引用找不到、记录过期是错误，未能判定、驳回模型审查等是警告。
+   - 语义判断仍由人或 agent 做，工具保证每一项都判了：从需求材料、草稿、规格语法树（元素、字段、`ext`、导出、场景里的调用与分支、显式体里的调用点）、`README.md` 段落、设计目录与 VDMJ 证明义务里枚举判断义务，要求台账逐项写下结论与证据；缺判、槽位没填、引用找不到、记录过期是错误，判为有问题或未能判定的是警告。
+   - 审查问题一问一槽：元素的说明是否兑现、用词是否误导、展开与导出、结局与恢复、最小状态与投影、帧条件；场景的结局处理、校验次序与返回值；调用的值流；每段依据、需求、理由与语义；每个目录的拆分、包含关系、架构与业务边界、积压与应有长相；整份设计的整体长相与形式统计。
    - 反例写成结构化的调用或表达式，由工具拼出 `pre_Op`、`post_Op` 交给 VDMJ 求值，并核对没列进 `ext wr` 的状态分量前后相同；求值不为真的不算反例。
    - 每条记录盖章时记下它依据的原文，设计改了只让依据变了的记录过期；验证可按 `--dir` 或 `--constraint` 分批，不带范围没有错误才算整份判完。
-4. **分块独立审查（`ssot-review-arch` / `ssot-review-flow` / `ssot-review-spec`）**
-   - 每次只专注执行用户指定的一块：审大体框架与概念定义时只跑 `ssot-review-arch`；审跨模块责任分流与场景走通时只跑 `ssot-review-flow`；审未定证明义务、说明—签名—谓词一致性与字面用词时只跑 `ssot-review-spec`。
 
 ## 为什么刚需 Fable 与 Argon：模型行为与 VDM 核心价值
 
@@ -92,23 +85,22 @@ VDM-SL 在本仓库的核心价值是**抽象过滤**：只锚定多视角权衡
 
 `fable` 与 `argon` 的能力长板与盲区恰好正交互补：
 
-- **架构与概念审查（`ssot-review-arch`）刚需 `fable` + `argon` 双模型独立盲审合拢**：由 `ssot:fable` 捕捉模块依赖方向上的视角倒置、有判定无主人的悬空责任与散文生命周期缺口；由 `ssot:argon` 顺着“谁观察值结构”穿透识别跨层 AST 过度展开、多来源职责积压与信任边界失守，并用 VDM-SL 模块类型可见性筛除不成立的重构提议。主 agent 若非二者之一，必须同时派发 `ssot:fable` 与 `ssot:argon` 全权委托调查；若已是其一，则派发另一方补齐视角。
-- **业务分流与规格审查（`ssot-review-flow` / `ssot-review-spec`）刚需主 agent 与 `argon` 合作**：利用 `argon` 对 VDM-SL 数学语义（代表元场景、说明性 `state`、准入契约与可观察结局边界）的稳定遵循，核对跨连接值流转、生命周期开闭与证明义务，防止审查退化为命令式代码找茬。
+- **验证（`ssot-verify`）刚需 `fable` + `argon` 双模型独立盲审合拢**：由 `ssot:fable` 捕捉模块依赖方向上的视角倒置、有判定无主人的悬空责任与散文生命周期缺口；由 `ssot:argon` 顺着“谁观察值结构”穿透识别跨层 AST 过度展开、多来源职责积压与信任边界失守，并用 VDM-SL 模块类型可见性筛除不成立的重构提议，同时稳定遵循代表元场景、说明性 `state`、准入契约与可观察结局边界等数学语义。两方各写各的验证台账，主 agent 并列汇总、不裁决；主 agent 若非二者之一，必须同时派发 `ssot:fable` 与 `ssot:argon`；若已是其一，则派发另一方补齐视角。
 
 ## 兼容性
 
 本仓库只兼容 omp，其他任何 harness 都需要当场改造。依赖 omp 的环节：
 
 - 语义反模式审查 `review.py` 在 omp 的 Python `eval` 里调用 `jev`；
-- 审查 subagent `ssot:argon` 与 `ssot:fable` 是 omp 的 agent 定义（[`skills/ssot/agents/`](skills/ssot/agents/)），模型按 omp 的模型名写定；
+- 验证 subagent `ssot:argon` 与 `ssot:fable` 是 omp 的 agent 定义（[`skills/ssot/agents/`](skills/ssot/agents/)），模型按 omp 的模型名写定；
 - skill 内的脚本与参考文件经 omp 的 `skill://` 地址加载。
 
 ## 安装
 
-安装全部 11 个 skill：
+安装全部 5 个 skill：
 
 ```sh
-npx skills add mouriya-s-lab/SSoT --skill ssot ssot-arch ssot-business ssot-spec ssot-review-arch ssot-review-flow ssot-review-spec ssot-migration ssot-draft ssot-design ssot-verify --global --agent codex claude-code --yes
+npx skills add mouriya-s-lab/SSoT --skill ssot ssot-migration ssot-draft ssot-design ssot-verify --global --agent codex claude-code --yes
 ```
 
 检查依赖 **Java 11+** 与 **Bun**。装好 skill 后运行一次：
@@ -122,7 +114,7 @@ bun ~/.agents/skills/ssot/scripts/design.ts setup
 后续更新：
 
 ```sh
-npx skills update ssot ssot-arch ssot-business ssot-spec ssot-review-arch ssot-review-flow ssot-review-spec ssot-migration ssot-draft ssot-design ssot-verify --global
+npx skills update ssot ssot-migration ssot-draft ssot-design ssot-verify --global
 ```
 
 ## 使用
@@ -138,7 +130,7 @@ npx skills update ssot ssot-arch ssot-business ssot-spec ssot-review-arch ssot-r
 | `ssot vdmj <design> [args...]` | 以设计里的全部规格直接运行 VDMJ（如 `-i` 进入解释器、`-e` 求值） |
 | `ssot draft <子命令> <repo>` | 逐项核对草稿 `.tmp/ssot-draft/draft.yaml`（需求去向、对象、约束、归属、不进 VDM 的内容、取舍） |
 | `ssot design <子命令> <design> [--stamp …]` | 逐项核对落点台账 `.tmp/ssot-design/`（每个规格元素的来由、每条草稿约束的落点） |
-| `ssot verify <子命令> <design> --as <验证方> [--dir …] [--constraint …] [--stamp …]` | 逐项核对验证台账 `.tmp/ssot-verify/<验证方>/`（应有约束、三问、五种违反情形、元素与场景反查、归属、证明义务、模型审查、结论） |
+| `ssot verify <子命令> <design> --as <验证方> [--dir …] [--constraint …] [--stamp …]` | 逐项核对验证台账 `.tmp/ssot-verify/<验证方>/`（应有长相与应有约束、三问、五种违反情形与生命周期四问、元素与场景反查、调用值流、文字与模块、归属、证明义务、模型审查、结论） |
 | `vdmj [args...] <files>` | VDMJ 本身（带 QuickCheck 插件），读 `.vdmsl` 文件 |
 
 在 omp 的 Python `eval` 中运行语义反模式审查；验证时用 `save` 把每条材料的判断存进验证方的台账根，交给 `ssot verify review`：

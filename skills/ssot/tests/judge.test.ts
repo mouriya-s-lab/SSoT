@@ -372,4 +372,23 @@ describe('design', () => {
     expect(out).toContain('Report`Daily：缺判');
     expect(out).not.toContain('实现偏差');
   });
+
+  test('作者在设计时攻击草稿约束：反例由 VDMJ 求值，规格不允许的变化不算反例', () => {
+    const { root, design } = workspace();
+    draft(root);
+    cli('draft', 'status', root);
+    const slot = '{verdict: not_applicable, reason: 测试}';
+    const attack = (before: string, after: string) =>
+      put(
+        root,
+        '.tmp/ssot-design/attack/attack.yaml',
+        `attacks:\n  - constraint: C1\n    initial: ${slot}\n    call:\n      verdict: counterexample\n      reason: 测试\n      witness:\n        operation: "Run\`Status"\n        args: ["1"]\n        result: "mk_token(1)"\n        before: "${before}"\n        after: "${after}"\n        violates: "before.byRequest(1) not in set before.live"\n    compose: ${slot}\n    bypass: ${slot}\n    import: ${slot}\n`,
+      );
+    // 运行 1 已经结束，Status 却交回它：示例的 post 不允许，不算反例。
+    attack('mk_Runs({1 |-> mk_token(1)}, {})', 'mk_Runs({1 |-> mk_token(1)}, {})');
+    expect(cli('design', 'attack', design).out).toContain('反例不成立');
+    // 运行 1 仍活着时交回它是 post 允许的；violates 却不成立，同样不算反例。
+    attack('mk_Runs({1 |-> mk_token(1)}, {mk_token(1)})', 'mk_Runs({1 |-> mk_token(1)}, {mk_token(1)})');
+    expect(cli('design', 'attack', design).out).toContain('反例不成立');
+  });
 });

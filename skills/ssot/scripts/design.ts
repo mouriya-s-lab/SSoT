@@ -134,8 +134,8 @@ const USAGE = `用法：
   ssot review <design>            输出模型审查的材料（JSON），由 scripts/review.py 在 omp eval 里交给 jev 判断
 
 逐项判断（工具枚举义务，核对台账里每一项都判了、证据找得到；不替你判断）：
-  ssot draft  <子命令> <仓库根>                    requirements | objects | constraints | owner | excluded | tradeoffs | status
-  ssot design <子命令> <design> [--stamp …]        check | elements | constraints | status
+  ssot draft  <子命令> <仓库根>                    requirements | domain | objects | constraints | owner | excluded | tradeoffs | status
+  ssot design <子命令> <design> [--stamp …]        check | elements | constraints | attack | status
   ssot verify <子命令> <design> --as <验证方> [--dir <目录>]… [--constraint <编号>]… [--stamp …]
                                                  check | expect | gaps | overview | attack | elements | scenarios | flows | prose | modules | owner | po | review | verdict | status | report
   --stamp        核对无误的新记录与改过的记录盖章；--stamp <键> 逐条确认过期的记录仍然成立`;

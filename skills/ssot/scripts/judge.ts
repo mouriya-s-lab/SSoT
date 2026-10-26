@@ -827,7 +827,7 @@ function draftSub(repo: string, draft: Draft, sub: Exclude<DraftSub, 'status'>):
 
 // ---------------------------------------------------------------- 设计
 
-const DESIGN_SUBS = ['check', 'elements', 'constraints', 'status'] as const;
+const DESIGN_SUBS = ['check', 'elements', 'constraints', 'attack', 'status'] as const;
 type DesignSub = (typeof DESIGN_SUBS)[number];
 const LANDINGS = ['type', 'inv', 'pre', 'post', 'scenario', 'function', 'import', 'export', 'semantic'] as const;
 type Landing = (typeof LANDINGS)[number];
@@ -1000,7 +1000,7 @@ function designOutcomes(design: string, sub: DesignSub, mode: StampMode): Outcom
   const outcomes: Outcome[] = [];
   const wants = (s: DesignSub) => sub === s || sub === 'status';
   if (wants('check')) outcomes.push(checkOutcome(design, 'check'));
-  if (!wants('elements') && !wants('constraints')) return outcomes;
+  if (!wants('elements') && !wants('constraints') && !wants('attack')) return outcomes;
   // 基线在草稿开始时记下；到设计这一步再补记，会把作者已经做的改动当成基线。
   if (!baseline) return [...outcomes, gate(sub, `没有本轮开始时的设计基线 ${rel(baselinePath(repo))}：它在第一次运行 ssot draft 时记下。删掉草稿重新开始本轮。`)];
   const draftNotes = draftOutcomes(repo, 'status');
@@ -1116,6 +1116,13 @@ function designOutcomes(design: string, sub: DesignSub, mode: StampMode): Outcom
         rel,
       ),
     );
+  }
+  if (wants('attack')) {
+    // 作者在设计时攻击草稿约束：持有目录取自草稿的归属，反例与验证用同一套求值。
+    const constraints = new Map<string, Expected>(
+      [...draft!.constraints.values()].map((c) => [c.id, { id: c.id, record: c.record, dir: c.owner?.layer === 'business' ? `business/${c.owner.holder}` : 'architecture', subject: canonical(c.record) }]),
+    );
+    outcomes.push(attackOutcome(spec, constraints, join(ledger('attack'), 'attack.yaml'), yamlFiles(ledger('attack')), scope, mode, rel));
   }
   return outcomes;
 }
@@ -1802,6 +1809,78 @@ function attackHint(spec: Spec, e: Expected): string {
   ].join('\n');
 }
 
+/**
+ * 五种违反情形：对每条约束试着构造规格允许、却违反它的情况，反例由 VDMJ 求值核对。
+ * 验证方攻击自己写下的应有约束，作者在设计时攻击草稿约束，用的是同一套槽位与求值。
+ */
+function attackOutcome(spec: Spec, constraints: ReadonlyMap<string, Expected>, target: string, files: readonly string[], scope: Scope, mode: StampMode, rel: (p: string) => string): Outcome {
+  const lifecycleOf = (id: string) => (constraints.get(id)?.record.category === 'lifecycle' ? LIFECYCLE_QUESTIONS : []);
+  return runStamped(
+    {
+      sub: 'attack',
+      list: 'attacks',
+      keyField: 'constraint',
+      target,
+      files,
+      obligations: [...constraints.values()].map((e) => ({
+        key: e.id,
+        dir: e.dir,
+        constraint: e.id,
+        subject: e.subject,
+        skeleton: { constraint: e.id, ...Object.fromEntries(SLOTS.map((s) => [s, { verdict: '', by: [], reason: '' }])), ...blankAssessments(lifecycleOf(e.id)) },
+        hint: `${attackHint(spec, e)}${lifecycleOf(e.id).length > 0 ? `\n生命周期约束另判：\n${questionHint(LIFECYCLE_QUESTIONS)}` : ''}`,
+      })),
+      judge: (record) => {
+        const id = String(record.constraint);
+        const slots = new Slots(record, id);
+        const lifecycle = lifecycleOf(id);
+        slots.only(['constraint', ...SLOTS, ...lifecycle.map((q) => q.slot)]);
+        const deps: Record<string, string> = {};
+        const warnings: string[] = [];
+        for (const slot of SLOTS) {
+          const s = slots.nested(slot);
+          if (!s) continue;
+          s.only(['verdict', 'by', 'reason', 'witness']);
+          const verdict = s.choice('verdict', ['excluded', 'not_applicable', 'counterexample', 'undecided'] as const);
+          const reason = s.text('reason');
+          switch (verdict) {
+            case null:
+              break;
+            case 'excluded': {
+              const by = s.list('by');
+              if (by.length === 0) s.errors.push(`${id}.${slot}.by：判为排除，要列出排除违反情形的类型或谓词所在的元素。`);
+              const found = refs(spec, by, `${id}.${slot}.by`, s, deps);
+              if (found.length > 0 && found.every((f) => f.element?.definition.explicit && f.element.definition.kind === 'explicit operation')) {
+                warnings.push(`${slot}：只拿场景作排除的依据；场景能走通只说明那一条路没有违反，找出排除它的类型或谓词。`);
+              }
+              break;
+            }
+            case 'not_applicable':
+              break;
+            case 'undecided':
+              warnings.push(`${slot}（${SLOT_HINT[slot]}）未能判定：${reason ?? ''}`);
+              break;
+            case 'counterexample': {
+              const w = s.object('witness');
+              if (w) witness(spec, w, `${id}.${slot}.witness`, s, deps);
+              if (s.errors.length === 0) warnings.push(`${slot} 有反例，约束不成立：${reason ?? ''}${w && typeof w.operation === 'string' ? placed(spec, [w.operation]) : ''}`);
+              break;
+            }
+            default:
+              assertNever(verdict);
+          }
+          slots.merge(s);
+        }
+        for (const q of lifecycle) assess(slots, id, q, spec, deps, warnings);
+        return { errors: slots.errors, warnings, deps };
+      },
+    },
+    scope,
+    mode,
+    rel,
+  );
+}
+
 function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope, mode: StampMode): Outcome[] {
   const repo = dirname(design);
   const root = verifyRoot(design, as);
@@ -1869,74 +1948,7 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
 
   if (wants('attack')) {
     if (expectBlocked) outcomes.push(needsExpect('attack'));
-    else {
-      outcomes.push(
-        runStamped(
-          {
-            sub: 'attack',
-            list: 'attacks',
-            keyField: 'constraint',
-            target: target('attack'),
-            files: files('attack'),
-            obligations: expectedObligations(
-              (e) => ({
-                constraint: e.id,
-                ...Object.fromEntries(SLOTS.map((s) => [s, { verdict: '', by: [], reason: '' }])),
-                ...(e.record.category === 'lifecycle' ? blankAssessments(LIFECYCLE_QUESTIONS) : {}),
-              }),
-              (e) => `${attackHint(spec, e)}${e.record.category === 'lifecycle' ? `\n生命周期约束另判：\n${questionHint(LIFECYCLE_QUESTIONS)}` : ''}`,
-            ),
-            judge: (record) => {
-              const id = String(record.constraint);
-              const slots = new Slots(record, id);
-              const lifecycle = expected.get(id)?.record.category === 'lifecycle' ? LIFECYCLE_QUESTIONS : [];
-              slots.only(['constraint', ...SLOTS, ...lifecycle.map((q) => q.slot)]);
-              const deps: Record<string, string> = {};
-              const warnings: string[] = [];
-              for (const slot of SLOTS) {
-                const s = slots.nested(slot);
-                if (!s) continue;
-                s.only(['verdict', 'by', 'reason', 'witness']);
-                const verdict = s.choice('verdict', ['excluded', 'not_applicable', 'counterexample', 'undecided'] as const);
-                const reason = s.text('reason');
-                switch (verdict) {
-                  case null:
-                    break;
-                  case 'excluded': {
-                    const by = s.list('by');
-                    if (by.length === 0) s.errors.push(`${id}.${slot}.by：判为排除，要列出排除违反情形的类型或谓词所在的元素。`);
-                    const found = refs(spec, by, `${id}.${slot}.by`, s, deps);
-                    if (found.length > 0 && found.every((f) => f.element?.definition.explicit && f.element.definition.kind === 'explicit operation')) {
-                      warnings.push(`${slot}：只拿场景作排除的依据；场景能走通只说明那一条路没有违反，找出排除它的类型或谓词。`);
-                    }
-                    break;
-                  }
-                  case 'not_applicable':
-                    break;
-                  case 'undecided':
-                    warnings.push(`${slot}（${SLOT_HINT[slot]}）未能判定：${reason ?? ''}`);
-                    break;
-                  case 'counterexample': {
-                    const w = s.object('witness');
-                    if (w) witness(spec, w, `${id}.${slot}.witness`, s, deps);
-                    if (s.errors.length === 0) warnings.push(`${slot} 有反例，约束不成立：${reason ?? ''}${w && typeof w.operation === 'string' ? placed(spec, [w.operation]) : ''}`);
-                    break;
-                  }
-                  default:
-                    assertNever(verdict);
-                }
-                slots.merge(s);
-              }
-              for (const q of lifecycle) assess(slots, id, q, spec, deps, warnings);
-              return { errors: slots.errors, warnings, deps };
-            },
-          },
-          scope,
-          mode,
-          rel,
-        ),
-      );
-    }
+    else outcomes.push(attackOutcome(spec, expected, target('attack'), files('attack'), scope, mode, rel));
   }
 
   if (wants('elements')) {

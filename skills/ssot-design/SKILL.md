@@ -49,7 +49,7 @@ constraints:                               # .tmp/ssot-design/constraints/*.yaml
 - `by: pre` 写 `{operation, args, before, violates}`：`violates` 为真，`pre` 必须不成立；
 - `by: inv` 写 `{module, value}`：`value` 用 `mk_` 构造违反情形的状态或值，构造时不变式必须报错。
 
-规格接受了这个实例，就是约束没有守住，换写法或补上约束要求的谓词。这一步只证明规格拒绝了你写下的那个违反情形，违反情形写得对不对、是否还有别的违反方式，由 `ssot-verify` 构造反例去攻。导入列表与单条场景排除不了任何情形。工具还核对落点存在、真有那一部分（`pre` 落点的操作要写了 `pre`，`inv` 落点要写了 `inv`），对与类别不符的写法给出警告；落点里没有 `pre`、`post`、`inv`、也不全是「语义」时，给出没有经求值确认的警告。
+规格接受了这个实例，就是约束没有守住，换写法或补上约束要求的谓词。这一步只证明规格拒绝了你写下的那个违反情形；还有没有别的违反方式，接着自己攻（`ssot design attack`）：对每条草稿约束按五种情形试着构造规格允许、却违反它的情况——一个初始状态（`initial`）、一次满足 `pre` 的调用与它的 `post` 允许的一个结果（`call`）、两个连接先后组合出的状态（`compose`）、不经场景直接调用连接的使用方（`bypass`）、一条让不该触达的模块触达了的导入路径（`import`）。每个槽判 `excluded`（`by` 列出排除它的元素）、`not_applicable`、`counterexample`（`witness` 写成结构化的调用或表达式，工具用 VDMJ 求值，规格确实允许、又确实违反才算反例）或 `undecided`；生命周期约束另判四问。槽位、反例的写法与求值和 `ssot-verify` 第二步相同，见那一节。构造出反例就改规格，直到同一个反例求值不再成立。验证方之后还会独立再攻一遍，作者自己攻过不能代替它。导入列表与单条场景排除不了任何情形。工具还核对落点存在、真有那一部分（`pre` 落点的操作要写了 `pre`，`inv` 落点要写了 `inv`），对与类别不符的写法给出警告；落点里没有 `pre`、`post`、`inv`、也不全是「语义」时，给出没有经求值确认的警告。
 
 约束写在草稿定下的持有者那里，只展开一处；别的模块需要时经导入引用。落点不在草稿归属的层或单元里时，工具给出警告。
 
@@ -142,7 +142,7 @@ elements:                                  # .tmp/ssot-design/elements/*.yaml
 ## 五、步骤与交付
 
 1. **先立框架。** 用 `ssot init`、`ssot module`、`ssot unit` 建好目录，写清每个模块的 `imports`、`exports`、不透明 `token` 与连接签名，运行 `ssot check` 与 `ssot graph`，确认依赖单向无环、类型引用全部闭合。框架阶段不预埋尚未使用的类型、状态字段或 `imports`（VDMJ 对没用到的定义报 `Warning 5000`，`ssot check` 判为错误）；效果还没有约束的连接写成显式 `== is not yet specified`，不为它预先建 `state`；`--` 说明与紧随其后的签名、字段同步。
-2. **再填内容。** 按草稿约束填入 `post`、判定函数与场景，只在约束要求时建出 `state`、展开占位；每落完一条约束就写它的 `rejects`，运行 `ssot design constraints`，规格接受了违反情形就当场改。补齐各 `README.md` 的「依据」「需求」「为什么」「语义」，写法照 `references/writing.md`。
-3. **交付。** 在 omp 的 `eval` 里运行 `review.py`（`%load skill://ssot/scripts/review.py`，`await review("<design>")`），按上表逐条判断报出的反模式，真属于那一类的修掉，误报不改。然后运行 `ssot design status <design>`：它依次跑 `check`（诊断按第四节处理）、`elements` 与 `constraints`。核对无误后用 `--stamp` 盖章；改了规格之后，依据变了的记录会过期，重新核对后改写记录再盖章，或确认不变后 `--stamp <键>` 逐条确认。交付条件是没有错误、警告逐条看过；警告不要求清零，判断保留的照样交付，不为消警告改设计。交付时附上 `constraints` 台账，并单独列出只写进「语义」的约束。
+2. **再填内容。** 按草稿约束填入 `post`、判定函数与场景，只在约束要求时建出 `state`、展开占位；每落完一条约束就写它的 `rejects`，运行 `ssot design constraints`，规格接受了违反情形就当场改；再用 `ssot design attack` 自己攻这条约束，构造出反例就改。补齐各 `README.md` 的「依据」「需求」「为什么」「语义」，写法照 `references/writing.md`。
+3. **交付。** 在 omp 的 `eval` 里运行 `review.py`（`%load skill://ssot/scripts/review.py`，`await review("<design>")`），按上表逐条判断报出的反模式，真属于那一类的修掉，误报不改。然后运行 `ssot design status <design>`：它依次跑 `check`（诊断按第四节处理）、`elements`、`constraints` 与 `attack`。核对无误后用 `--stamp` 盖章；改了规格之后，依据变了的记录会过期，重新核对后改写记录再盖章，或确认不变后 `--stamp <键>` 逐条确认。交付条件是没有错误、警告逐条看过；警告不要求清零，判断保留的照样交付，不为消警告改设计；`attack` 里留着的反例是没有守住的约束，不是可以保留的警告，改到它不成立再交付。交付时附上 `constraints` 台账，并单独列出只写进「语义」的约束。
 
 本块不给验证结论，设计交给 `ssot-verify` 验证。验证报出的问题，回到本块或 `ssot-draft` 修改。

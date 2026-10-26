@@ -40,7 +40,7 @@ flowchart TB
 | [`skills/ssot`](skills/ssot/SKILL.md) | **总纲 · 思考思路与路由门控** | 阐述设计的思考思路、三桶目录结构、CLI 工具（`scripts/design.ts`）与模型审查脚本（`scripts/review.py`）、通过检查的[示例设计](skills/ssot/references/example/design/)，以及显式单块路由门控 |
 | [`skills/ssot-migration`](skills/ssot-migration/SKILL.md) | **存量旧文档迁移块** | 将混杂的存量设计文档无损迁入三桶目录：遵循“只搬运、不判断对错、不改原意”，先勘察概念定义处与设计中心，搬完骨架后按区域把每条陈述拆层归入 `architecture/`、`business/` 或 `appendix/`；搬完一条从旧文档删一条，旧文档清空即迁移完成 |
 | [`skills/ssot-draft`](skills/ssot-draft/SKILL.md) | **设计草稿块** | 写 VDM 之前分清定义、执行、事实与索引，写出领域性质（外部世界本身成立、本系统不保证的事实），给每条约束写出允许的变化、不变的关系与违反情形，经换跑法、范围两项判定筛选；每块需求写出论证：哪些约束加上哪些领域性质推出它，不在任何论证里的约束是多余的；再判定由架构还是业务持有；有原始来源设计时不直接读它，由 `ssot:reader` 在独立上下文里代读，只交出概念、原文明说的需求与出处；草稿写成目标仓库的 `.tmp/ssot-draft/draft.yaml`，由 `ssot draft` 逐项核对 |
-| [`skills/ssot-design`](skills/ssot-design/SKILL.md) | **按草稿写设计块** | 按约束类别选写法，把每条约束的违反情形写成具体的值，由工具用 VDMJ 求值确认规格拒绝它；本轮新增、改动、删除的每个 VDM 元素都对应草稿中的一条约束（没动过的旧元素不归本轮解释），工具对没有任何定义读到的状态分量与记录字段直接报实现偏差；写不进去时区分换写法与回草稿；落点与元素来由记进台账，由 `ssot design` 逐项核对 |
+| [`skills/ssot-design`](skills/ssot-design/SKILL.md) | **按草稿写设计块** | 按约束类别选写法，把每条约束的违反情形写成具体的值，由工具用 VDMJ 求值确认规格拒绝它，再按五种违反情形自己攻草稿约束、构造出反例就改；本轮新增、改动、删除的每个 VDM 元素都对应草稿中的一条约束（没动过的旧元素不归本轮解释），工具对没有任何定义读到的状态分量与记录字段直接报实现偏差；写不进去时区分换写法与回草稿；落点与元素来由记进台账，由 `ssot design` 逐项核对 |
 | [`skills/ssot-verify`](skills/ssot-verify/SKILL.md) | **独立验证块** | 由未参与本轮设计的 `ssot:fable` 与 `ssot:argon` 只凭需求材料写出应有长相、领域性质、需求论证与应有约束，再读设计，先判整体长相，再逐条构造违反情形并用 VDMJ 求值核对，逐项审查元素（含无偏差）、场景、调用、文字与模块，核对归属；每一步由 `ssot verify` 的子命令枚举判断义务，可按目录或约束分批，验证台账跨轮保留；只报告，不修改 |
 
 ## 检验机制
@@ -132,7 +132,7 @@ npx skills update ssot ssot-migration ssot-draft ssot-design ssot-verify --globa
 | `ssot graph <design> [--json]` | 导出目录、模块与 `imports` 依赖关系的 Mermaid 图或 JSON |
 | `ssot vdmj <design> [args...]` | 以设计里的全部规格直接运行 VDMJ（如 `-i` 进入解释器、`-e` 求值） |
 | `ssot draft <子命令> <repo>` | 逐项核对草稿 `.tmp/ssot-draft/draft.yaml`（需求论证、领域性质、对象、约束、归属、不进 VDM 的内容、取舍）；第一次运行时记下本轮开始的设计基线 |
-| `ssot design <子命令> <design> [--stamp …]` | 逐项核对落点台账 `.tmp/ssot-design/`（本轮新增、改动、删除的每个规格元素的来由，每条草稿约束的落点与违反情形实例的求值，本轮动过的模块里没有观察者的状态分量与字段） |
+| `ssot design <子命令> <design> [--stamp …]` | 逐项核对落点台账 `.tmp/ssot-design/`（本轮新增、改动、删除的每个规格元素的来由，每条草稿约束的落点与违反情形实例的求值，作者对草稿约束的五种违反情形攻击，本轮动过的模块里没有观察者的状态分量与字段） |
 | `ssot verify <子命令> <design> --as <验证方> [--dir …] [--constraint …] [--stamp …]` | 逐项核对验证台账 `.tmp/ssot-verify/<验证方>/`（只凭需求材料写下的应有长相、领域性质、需求论证与应有约束，三问、整体对照、五种违反情形与生命周期四问、元素与场景反查、调用值流、文字与模块、归属、证明义务、模型审查、结论）；`report` 把台账排成交付视图 |
 | `vdmj [args...] <files>` | VDMJ 本身（带 QuickCheck 插件），读 `.vdmsl` 文件 |
 

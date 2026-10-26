@@ -5,7 +5,7 @@ description: SSoT设计真源（Markdown+VDM-SL文学式规格）总纲与路由
 
 # ssot
 
-完整通过检查的示例设计见 [`references/example/design/`](references/example/design/)。
+完整通过检查的示例设计见 [`references/example/design/`](references/example/design/)；它是怎样从一版照编程习惯写的模型，按两条判据一步步改出来的，见 [`references/example/construction.md`](references/example/construction.md)。
 
 **默认工作边界：只专注 `design/` 本身。** 执行任何 `ssot` 任务时，**默认禁止查看目标仓库中 `design/` 之外的任何文件（包括实现代码、测试、配置文件、其他文档，以及 `legacy-design/`），也禁止查看 `git` 历史或 diff**；`legacy-design/` 仅在当前任务明确是执行 `ssot-migration` 存量迁移时才允许读取；`ssot-draft` 与 `ssot-verify` 另可读取用户明确提供的需求材料，`ssot-draft` 在目标仓库的 `.tmp/ssot-draft/` 写草稿，`ssot-design` 读取这份草稿并在 `.tmp/ssot-design/` 写落点台账，`ssot-verify` 在 `.tmp/ssot-verify/` 写各验证方的验证台账（不读草稿与落点台账）。用户给出的是原始来源设计（旧设计文档、旧说明等，而不是本轮的需求）时，任何块都不直接读它：`ssot-draft` 派发 `ssot:reader` 代读，只读它写的 `.tmp/ssot-draft/source/` 与 `.tmp/ssot-source/requirements.md`（规则见 `ssot-draft` 第〇节）；`ssot-migration` 例外，它本来就是要无损搬运原文。**禁止使用 `discuss`、`mentor`、`task:*` 等通用 subagent**（仅 `ssot-draft` 按其自身规则使用本 skill `agents/` 目录下预置的 `ssot:reader`，`ssot-verify` 按其自身规则使用 `ssot:argon` 与 `ssot:fable`）。验证 `design/` 时只以 `ssot` 系列 skill 与 `design/` 自身为准，不受目标仓库 `.claude/rules/` 中既有模块划分或旧审查条文的预设绑架；运行 `ssot` 命令行工具直接用终端工具（如 `exec_command`），不绕用 Python `eval` 调 `subprocess`。不要找任何借口去翻看 `design/` 之外的内容；如果确实认为某一步非看某个外部文件不可，只能向用户提议并等待许可，绝不是默认行为。
 
@@ -118,7 +118,7 @@ flowchart TB
 | `ssot vdmj <design> [参数]` | 用设计里的全部规格运行 VDMJ，例如 `-i` 进解释器、`-e` 求值 |
 | `ssot review <design>` | 输出语义反模式模型审查的判断对象（JSON），由 `scripts/review.py` 在 omp `eval` 里交给 `jev` |
 | `ssot draft <子命令> <仓库根>` | 核对草稿 `.tmp/ssot-draft/draft.yaml`：`requirements`、`domain`、`objects`、`constraints`、`owner`、`excluded`、`tradeoffs`、`status`；第一次运行时记下本轮开始的设计基线 `.tmp/ssot-draft/baseline.yaml` |
-| `ssot design <子命令> <design> [--stamp …]` | 核对落点台账 `.tmp/ssot-design/`：`check`、`elements`（本轮新增、改动、删除的元素）、`constraints`、`status` |
+| `ssot design <子命令> <design> [--stamp …]` | 核对落点台账 `.tmp/ssot-design/`：`check`、`elements`（本轮新增、改动、删除的元素）、`constraints`、`attack`（作者攻击草稿约束的五种违反情形）、`status` |
 | `ssot verify <子命令> <design> --as <验证方> [--dir …] [--constraint …] [--stamp …]` | 核对验证台账 `.tmp/ssot-verify/<验证方>/`：`check`、`expect`、`gaps`、`overview`、`attack`、`elements`、`scenarios`、`flows`、`prose`、`modules`、`owner`、`po`、`review`、`verdict`、`status`、`report` |
 | `vdmj [参数] <文件>` | VDMJ 本身，带 QuickCheck 插件，读 `.vdmsl` 文件；设计目录里的 Markdown 用 `ssot vdmj` |
 

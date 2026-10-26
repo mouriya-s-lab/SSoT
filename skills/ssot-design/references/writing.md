@@ -151,7 +151,7 @@ end
       <Rejected> -> skip,
       <Unknown> ->
         let found = Status(request) in
-          if found <> <Absent> then Finish(found)
+          if found not in set {<Absent>, <Finished>} then Finish(found)
     end;
 ```
 
@@ -164,7 +164,7 @@ end
 - 不适合进 VDM、直接写成了代码或文字的，在它的 `--` 说明里留 `索引：路径:行号`（或 `路径:起始行-结束行`，路径从仓库根算起），`ssot check` 核对指向的文件与行存在；
 - 还没有定的，不留索引，`is not yet specified` 就表示未定义。
 
-占位是合法的终态：`token` 与 `is not yet specified` 一直保留到有草稿约束要求观察它的结构或规定它的结果为止，不为通过检查而展开。草稿里已经定下的约束不能藏进 `token` 或 `is not yet specified`，落到产生或使用它的操作的 `pre`/`post`、状态的 `inv` 或「语义」上。连接的效果还没有约束时，写成显式的 `== is not yet specified`，也不为它预先建 `state`；有约束要求它读写状态时，才建出这条约束需要的最小 `state`，写成带 `ext` 与 `post` 的隐式操作。
+占位是合法的终态：`token` 与 `is not yet specified` 一直保留到有草稿约束要求观察它的结构或规定它的结果为止，不为通过检查而展开。草稿里已经定下的约束不能藏进 `token` 或 `is not yet specified`，落到产生或使用它的操作的 `pre`/`post`、状态的 `inv` 或「语义」上。连接的效果还没有约束时，写成显式的 `== is not yet specified`，也不为它预先建 `state`；有约束要求它读写状态时，才建出这条约束要读的状态分量，写成带 `ext` 与 `post` 的隐式操作，每个分量都要有导出操作读到它。
 
 ### 用不展开的写法守住约束
 
@@ -192,7 +192,7 @@ end
 5. **连接与外部依赖只留签名。** 效果还没有约束的连接、外部系统提供的连接，写签名加 `== is not yet specified`；约束落在调用它的一方的 `pre`/`post` 或场景的先后上，不为它写内部效果。
 6. **数量与时间写进「语义」或常量。** 时限、次数、间隔这类数值写在 `values` 或「语义」里，不为它们建计时、计数的状态。
 
-到第六种都排除不了违反情形时，才展开结构；展开的那一处在 `expansion` 里写明缩回上一种写法会让哪种违反情形重新可以构造。
+到第六种都排除不了违反情形时，才展开结构。展开出来的每个区分都要有导出操作观察得到（总纲第一节的无偏差），落点用 `rejects` 的实例求值，确认规格拒绝了违反情形（`ssot-design` 第一节）。
 
 ## 四、规格说不清的语义与受控文字
 
@@ -213,5 +213,5 @@ end
 示例（[`architecture/README.md`](../../ssot/references/example/design/architecture/README.md) 的「语义」）：
 
 ```markdown
-调用方得到结果未知之后，两次调用 ``Run`Status`` 至少相隔 ``Run`RetrySeconds`` 秒。``Run`` 与 ``Attempt`` 运行在同一进程内；进程崩溃后，新进程按 ``Run`Runs.byRequest`` 接管尚未结束的运行。
+调用方得到结果未知之后，两次调用 ``Run`Status`` 至少相隔 ``Run`RetrySeconds`` 秒。``Run`` 与 ``Attempt`` 运行在同一进程内；进程崩溃后，新进程对 ``Run`Runs.byRequest`` 里的每个请求号调用 ``Run`Status``，接管仍未结束的运行。
 ```

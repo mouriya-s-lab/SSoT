@@ -557,7 +557,7 @@ const OBJECT_KINDS = ['definition', 'execution', 'fact', 'index'] as const;
 const RELATION_KINDS = ['contains', 'points', 'acts'] as const;
 const CATEGORIES = ['invariant', 'admission', 'transition', 'lifecycle'] as const;
 type Category = (typeof CATEGORIES)[number];
-const DRAFT_SUBS = ['requirements', 'objects', 'constraints', 'owner', 'excluded', 'tradeoffs', 'status'] as const;
+const DRAFT_SUBS = ['requirements', 'domain', 'objects', 'constraints', 'owner', 'excluded', 'tradeoffs', 'status'] as const;
 type DraftSub = (typeof DRAFT_SUBS)[number];
 
 type DraftConstraint = { readonly id: string; readonly record: Obj; readonly category: Category | null; readonly owner: { readonly layer: 'architecture' | 'business'; readonly holder: string } | null };
@@ -624,7 +624,7 @@ function draftOutcomes(repo: string, sub: DraftSub): Outcome[] {
   if (blocked) return [blocked];
   const { draft, problem } = readDraft(repo);
   if (!draft) return [gate(sub, problem!)];
-  const subs: readonly Exclude<DraftSub, 'status'>[] = sub === 'status' ? ['requirements', 'objects', 'constraints', 'owner', 'excluded', 'tradeoffs'] : [sub];
+  const subs: readonly Exclude<DraftSub, 'status'>[] = sub === 'status' ? ['requirements', 'domain', 'objects', 'constraints', 'owner', 'excluded', 'tradeoffs'] : [sub];
   return subs.map((s) => draftSub(repo, draft, s));
 }
 
@@ -638,6 +638,30 @@ function ids(items: readonly Obj[], sub: string, list: string, notes: Note[]): S
   return seen;
 }
 
+/** 一块需求的论证：哪些约束与哪些领域性质合起来推出它，以及怎样推出。 */
+function argumentSlots(slots: Slots, where: string, constraintIds: ReadonlySet<string>, domainIds: ReadonlySet<string>, kind: string): readonly string[] {
+  const a = slots.nested('argument');
+  if (!a) return [];
+  a.only(['constraints', 'domain', 'why']);
+  const cs = a.list('constraints');
+  const ds = a.list('domain');
+  if (cs.length === 0) a.errors.push(`${where}.argument.constraints：论证至少要用到一条${kind}；需求不约束任何对象时不写 argument，写${kind === '约束' ? '进 excluded' : ' none'}。`);
+  for (const c of cs) if (!constraintIds.has(c)) a.errors.push(`${where}.argument.constraints：${c} 不在 constraints 里。`);
+  for (const d of ds) if (!domainIds.has(d)) a.errors.push(`${where}.argument.domain：${d} 不在 domain 里。`);
+  a.text('why');
+  slots.merge(a);
+  return cs;
+}
+
+/** 一条领域性质：外部世界本身成立、本系统不保证的事实。 */
+function domainSlots(item: Obj, where: string): Slots {
+  const slots = new Slots(item, where);
+  slots.only(['id', 'text', 'source']);
+  slots.text('text');
+  slots.text('source');
+  return slots;
+}
+
 function draftSub(repo: string, draft: Draft, sub: Exclude<DraftSub, 'status'>): Outcome {
   const notes: Note[] = [];
   const v = draft.value;
@@ -645,7 +669,10 @@ function draftSub(repo: string, draft: Draft, sub: Exclude<DraftSub, 'status'>):
   const constraintIds = ids(listOf(v, 'constraints'), sub, 'constraints', []);
   const excludedIds = ids(listOf(v, 'excluded'), sub, 'excluded', []);
   const objectIds = ids(listOf(v, 'objects'), sub, 'objects', []);
+  const domainIds = ids(listOf(v, 'domain'), sub, 'domain', []);
   const requirements = listOf(v, 'requirements');
+  const argued = (field: 'constraints' | 'domain') =>
+    new Set(requirements.flatMap((r) => (isObj(r.argument) && Array.isArray(r.argument[field]) ? (r.argument[field] as unknown[]).filter((x): x is string => typeof x === 'string') : [])));
   const slotNotes = (slots: Slots) => slots.errors.forEach((e) => notes.push(error(sub, at, e)));
   let total = 0;
   let missing: Outcome['missing'] = null;
@@ -666,11 +693,10 @@ function draftSub(repo: string, draft: Draft, sub: Exclude<DraftSub, 'status'>):
         if (byKey.has(key)) notes.push(error(sub, `${at} ${where}`, `和 requirements[${byKey.get(key)}] 是同一块需求。`));
         byKey.set(key, i);
         const slots = new Slots(r, where);
-        slots.only(['block', 'constraints', 'excluded']);
-        const cs = slots.list('constraints');
+        slots.only(['block', 'argument', 'excluded']);
         const xs = slots.list('excluded');
-        if (cs.length + xs.length === 0) slots.errors.push(`${where}：这块需求既没有落到约束（constraints），也没有写进不进 VDM 的内容（excluded）。`);
-        for (const c of cs) if (!constraintIds.has(c)) slots.errors.push(`${where}.constraints：${c} 不在 constraints 里。`);
+        if (r.argument === undefined && xs.length === 0) slots.errors.push(`${where}：这块需求既没有论证（argument：哪些约束与领域性质推出它），也没有写进不进 VDM 的内容（excluded）。`);
+        if (r.argument !== undefined) argumentSlots(slots, where, constraintIds, domainIds, '约束');
         for (const x of xs) if (!excludedIds.has(x)) slots.errors.push(`${where}.excluded：${x} 不在 excluded 里。`);
         slotNotes(slots);
       });
@@ -680,11 +706,25 @@ function draftSub(repo: string, draft: Draft, sub: Exclude<DraftSub, 'status'>):
         total++;
         if (!byKey.has(blockKey(block))) {
           notes.push(error(sub, `${block.path} ${block.heading.join(' / ')}`, `缺判：「${block.text.split('\n')[0]}」还没有去向。`));
-          items.push({ hint: '', skeleton: { block: { path: block.path, heading: block.heading, text: block.text, ...(block.occurrence > 1 ? { occurrence: block.occurrence } : {}) }, constraints: [], excluded: [] } });
+          items.push({
+            hint: '',
+            skeleton: { block: { path: block.path, heading: block.heading, text: block.text, ...(block.occurrence > 1 ? { occurrence: block.occurrence } : {}) }, argument: { constraints: [], domain: [], why: '' }, excluded: [] },
+          });
         }
       }
       for (const [key, i] of byKey) if (!current.has(key)) notes.push(error(sub, `${at} requirements[${i}]`, '材料里已经没有这块需求（改写或删除了）：删掉这条，按缺判骨架重判。'));
       if (items.length > 0) missing = { file: at, list: 'requirements', items };
+      break;
+    }
+    case 'domain': {
+      const domain = listOf(v, 'domain');
+      ids(domain, sub, 'domain', notes);
+      const used = argued('domain');
+      domain.forEach((d, i) => {
+        total++;
+        slotNotes(domainSlots(d, `domain[${i}]`));
+        if (typeof d.id === 'string' && !used.has(d.id)) notes.push(warning(sub, `${at} domain[${i}]`, `领域性质 ${d.id} 不在任何需求的论证里：它对推出需求没有用处，是否需要？`));
+      });
       break;
     }
     case 'objects': {
@@ -719,18 +759,19 @@ function draftSub(repo: string, draft: Draft, sub: Exclude<DraftSub, 'status'>):
     case 'constraints': {
       const constraints = listOf(v, 'constraints');
       ids(constraints, sub, 'constraints', notes);
+      const used = argued('constraints');
       constraints.forEach((c, i) => {
         total++;
         const where = `constraints[${i}]`;
         const slots = new Slots(c, where);
-        slots.only(['id', 'object', 'varies', 'invariant', 'violation', 'not_promised', 'rerun', 'deletion', 'scope', 'category', 'owner']);
+        slots.only(['id', 'object', 'varies', 'invariant', 'violation', 'not_promised', 'rerun', 'scope', 'category', 'owner']);
         const object = slots.text('object');
         if (object && !objectIds.has(object)) slots.errors.push(`${where}.object：${object} 不在 objects 里。`);
-        for (const field of ['varies', 'invariant', 'violation', 'not_promised', 'rerun', 'deletion', 'scope']) slots.text(field);
+        for (const field of ['varies', 'invariant', 'violation', 'not_promised', 'rerun', 'scope']) slots.text(field);
         slots.choice('category', CATEGORIES);
         slotNotes(slots);
-        if (!requirements.some((r) => Array.isArray(r.constraints) && r.constraints.includes(c.id))) {
-          notes.push(error(sub, `${at} ${where}`, `约束 ${String(c.id)} 没有出处：没有任何需求块落到它。`));
+        if (typeof c.id === 'string' && !used.has(c.id)) {
+          notes.push(error(sub, `${at} ${where}`, `约束 ${c.id} 不在任何需求的论证里：它推不出任何需求，是多余的，删掉它；如果某条需求确实要靠它推出，是那条需求的论证漏了它。`));
         }
       });
       break;
@@ -810,44 +851,45 @@ function elementObligations(spec: Spec): Obligation[] {
 }
 
 /**
- * 最小形式是默认：类型是 token，连接与判定是 is not yet specified。本轮新增或改动、却不是最小形式的元素，都要说明为什么不能缩回去。
- * 结构（带结构的类型、状态、字段）还要指出读这份结构的别的元素；体与谓词（操作、函数、值）指出读它的元素可选。
+ * 无偏差（Jones）：任何一串导出操作都区分不了的状态区分，不该写进规格。工具只能静态、保守地判断：
+ * 确定没有任何定义读到它时判为不可观察（unobservable）；读到了不等于能区分，仍由判断者在 verify 的 bias 里判（undetermined）。
+ * 只看状态分量与记录字段；并类型的分支、显式体与谓词不在这里判。
  */
-type Expansion = 'structure' | 'body';
+type Observability = 'unobservable' | 'undetermined';
 
-function expansionsOf(spec: Spec, baseline: Baseline): ReadonlyMap<string, Expansion> {
-  const out = new Map<string, Expansion>();
-  for (const e of spec.elements.values()) {
-    if (baseline.get(e.key) === e.source) continue;
-    if (e.field === null && e.definition.unspecified) continue;
-    out.set(e.key, e.field !== null || e.definition.kind === 'type' || e.definition.kind === 'state' ? 'structure' : 'body');
-  }
-  return out;
+function observability(spec: Spec, e: Element): Observability {
+  const d = e.definition;
+  const field = e.field;
+  if (field === null) return 'undetermined';
+  if (d.kind === 'state') return e.module.definitions.some((x) => x.reads.includes(field)) ? 'undetermined' : 'unobservable';
+  if (d.kind !== 'type') return 'undetermined';
+  // 记录带 struct 导出：系统外的调用方能读它的字段。
+  if (e.module.exports.all || e.module.exports.items.some((x) => x.kind === 'struct' && x.name === d.name)) return 'undetermined';
+  const names = new Set([d.name, ...spec.modules.flatMap((m) => m.imports.filter((i) => i.module === e.module.name).flatMap((i) => i.items.filter((it) => it.name === d.name && it.renamed).map((it) => it.renamed!)))]);
+  const read = spec.modules.some((m) => m.definitions.some((x) => x.selects.includes(field) || x.patterns.some((p) => names.has(p))));
+  return read ? 'undetermined' : 'unobservable';
 }
 
-const EXPANSION_HINT: Readonly<Record<Expansion, string>> = {
-  structure:
-    '它不是最小形式（token）：先按 ssot-design/references/writing.md 第三节「用不展开的写法守住约束」找写法（身份只比相等、判定写成不展开的函数放进 pre/post、事实写成身份之间的映射与集合）。仍要展开时，expansion.violation 写出缩回 token、删掉这个字段或分支之后，哪条草稿约束的哪种违反情形会重新可以构造；needed_by 写出读这份结构、按它分支的别的元素，读者在系统外（调用方按它区分结局）时写 README 里说明这个读者的那一行（路径.md:行）。写不出就缩回去。',
-  body:
-    '它不是最小形式（is not yet specified）：先按 ssot-design/references/writing.md 第三节「用不展开的写法守住约束」找写法（判定写成不展开的函数、连接只留签名）。仍要展开时，expansion.violation 写出退回 is not yet specified、删掉多余的参数、合取项或调用之后，哪条草稿约束的哪种违反情形会重新可以构造；needed_by 可选，写出要求它的体或谓词的别的元素。写不出就退回去。',
-};
+/** 不可观察的元素：为什么是偏差、怎样处理。设计端报错，验证端报警告。 */
+function biasNote(e: Element): string {
+  return e.definition.kind === 'state'
+    ? `没有任何定义读到状态分量 ${e.field}：它只被自己的更新式改写，任何一串操作都区分不了它的取值，是实现偏差。删掉它；需求确实要求有人看到它时，是规格缺了观察它的连接，回到草稿。`
+    : `没有任何定义用字段名选出 ${e.field}，也没有定义按位置拆开 ${e.definition.name}，${e.definition.name} 也没有带 struct 导出给系统外：没有观察者读得到这个字段，是实现偏差。删掉它；需求确实要求有人读到它时，是规格缺了读它的连接，回到草稿。`;
+}
 
 /** 本轮要交代来由的元素：相对基线新增或原文改动的，以及本轮删掉的。没动过的旧元素不归本轮草稿解释。 */
-function roundObligations(spec: Spec, baseline: Baseline, expansions: ReadonlyMap<string, Expansion>): Obligation[] {
-  const skeleton = (key: string) => ({ element: key, constraints: [], connection_for: [], reason: '', ...(expansions.has(key) ? { expansion: { violation: '', needed_by: [] } } : {}) });
+function roundObligations(spec: Spec, baseline: Baseline): Obligation[] {
+  const skeleton = (key: string) => ({ element: key, constraints: [], connection_for: [], reason: '' });
   const changed = [...spec.elements.values()]
     .filter((e) => baseline.get(e.key) !== e.source)
-    .map((e) => {
-      const kind = expansions.get(e.key);
-      return {
-        key: e.key,
-        dir: e.module.place.dir,
-        constraint: null,
-        subject: e.source,
-        skeleton: skeleton(e.key),
-        hint: [baseline.has(e.key) ? `本轮改动（${e.module.place.path}:${e.line}）` : `本轮新增（${e.module.place.path}:${e.line}）`, ...(kind ? [EXPANSION_HINT[kind]] : [])].join('\n'),
-      };
-    });
+    .map((e) => ({
+      key: e.key,
+      dir: e.module.place.dir,
+      constraint: null,
+      subject: e.source,
+      skeleton: skeleton(e.key),
+      hint: baseline.has(e.key) ? `本轮改动（${e.module.place.path}:${e.line}）` : `本轮新增（${e.module.place.path}:${e.line}）`,
+    }));
   const removed = [...baseline.entries()]
     .filter(([key]) => !spec.elements.has(key))
     .map(([key, source]) => ({ key, dir: null, constraint: null, subject: `（已删除）\n${source}`, skeleton: skeleton(key), hint: '本轮删除' }));
@@ -970,62 +1012,48 @@ function designOutcomes(design: string, sub: DesignSub, mode: StampMode): Outcom
   // 每个子命令一个目录：一个盖章文件只有一个子命令写，并行跑 elements 与 constraints 不会互相覆盖。
   const ledger = (s: string) => join(repo, '.tmp', 'ssot-design', s);
   const scope: Scope = { dirs: [], constraints: [] };
-  const expansions = expansionsOf(spec, baseline);
   if (wants('elements')) {
-    outcomes.push(
-      runStamped(
-        {
-          sub: 'elements',
-          list: 'elements',
-          keyField: 'element',
-          target: join(ledger('elements'), 'elements.yaml'),
-          files: yamlFiles(ledger('elements')),
-          obligations: roundObligations(spec, baseline, expansions),
-          judge: (record, o) => {
-            const slots = new Slots(record, o.key);
-            const expansion = expansions.get(o.key);
-            slots.only(['element', 'constraints', 'connection_for', 'reason', ...(expansion ? ['expansion'] : [])]);
-            const cs = slots.list('constraints');
-            const conn = slots.list('connection_for');
-            const removed = !spec.elements.has(o.key);
-            if (cs.length + conn.length === 0) {
-              slots.errors.push(
-                removed
-                  ? `${o.key}：本轮删掉了它，答不出是为本轮草稿的哪条约束删的（constraints 或 connection_for）；与本轮无关就恢复它。`
-                  : `${o.key}：答不出它表达本轮哪条约束（constraints）或是哪条约束所需的连接（connection_for）；答不出就不写或不改这个元素。`,
-              );
-            }
-            for (const c of [...cs, ...conn]) if (!draft!.constraints.has(c)) slots.errors.push(`${o.key}：${c} 不在草稿的 constraints 里。`);
-            slots.text('reason');
-            const deps: Record<string, string> = {};
-            if (expansion) {
-              const x = slots.nested('expansion');
-              if (x) {
-                x.only(['violation', 'needed_by']);
-                x.text('violation');
-                const by = x.list('needed_by');
-                if (expansion === 'structure' && by.length === 0) x.errors.push(`${o.key}.expansion.needed_by：它带着结构（不是 token）；写出读这份结构、按它分支的别的元素，读者在系统外时写 README 里说明这个读者的那一行（路径.md:行）；都指不出就缩回 token 或删掉这个字段。`);
-                // 结构的读者不能是它自己、它所在的定义或它的字段：那是自证。
-                const own = spec.elements.get(o.key);
-                const owner = own && own.field !== null ? `${own.module.name}\`${own.definition.name}` : o.key;
-                for (const f of refs(spec, by, `${o.key}.expansion.needed_by`, x, deps)) {
-                  if (f.element && (f.element.key === owner || f.element.key.startsWith(`${owner}.`))) x.errors.push(`${o.key}.expansion.needed_by：要指出它所在定义以外读它的元素，不能指它自己、它所在的定义或它的字段。`);
-                }
-                slots.merge(x);
-              }
-            }
-            for (const c of [...cs, ...conn]) {
-              const dc = draft!.constraints.get(c);
-              if (dc) deps[`草稿 ${c}`] = canonical(dc.record);
-            }
-            return { errors: slots.errors, warnings: [], deps };
-          },
+    // 本轮动过的模块里，确定没有观察者的状态分量与记录字段：实现偏差，直接报错，不设判断槽。
+    const touched = new Set([...spec.elements.values()].filter((e) => baseline.get(e.key) !== e.source).map((e) => e.module.name));
+    const biased = [...spec.elements.values()]
+      .filter((e) => touched.has(e.module.name) && observability(spec, e) === 'unobservable')
+      .map((e) => error('elements', `${e.key}（${e.module.place.path}:${e.line}）`, biasNote(e)));
+    const judged = runStamped(
+      {
+        sub: 'elements',
+        list: 'elements',
+        keyField: 'element',
+        target: join(ledger('elements'), 'elements.yaml'),
+        files: yamlFiles(ledger('elements')),
+        obligations: roundObligations(spec, baseline),
+        judge: (record, o) => {
+          const slots = new Slots(record, o.key);
+          slots.only(['element', 'constraints', 'connection_for', 'reason']);
+          const cs = slots.list('constraints');
+          const conn = slots.list('connection_for');
+          const removed = !spec.elements.has(o.key);
+          if (cs.length + conn.length === 0) {
+            slots.errors.push(
+              removed
+                ? `${o.key}：本轮删掉了它，答不出是为本轮草稿的哪条约束删的（constraints 或 connection_for）；与本轮无关就恢复它。`
+                : `${o.key}：答不出它表达本轮哪条约束（constraints）或是哪条约束所需的连接（connection_for）；答不出就不写或不改这个元素。`,
+            );
+          }
+          for (const c of [...cs, ...conn]) if (!draft!.constraints.has(c)) slots.errors.push(`${o.key}：${c} 不在草稿的 constraints 里。`);
+          slots.text('reason');
+          const deps: Record<string, string> = {};
+          for (const c of [...cs, ...conn]) {
+            const dc = draft!.constraints.get(c);
+            if (dc) deps[`草稿 ${c}`] = canonical(dc.record);
+          }
+          return { errors: slots.errors, warnings: [], deps };
         },
-        scope,
-        mode,
-        rel,
-      ),
+      },
+      scope,
+      mode,
+      rel,
     );
+    outcomes.push({ ...judged, notes: [...biased, ...judged.notes] });
   }
   if (wants('constraints')) {
     const obligations: Obligation[] = [...draft!.constraints.values()].map((c) => ({
@@ -1033,8 +1061,8 @@ function designOutcomes(design: string, sub: DesignSub, mode: StampMode): Outcom
       dir: null,
       constraint: c.id,
       subject: canonical(c.record),
-      skeleton: { constraint: c.id, landing: [{ kind: '', element: '' }], excludes: '' },
-      hint: `${c.id}（${c.category ?? '未标类别'}）：${String(c.record.invariant ?? '')}\n违反情形：${String(c.record.violation ?? '')}\n允许的写法：${c.category ? ALLOWED[c.category].join(' | ') : '先在草稿里标类别'}`,
+      skeleton: { constraint: c.id, landing: [{ kind: '', element: '' }], rejects: [{ by: 'post', operation: '', args: [], result: '', before: '', after: '', violates: '' }] },
+      hint: `${c.id}（${c.category ?? '未标类别'}）：${String(c.record.invariant ?? '')}\n违反情形：${String(c.record.violation ?? '')}\n允许的写法：${c.category ? ALLOWED[c.category].join(' | ') : '先在草稿里标类别'}\n${REJECTS_HINT}`,
     }));
     outcomes.push(
       runStamped(
@@ -1047,7 +1075,7 @@ function designOutcomes(design: string, sub: DesignSub, mode: StampMode): Outcom
           obligations,
           judge: (record, o) => {
             const slots = new Slots(record, o.key);
-            slots.only(['constraint', 'landing', 'excludes']);
+            slots.only(['constraint', 'landing', 'rejects']);
             const deps: Record<string, string> = {};
             const warnings: string[] = [];
             const dc = draft!.constraints.get(o.key)!;
@@ -1068,7 +1096,18 @@ function designOutcomes(design: string, sub: DesignSub, mode: StampMode): Outcom
               return kind;
             });
             if (kinds.length > 0 && kinds.every((k) => k === 'semantic')) warnings.push(`${o.key}：这条约束只写进了「语义」，规格里没有类型或谓词排除它；交付时单独列出。`);
-            slots.text('excludes');
+            const rejects = Array.isArray(record.rejects) ? record.rejects : [];
+            const confirmed = new Set<Rejectable>();
+            rejects.forEach((r, i) => {
+              if (!isObj(r)) slots.errors.push(`${o.key}.rejects[${i}]：应当是 {by, …}。`);
+              else {
+                const by = rejection(spec, r, `${o.key}.rejects[${i}]`, slots, deps);
+                if (by) confirmed.add(by);
+              }
+            });
+            const rejectable = REJECTABLE.filter((k) => kinds.includes(k));
+            for (const k of rejectable) if (!confirmed.has(k)) slots.errors.push(`${o.key}.rejects：落点有 ${k}，要给一个违反情形的实例，让工具求值确认 ${k} 拒绝它（by: ${k}）。`);
+            if (rejectable.length === 0 && !kinds.every((k) => k === 'semantic')) warnings.push(`${o.key}：落点里没有 pre、post 或 inv，没有经求值确认规格拒绝违反情形；交付时单独列出。`);
             return { errors: slots.errors, warnings, deps };
           },
         },
@@ -1102,8 +1141,8 @@ function verifyRoot(design: string, as: string): string {
   return join(dirname(design), '.tmp', 'ssot-verify', as);
 }
 
-/** 第一步写下的应有长相：读规格之前，系统要满足什么、需要哪些视角与核心概念、各模块职责应怎样，以及对各 README 依据、理由与包含关系的初判。 */
-const SHAPE_FIELDS = ['requirements', 'perspectives', 'modules', 'readme'] as const;
+/** 第一步写下的应有长相：只读需求材料、读规格与 README 之前，系统要满足什么、需要哪些视角与核心概念、各模块职责应怎样。 */
+const SHAPE_FIELDS = ['requirements', 'perspectives', 'modules'] as const;
 
 function readExpect(
   design: string,
@@ -1124,12 +1163,14 @@ function readExpect(
   const files = yamlFiles(join(root, 'expect'));
   const requirementRecords: { record: Obj; where: string }[] = [];
   const constraintRecords: { record: Obj; where: string }[] = [];
+  const domainRecords: { record: Obj; where: string }[] = [];
   const shapes: { record: unknown; where: string }[] = [];
   for (const file of files) {
     const { value, problem: p } = readYaml(file);
     if (p) notes.push(error(sub, rel(file), p));
     listOf(value ?? {}, 'requirements').forEach((r, i) => requirementRecords.push({ record: r, where: `${rel(file)} requirements[${i}]` }));
     listOf(value ?? {}, 'constraints').forEach((c, i) => constraintRecords.push({ record: c, where: `${rel(file)} constraints[${i}]` }));
+    listOf(value ?? {}, 'domain').forEach((d, i) => domainRecords.push({ record: d, where: `${rel(file)} domain[${i}]` }));
     if (value?.shape !== undefined) shapes.push({ record: value.shape, where: `${rel(file)} shape` });
   }
   let shape: string | null = null;
@@ -1173,6 +1214,15 @@ function readExpect(
     slots.errors.forEach((e) => notes.push(error(sub, where, e)));
     if (id && !expected.has(id)) expected.set(id, { id, record, dir: dir ?? '', subject: canonical(record) });
   }
+  const domainIds = new Set<string>();
+  for (const { record, where } of domainRecords) {
+    const slots = domainSlots(record, where);
+    const id = slots.text('id');
+    if (id && domainIds.has(id)) slots.errors.push(`${where}.id：${id} 重复。`);
+    if (id) domainIds.add(id);
+    slots.errors.forEach((e) => notes.push(error(sub, where, e)));
+  }
+  const argued = new Set<string>();
   const byKey = new Map<string, string>();
   for (const { record, where } of requirementRecords) {
     const block = blockOf(record.block);
@@ -1184,23 +1234,21 @@ function readExpect(
     if (byKey.has(key)) notes.push(error(sub, where, `和 ${byKey.get(key)} 是同一块需求。`));
     byKey.set(key, where);
     const slots = new Slots(record, where);
-    slots.only(['block', 'constraints', 'none']);
-    const cs = slots.list('constraints');
+    slots.only(['block', 'argument', 'none']);
     const none = slots.optionalText('none');
-    if (cs.length === 0 && !none) slots.errors.push(`${where}：写出这块需求要求的应有约束（constraints），或说明它不约束任何对象的理由（none）。`);
-    for (const c of cs) if (!expected.has(c)) slots.errors.push(`${where}.constraints：${c} 不在 expect 的 constraints 里。`);
+    if (record.argument === undefined && !none) slots.errors.push(`${where}：写出推出这块需求的论证（argument：哪些应有约束与领域性质合起来推出它），或说明它不约束任何对象的理由（none）。`);
+    if (record.argument !== undefined) for (const c of argumentSlots(slots, where, new Set(expected.keys()), domainIds, '应有约束')) argued.add(c);
     slots.errors.forEach((e) => notes.push(error(sub, where, e)));
   }
   for (const id of expected.keys()) {
-    const used = requirementRecords.some(({ record }) => Array.isArray(record.constraints) && record.constraints.includes(id));
-    if (!used) notes.push(error(sub, `expect ${id}`, `应有约束 ${id} 没有出处：没有任何需求块落到它。`));
+    if (!argued.has(id)) notes.push(error(sub, `expect ${id}`, `应有约束 ${id} 不在任何需求的论证里：它推不出任何需求，删掉它，或补上漏了它的那条论证。`));
   }
   const items: { hint: string; skeleton: Obj }[] = [];
   const current = new Set(blocks.map(blockKey));
   for (const block of blocks) {
     if (!byKey.has(blockKey(block))) {
       notes.push(error(sub, `${block.path} ${block.heading.join(' / ')}`, `缺判：「${block.text.split('\n')[0]}」还没有写出应有约束。`));
-      items.push({ hint: '', skeleton: { block: { path: block.path, heading: block.heading, text: block.text, ...(block.occurrence > 1 ? { occurrence: block.occurrence } : {}) }, constraints: [] } });
+      items.push({ hint: '', skeleton: { block: { path: block.path, heading: block.heading, text: block.text, ...(block.occurrence > 1 ? { occurrence: block.occurrence } : {}) }, argument: { constraints: [], domain: [], why: '' } } });
     }
   }
   for (const [key, where] of byKey) if (!current.has(key)) notes.push(error(sub, where, '材料里已经没有这块需求（改写或删除了）：删掉这条，按缺判骨架重判。'));
@@ -1213,8 +1261,8 @@ function readExpect(
       sub,
       notes,
       missing: items.length > 0 ? { file: rel(join(root, 'expect', 'requirements.yaml')), list: 'requirements', items } : null,
-      total: blocks.length + constraintRecords.length,
-      judged: errors === 0 ? blocks.length + constraintRecords.length : 0,
+      total: blocks.length + constraintRecords.length + domainRecords.length,
+      judged: errors === 0 ? blocks.length + constraintRecords.length + domainRecords.length : 0,
     },
   };
 }
@@ -1297,6 +1345,94 @@ function witness(spec: Spec, w: Obj, where: string, slots: Slots, deps: Record<s
   return expression;
 }
 
+/** 规格拒绝违反情形的三种落点：post（调用前后的关系）、pre（准入）、inv（任何时刻成立的关系）。 */
+const REJECTABLE = ['post', 'pre', 'inv'] as const;
+type Rejectable = (typeof REJECTABLE)[number];
+
+const REJECTS_HINT =
+  'rejects：每个 pre、post、inv 落点各给一个草稿违反情形的具体实例，工具用 VDMJ 求值，确认规格拒绝它。by: post 写 {operation, args, result, before, after, violates}：pre 与 violates 成立，post 必须不成立（或这次变化改了没列进 ext wr 的分量，或 after 违反不变式）；by: pre 写 {operation, args, before, violates}：violates 成立，pre 必须不成立；by: inv 写 {module, value}：value 用 mk_ 构造违反情形的状态或值，构造时不变式必须报错。';
+
+/**
+ * 充分性（Jackson）的一个实例：草稿的违反情形写成具体的值，规格必须拒绝它。拒绝是存在性的事实，VDMJ 对给定的值求值就能确认；
+ * 规格接受了它，就是约束没有守住。返回确认成立的落点种类，实例不成立时返回 null。
+ */
+function rejection(spec: Spec, r: Obj, where: string, slots: Slots, deps: Record<string, string>): Rejectable | null {
+  const s = new Slots(r, where);
+  const by = s.choice('by', REJECTABLE);
+  const fail = (message: string) => s.errors.push(`${where}：${message}`);
+  switch (by) {
+    case null:
+      break;
+    case 'inv': {
+      s.only(['by', 'module', 'value']);
+      const name = s.text('module');
+      const value = s.text('value');
+      const module = spec.modules.find((m) => m.name === name);
+      if (name && !module) fail(`没有模块 ${name}。`);
+      if (module && value) {
+        deps[`模块 ${module.name}`] = sources(spec.design, module).module;
+        const run = evaluate(spec.design, spec.modules, module.name, value);
+        if (run.kind === 'Value') fail(`这个值满足全部不变式（求值得到 ${run.text.trim()}）：inv 没有拒绝这个违反情形。`);
+        else if (!/Error 4079|invariant/i.test(run.text)) fail(`求值出错，但不是不变式拒绝了它：${run.text.split('\n').join('；')}`);
+      }
+      break;
+    }
+    case 'pre':
+    case 'post': {
+      s.only(by === 'pre' ? ['by', 'operation', 'args', 'before', 'violates'] : ['by', 'operation', 'args', 'result', 'before', 'after', 'violates']);
+      const ref = s.text('operation');
+      const args = s.list('args');
+      const result = by === 'post' ? s.optionalText('result') : null;
+      const before = s.optionalText('before');
+      const after = by === 'post' ? s.optionalText('after') : null;
+      const violates = s.text('violates');
+      const element = ref ? spec.elements.get(ref) : undefined;
+      if (ref && (!element || element.field !== null || !element.definition.kind.includes('operation'))) {
+        fail(`${ref} 不是规格里的操作。`);
+        break;
+      }
+      if (!element || !violates) break;
+      deps[element.key] = element.source;
+      const d = element.definition;
+      if (by === 'pre' ? !d.hasPre : !d.hasPost) {
+        fail(`${element.key} 没有 ${by}。`);
+        break;
+      }
+      const state = element.module.definitions.find((x) => x.kind === 'state');
+      if (state && (!before || (by === 'post' && !after))) {
+        fail(`${element.module.name} 有状态 ${state.name}，写出 before${by === 'post' ? ' 与 after' : ''}（完整的 mk_${state.name}(…)）。`);
+        break;
+      }
+      const bindings = [state ? `before = ${before}` : null, state && by === 'post' ? `after = ${after}` : null, result ? `result = ${result}` : null].filter(Boolean);
+      const stateArgs = state ? ['before'] : [];
+      const pre = d.hasPre ? `pre_${d.name}(${[...args, ...stateArgs].join(', ')})` : 'true';
+      const post = `post_${d.name}(${[...args, ...(result ? ['result'] : []), ...(state ? ['before', 'after'] : [])].join(', ')})`;
+      const written = new Set(d.ext.filter((x) => x.mode === 'wr').flatMap((x) => x.names));
+      const frame = by === 'post' && state ? state.fields.filter((f) => !written.has(f.name)).map((f) => `before.${f.name} = after.${f.name}`) : [];
+      const parts = by === 'pre' ? [`(${violates})`, pre] : [`(${violates})`, pre, post, ...frame];
+      const expression = `${bindings.length > 0 ? `let ${bindings.join(', ')} in ` : ''}mk_(${parts.join(', ')})`;
+      const run = evaluate(spec.design, spec.modules, element.module.name, expression);
+      if (run.kind === 'Failed') {
+        // before 合法而 after 违反不变式：这次变化构造不出来，是不变式拒绝了它。
+        const rejectedByInv = by === 'post' && state !== undefined && /Error 4079/.test(run.text) && evaluate(spec.design, spec.modules, element.module.name, `let before = ${before} in true`).kind === 'Value';
+        if (!rejectedByInv) fail(`求值出错：${run.text.split('\n').join('；')}（表达式：${expression}）`);
+        break;
+      }
+      const values = [...run.text.matchAll(/\b(true|false)\b/g)].map((m) => m[1] === 'true');
+      if (values[0] !== true) fail(`violates 求值为 false：这个实例没有违反约束，换一个真正的违反情形（表达式：${expression}）。`);
+      else if (by === 'pre' && values[1] !== false) fail(`pre 接受了这次违反约束的调用：准入没有守住这条约束（表达式：${expression}）。`);
+      else if (by === 'post' && values[1] !== true) fail(`这次调用不满足 pre：调用方不被允许这样调用，违反情形落在准入上，改用 by: pre（表达式：${expression}）。`);
+      else if (by === 'post' && values[2] === true && values.slice(3).every((v) => v)) fail(`post 接受了这次违反约束的变化：规格允许违反情形，约束没有守住（表达式：${expression}）。`);
+      break;
+    }
+    default:
+      assertNever(by);
+  }
+  const ok = s.errors.length === 0;
+  slots.merge(s);
+  return ok ? by : null;
+}
+
 // ---------------------------------------------------------------- 审查问题
 
 /**
@@ -1360,7 +1496,6 @@ const DEFINITION_QUESTIONS: readonly Question[] = [
 /** 导出的类型与判定：下游是否真的消费。 */
 const CONSUMPTION: Question = { slot: 'consumption', ask: '导出后在下游确有消费：写出设计里使用它的位置，或系统外调用方使用它的契约与依据；没有导出时判 not_applicable。没人消费时修法是取消导出或删掉它，不是造一个消费者', evidence: '使用它的位置，或写着系统外调用契约的那一行' };
 const TYPE_QUESTIONS: readonly Question[] = [
-  { slot: 'observation', ask: '只有观察者要按它分支或读字段时才展开结构：每个字段、每个分支都有观察者读；缩回 token 或删掉某个字段、分支之后第一步的应有约束仍全部成立，就判 problem，修法是缩回去；只原样传递的保持 token', evidence: '读这份结构、按它分支的元素' },
   { slot: 'struct_exposure', ask: '导出时带不带 struct 与使用方是否读它的结构一致' },
   { slot: 'outcomes', ask: '作为结局时只列合法调用方必须区分处理的分支，不逐项列失败原因；不是结局时判 not_applicable' },
   { slot: 'recovery', ask: '可观察的失败分支写明了改走哪个连接恢复；没有失败分支时判 not_applicable', evidence: '负责恢复的连接' },
@@ -1371,31 +1506,35 @@ const FUNCTION_QUESTIONS: readonly Question[] = [
   CONSUMPTION,
 ];
 const STATE_QUESTIONS: readonly Question[] = [
-  { slot: 'minimality', ask: '状态只放这个连接面要守住的事实，没有冗余分量，也没有观察者不读的内部结构' },
   { slot: 'surface_invariant', ask: '共享这份状态的操作共守同一条 inv，inv 简单' },
   { slot: 'projection', ask: '能由事实算出的上层状态写成了纯函数投影，没有重复存储' },
 ];
 const FRAME_QUESTION: Question = { slot: 'frame', ask: '每个 or 分支都写齐了这一支没改的 wr 分量（x = x~）；没写的分量在那一支可以变成任意值' };
 
 /**
- * 最小形式是默认：不是 token / is not yet specified 的定义与字段，都要回答能不能缩回去；占位本身不问。
- * 类型由 observation 问，状态由 minimality 问，其余定义与字段问 minimal_form。
+ * 无偏差（Jones）：结构上的每个区分都要有导出操作能观察到；体与谓词只写应有约束要求的承诺，不写一种实现。
+ * 占位（token / is not yet specified）不问。工具确定没有观察者的元素另外直接报警告（见 observability）。
  */
-const MINIMAL_FORM: Question = {
-  slot: 'minimal_form',
-  ask: '缩回最小形式后第一步的应有约束是否仍全部成立：显式体退回 is not yet specified，删掉多余的参数、结果结构、pre/post/inv 合取项、ext 分量或调用，删掉这个字段；约束仍成立就判 problem，修法是缩回去。reason 写缩回后哪种违反情形会重新可以构造',
-  evidence: '要求它展开的谓词或读它的元素',
+const STRUCTURE_BIAS: Question = {
+  slot: 'bias',
+  ask: '无偏差：取两个只在这里不同的合法状态或值，存在一串导出操作（系统外调用方经导出连接调用的也算），让它们的结果或能否调用不同；找不到就是实现偏差，判 problem，修法是删掉它或收回成 token。能由别的分量算出的冗余分量也是偏差，修法是写成纯函数投影',
+  evidence: '区分它的导出操作',
+};
+const BODY_BIAS: Question = {
+  slot: 'bias',
+  ask: '无实现偏差：显式体与 pre/post/inv 的每个合取项、参数、调用都是第一步某条应有约束要求的；退回 is not yet specified 或删掉它之后应有约束仍全部成立，就是把一种实现写成了承诺，判 problem，修法是退回去。reason 写删掉后哪种违反情形会被接受',
+  evidence: '要求它的应有约束所落的谓词',
 };
 
 function elementQuestions(e: Element): readonly Question[] {
-  if (e.field !== null) return [...FIELD_QUESTIONS, MINIMAL_FORM];
+  if (e.field !== null) return [...FIELD_QUESTIONS, STRUCTURE_BIAS];
   const d = e.definition;
-  if (d.kind === 'type') return [...DEFINITION_QUESTIONS, ...TYPE_QUESTIONS.filter((q) => !(d.unspecified && q.slot === 'observation'))];
-  if (d.kind === 'state') return [...DEFINITION_QUESTIONS, ...STATE_QUESTIONS];
-  const minimal = d.unspecified ? [] : [MINIMAL_FORM];
-  if (d.kind.includes('function')) return [...DEFINITION_QUESTIONS, ...FUNCTION_QUESTIONS, ...minimal];
-  if (d.kind === 'implicit operation' && d.ext.some((x) => x.mode === 'wr')) return [...DEFINITION_QUESTIONS, FRAME_QUESTION, ...minimal];
-  return [...DEFINITION_QUESTIONS, ...minimal];
+  if (d.kind === 'type') return [...DEFINITION_QUESTIONS, ...(d.unspecified ? [] : [STRUCTURE_BIAS]), ...TYPE_QUESTIONS];
+  if (d.kind === 'state') return [...DEFINITION_QUESTIONS, STRUCTURE_BIAS, ...STATE_QUESTIONS];
+  const bias = d.unspecified ? [] : [BODY_BIAS];
+  if (d.kind.includes('function')) return [...DEFINITION_QUESTIONS, ...FUNCTION_QUESTIONS, ...bias];
+  if (d.kind === 'implicit operation' && d.ext.some((x) => x.mode === 'wr')) return [...DEFINITION_QUESTIONS, FRAME_QUESTION, ...bias];
+  return [...DEFINITION_QUESTIONS, ...bias];
 }
 
 const SCENARIO_RESULT: Question = { slot: 'result', ask: '场景交给自己调用方的结果区分了正常推进与故障' };
@@ -1806,6 +1945,9 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
       const stateless = [...spec.elements.values()]
         .filter((e) => e.field === null && e.definition.kind === 'implicit operation' && e.definition.ext.length === 0 && inScope({ dir: e.module.place.dir, constraint: null }, scope))
         .map((e) => warning('elements', `${e.key}（${e.module.place.path}:${e.line}）`, '不读写任何状态的隐式操作：写成函数（functions），不写成 operations。'));
+      const biased = [...spec.elements.values()]
+        .filter((e) => inScope({ dir: e.module.place.dir, constraint: null }, scope) && observability(spec, e) === 'unobservable')
+        .map((e) => warning('elements', `${e.key}（${e.module.place.path}:${e.line}）`, biasNote(e)));
       const judged = runStamped(
           {
             sub: 'elements',
@@ -1835,7 +1977,7 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
           mode,
           rel,
       );
-      outcomes.push({ ...judged, notes: [...stateless, ...judged.notes] });
+      outcomes.push({ ...judged, notes: [...stateless, ...biased, ...judged.notes] });
     }
   }
 
@@ -2210,7 +2352,7 @@ function verifyReport(design: string, as: string): number {
   const out: string[] = [`# 验证报告：${as}`, ''];
 
   const { shapeRecord } = readExpect(design, as, spec, 'expect');
-  const labels: Readonly<Record<(typeof SHAPE_FIELDS)[number], string>> = { requirements: '要满足的需求', perspectives: '视角与核心概念', modules: '各模块的职责边界', readme: 'README 依据、理由与包含关系的初判' };
+  const labels: Readonly<Record<(typeof SHAPE_FIELDS)[number], string>> = { requirements: '要满足的需求', perspectives: '视角与核心概念', modules: '各模块的职责边界' };
   out.push('## 应有长相（第一步，读规格之前）', '');
   if (shapeRecord) for (const f of SHAPE_FIELDS) out.push(`- **${labels[f]}**：${cell(String(shapeRecord[f] ?? ''))}`);
   else out.push('expect 还没有写 shape。');

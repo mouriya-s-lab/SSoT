@@ -31,10 +31,10 @@ function workspace(): { readonly root: string; readonly design: string } {
   put(
     root,
     '.tmp/ssot-verify/fable/expect/expect.yaml',
-    `shape: {requirements: 重复开始只产生一次运行, perspectives: 调用方与运行表, modules: Run 持有运行表, readme: 依据有来源}
+    `shape: {requirements: 重复开始只产生一次运行, perspectives: 调用方与运行表, modules: Run 持有运行表}
 requirements:
   - block: {path: request.md, heading: [需求], text: 调用方用同一个请求号重复开始运行，系统只产生一次运行。}
-    constraints: [E1]
+    argument: {constraints: [E1], why: 同一请求号只对应一个运行，所以重复开始不会产生第二个运行}
 constraints:
   - {id: E1, object: 请求号, kind: index, varies: 调用次数, invariant: 同一请求号只对应一个运行, violation: 第二次开始换了运行, category: transition, owner: {dir: architecture}}
 `,
@@ -58,11 +58,11 @@ function draft(root: string): void {
     `materials: [request.md]
 requirements:
   - block: {path: request.md, heading: [需求], text: 调用方用同一个请求号重复开始运行，系统只产生一次运行。}
-    constraints: [C1]
+    argument: {constraints: [C1], why: 结局交给调用方}
 objects:
   - {id: O1, name: 日报运行, kind: execution, identity: 请求号, residue: 无}
 constraints:
-  - {id: C1, object: O1, varies: 调用次数, invariant: 结局交给调用方, violation: 吞掉结局, not_promised: 无, rerun: 不必改, deletion: 会出现违反, scope: 对象正确, category: transition, owner: {layer: business, holder: report}}
+  - {id: C1, object: O1, varies: 调用次数, invariant: 结局交给调用方, violation: 吞掉结局, not_promised: 无, rerun: 不必改, scope: 对象正确, category: transition, owner: {layer: business, holder: report}}
 `,
   );
 }
@@ -97,8 +97,8 @@ describe('verify', () => {
     const slot = (name: string, verdict = 'ok') => `${name}: {verdict: ${verdict}, reason: 看过}`;
     const common = ['comment_meaning', 'signature', 'nonvacuous', 'wording', 'action_words', 'design_reason'].map((s) => slot(s));
     const reads = (name: string) => `${name}: {verdict: ok, reason: 看过, at: ["Report\`Daily"]}`;
-    const daily = [...common, slot('predicate_promise', 'not_applicable'), reads('minimal_form')].join(', ');
-    const outcome = [...common, slot('predicate_promise', 'not_applicable'), reads('observation'), slot('struct_exposure'), slot('outcomes'), slot('recovery', 'not_applicable'), slot('consumption', 'not_applicable')].join(', ');
+    const daily = [...common, slot('predicate_promise', 'not_applicable'), reads('bias')].join(', ');
+    const outcome = [...common, slot('predicate_promise', 'not_applicable'), reads('bias'), slot('struct_exposure'), slot('outcomes'), slot('recovery', 'not_applicable'), slot('consumption', 'not_applicable')].join(', ');
     put(
       root,
       '.tmp/ssot-verify/fable/elements/report.yaml',
@@ -264,6 +264,18 @@ excluded:
     expect(run.out).toContain('材料里已经没有这块需求');
     expect(run.out).toContain('缺判：「调用方用同一个请求号重复开始运行，系统至多产生一次运行。」');
   });
+
+  test('约束不在任何需求的论证里，是多余的', () => {
+    const root = mkdtempSync('/tmp/ssot-judge-');
+    roots.push(root);
+    put(root, 'request.md', REQUEST);
+    draft(root);
+    const file = join(root, '.tmp/ssot-draft/draft.yaml');
+    writeFileSync(file, readFileSync(file, 'utf8').replace('argument: {constraints: [C1], why: 结局交给调用方}', 'excluded: [X1]\nexcluded:\n  - {id: X1, text: 测试, unaffected: 测试}'));
+    const run = cli('draft', 'constraints', root);
+    expect(run.code).toBe(1);
+    expect(run.out).toContain('约束 C1 不在任何需求的论证里');
+  });
 });
 
 describe('design', () => {
@@ -289,24 +301,67 @@ describe('design', () => {
     expect(cli('design', 'elements', design).out).toContain('没有本轮开始时的设计基线');
   });
 
-  test('新写的元素不是最小形式，要写出缩回去会让哪种违反情形重新可以构造；结构还要指出别的读者', () => {
+  test('本轮动过的模块里，没有任何定义读到的状态分量与记录字段是实现偏差', () => {
     const { root, design } = workspace();
     draft(root);
     cli('draft', 'status', root);
     const run = join(design, 'architecture/run.md');
-    writeFileSync(run, readFileSync(run, 'utf8').replace('RunId = token;', 'RunId ::\n    n : nat;  -- 编号'));
-    const skeleton = cli('design', 'elements', design).out;
-    expect(skeleton).toContain('它不是最小形式（token）');
-    expect(skeleton).toContain('violation');
-    put(root, '.tmp/ssot-design/elements/run.yaml', 'elements:\n  - {element: "Run`RunId", constraints: [C1], connection_for: [], reason: 要编号, expansion: {violation: 会重复, needed_by: ["Run`RunId"]}}\n');
-    expect(cli('design', 'elements', design).out).toContain('不能指它自己、它所在的定义或它的字段');
-    put(root, '.tmp/ssot-design/elements/run.yaml', 'elements:\n  - {element: "Run`RunId", constraints: [C1], connection_for: [], reason: 要编号, expansion: {violation: 会重复}}\n');
-    expect(cli('design', 'elements', design).out).toContain('Run`RunId.expansion.needed_by：它带着结构');
-    put(root, '.tmp/ssot-design/elements/run.yaml', 'elements:\n  - {element: "Run`RunId", constraints: [C1], connection_for: [], reason: 要编号}\n');
-    expect(cli('design', 'elements', design).out).toMatch(/Run`RunId.*expansion/);
+    const text = readFileSync(run, 'utf8')
+      .replace('live : set of RunId  -- 已开始、尚未结束的运行', 'live : set of RunId  -- 已开始、尚未结束的运行\n  seen : set of RequestNo  -- 收到过的请求号')
+      .replace('inv mk_Runs(b, l) == l subset rng b\n  init r == r = mk_Runs({|->}, {})', 'inv mk_Runs(b, l, -) == l subset rng b\n  init r == r = mk_Runs({|->}, {}, {})')
+      .replace('Started ::\n    run : RunId;', 'Started ::\n    run : RunId\n    at : nat;  -- 开始的时刻');
+    writeFileSync(run, text);
+    const out = cli('design', 'elements', design).out;
+    expect(out).toContain('Run`Runs.seen');
+    expect(out).toContain('没有任何定义读到状态分量 seen');
+    // Started 带 struct 导出：系统外的调用方读得到它的字段，工具不判它不可观察。
+    expect(out).not.toContain('选出 at');
   });
 
-  test('改成占位的元素不用讲展开的理由', () => {
+  test('违反情形的实例：post 拒绝它才算守住，接受它就报约束没有守住', () => {
+    const { root, design } = workspace();
+    draft(root);
+    cli('draft', 'status', root);
+    const ledger = (rejects: string) =>
+      put(root, '.tmp/ssot-design/constraints/c.yaml', `constraints:\n  - constraint: C1\n    landing: [{kind: post, element: "Run\`Start"}]\n    rejects:\n${rejects}`);
+    // 同一请求号已经对应运行 1，再开始却交回运行 2：post 不允许。
+    ledger(`      - by: post
+        operation: "Run\`Start"
+        args: ["1"]
+        result: "mk_Started(mk_token(2))"
+        before: "mk_Runs({1 |-> mk_token(1)}, {mk_token(1)})"
+        after: "mk_Runs({1 |-> mk_token(2)}, {mk_token(2)})"
+        violates: "result.run <> before.byRequest(1)"
+`);
+    expect(cli('design', 'constraints', design).out).not.toContain('rejects[0]');
+    // 结局为结果未知、运行表不变：post 允许，这个实例不是被拒绝的违反情形。
+    ledger(`      - by: post
+        operation: "Run\`Start"
+        args: ["1"]
+        result: "<Unknown>"
+        before: "mk_Runs({|->}, {})"
+        after: "mk_Runs({|->}, {})"
+        violates: "result = <Unknown>"
+`);
+    expect(cli('design', 'constraints', design).out).toContain('post 接受了这次违反约束的变化');
+    // 没给实例：落点有 post 就要有 by: post 的实例。
+    put(root, '.tmp/ssot-design/constraints/c.yaml', 'constraints:\n  - constraint: C1\n    landing: [{kind: post, element: "Run`Start"}]\n');
+    expect(cli('design', 'constraints', design).out).toContain('落点有 post，要给一个违反情形的实例');
+  });
+
+  test('不变式拒绝违反情形：构造时报错才算守住', () => {
+    const { root, design } = workspace();
+    draft(root);
+    cli('draft', 'status', root);
+    const ledger = (value: string) =>
+      put(root, '.tmp/ssot-design/constraints/c.yaml', `constraints:\n  - constraint: C1\n    landing: [{kind: inv, element: "Run\`Runs"}]\n    rejects:\n      - {by: inv, module: Run, value: "${value}"}\n`);
+    ledger('mk_Runs({|->}, {mk_token(1)})');
+    expect(cli('design', 'constraints', design).out).not.toContain('rejects[0]');
+    ledger('mk_Runs({1 |-> mk_token(1)}, {mk_token(1)})');
+    expect(cli('design', 'constraints', design).out).toContain('inv 没有拒绝这个违反情形');
+  });
+
+  test('改成占位的元素不是实现偏差，只要交代来由', () => {
     const { root, design } = workspace();
     draft(root);
     cli('draft', 'status', root);
@@ -315,6 +370,6 @@ describe('design', () => {
     writeFileSync(report, text.replace(/Daily\(request\) ==[\s\S]*?end;/, 'Daily(request) == is not yet specified;'));
     const out = cli('design', 'elements', design).out;
     expect(out).toContain('Report`Daily：缺判');
-    expect(out).not.toContain('它不是最小形式');
+    expect(out).not.toContain('实现偏差');
   });
 });

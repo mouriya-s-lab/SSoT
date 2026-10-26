@@ -5,7 +5,9 @@ module Attempt
 imports from Run types RunId renamed RunId
 exports
   types struct Entry
-  operations Record: Entry ==> ()
+  operations
+    Record: Entry ==> ();
+    Pending: () ==> set of RunId
   functions Unresolved: seq of Entry -> set of RunId
 definitions
 types
@@ -33,5 +35,10 @@ operations
   Record(e: Entry)
   ext wr entries
   post entries = entries~ ^ [e];
+
+  -- 按已记下的尝试判定现在需要找回的运行
+  Pending() r: set of RunId
+  ext rd entries
+  post r = Unresolved(entries);
 end Attempt
 ```

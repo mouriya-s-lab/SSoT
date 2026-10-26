@@ -30,8 +30,8 @@ types
   -- Start 的结局：使用方必须区分已开始、被拒绝与结果未知；结果未知时改用 Status 找回
   StartOutcome = Started | <Rejected> | <Unknown>;
 
-  -- Status 的结局：按请求号找回的运行，或确认它不存在
-  StatusOutcome = RunId | <Absent>;
+  -- Status 的结局：按请求号找回、尚未结束的运行，已经结束，或确认它不存在
+  StatusOutcome = RunId | <Finished> | <Absent>;
 
   -- 运行表：同一请求号至多对应一次运行，活着的运行都来自某个请求
 state Runs of
@@ -57,10 +57,11 @@ operations
                   byRequest = byRequest~ ++ {request |-> run}
                   and live = live~ union {run});
 
-  -- 按请求号确认运行是否存在；只读，不改变运行表
+  -- 按请求号找回运行，并区分它是否已经结束；只读，不改变运行表
   Status(request: RequestNo) r: StatusOutcome
-  ext rd byRequest
-  post (request in set dom byRequest and r = byRequest(request))
+  ext rd byRequest rd live
+  post (request in set dom byRequest and byRequest(request) in set live and r = byRequest(request))
+       or (request in set dom byRequest and byRequest(request) not in set live and r = <Finished>)
        or (request not in set dom byRequest and r = <Absent>);
 
   -- 结束一次运行；结束两次与一次效果相同
@@ -76,7 +77,7 @@ operations
       <Rejected> -> skip,
       <Unknown> ->
         let found = Status(request) in
-          if found <> <Absent> then Finish(found)
+          if found not in set {<Absent>, <Finished>} then Finish(found)
     end;
 end Run
 ```

@@ -22,6 +22,10 @@ import com.fujitsu.vdmj.ast.modules.ASTImportedFunction;
 import com.fujitsu.vdmj.ast.modules.ASTImportedOperation;
 import com.fujitsu.vdmj.ast.modules.ASTImportedType;
 import com.fujitsu.vdmj.ast.statements.ASTCallStatement;
+import com.fujitsu.vdmj.ast.expressions.ASTFieldExpression;
+import com.fujitsu.vdmj.ast.patterns.ASTRecordPattern;
+import com.fujitsu.vdmj.ast.patterns.ASTIgnorePattern;
+import com.fujitsu.vdmj.ast.patterns.ASTPattern;
 import com.fujitsu.vdmj.ast.statements.ASTCaseStmtAlternative;
 import com.fujitsu.vdmj.ast.statements.ASTCasesStatement;
 import com.fujitsu.vdmj.ast.statements.ASTDefStatement;
@@ -157,6 +161,11 @@ public class Outline {
         out.append("],\"exports\":");
         exports(out, m);
         out.append(",\"definitions\":[");
+        // 本模块状态的分量名：观察事实只记对它们的读取。状态只在本模块里可见。
+        Set<String> stateFields = new LinkedHashSet<>();
+        for (ASTDefinition def : m.defs) {
+          if (def instanceof ASTStateDefinition state) for (ASTField field : state.fields) stateFields.add(field.tag);
+        }
         for (int d = 0; d < m.defs.size(); d++) {
           ASTDefinition def = m.defs.get(d);
           if (d > 0) out.append(',');
@@ -180,6 +189,12 @@ public class Outline {
           hits(out, findings(def));
           out.append(",\"candidates\":");
           hits(out, candidates(def));
+          out.append(",\"reads\":");
+          names(out, reads(def, stateFields));
+          out.append(",\"selects\":");
+          names(out, selects(def));
+          out.append(",\"patterns\":");
+          names(out, patterns(def));
           out.append('}');
         }
         out.append("]}");
@@ -518,6 +533,80 @@ public class Outline {
     long bools = fieldsOf(def).stream().filter(field -> field.type instanceof ASTBooleanType).count();
     if (bools >= 2) hits.add(new Hit("bool-fields", def.location.startLine, bools + " 个 bool 字段"));
     return new ArrayList<>(hits);
+  }
+
+  /**
+   * 本定义读到的本模块状态分量。一条更新式 `f = E` 左边的 `f`、以及右边 `f~`（分量自己的旧值）不算读：
+   * 那只是分量把自己改成新值，结果和别的分量都看不到它。其余出现都算读，包括 pre、量词的绑定集合与别的分量的更新式右边。
+   * 状态的 inv 按位置模式绑定分量：写成 `-` 的、或绑定的名字在 inv 里没用到的分量不算读；其余按读到处理。
+   */
+  private static Set<String> reads(ASTDefinition def, Set<String> stateFields) {
+    Set<String> found = new LinkedHashSet<>();
+    if (def instanceof ASTStateDefinition state) {
+      if (state.invExpression == null) return found;
+      if (!(state.invPattern instanceof ASTRecordPattern record)) {
+        // 整体绑定成一个名字：分不清读到哪些分量，按全部读到处理。
+        found.addAll(stateFields);
+        return found;
+      }
+      Set<String> used = new LinkedHashSet<>();
+      walk(state.invExpression, node -> {
+        if (node instanceof ASTVariableExpression v) used.add(v.name.name);
+      });
+      List<String> names = new ArrayList<>(stateFields);
+      for (int i = 0; i < record.plist.size() && i < names.size(); i++) {
+        ASTPattern p = record.plist.get(i);
+        if (p instanceof ASTIgnorePattern) continue;
+        if (p instanceof ASTIdentifierPattern id && !used.contains(id.name.name)) continue;
+        found.add(names.get(i));
+      }
+      return found;
+    }
+    IdentityHashMap<Object, Boolean> self = new IdentityHashMap<>();
+    ASTExpression post = postcondition(def);
+    if (post != null) {
+      walk(post, node -> {
+        if (node instanceof ASTEqualsExpression eq && eq.left instanceof ASTVariableExpression target && !target.name.old && stateFields.contains(target.name.name)) {
+          self.put(target, Boolean.TRUE);
+          walk(eq.right, inner -> {
+            if (inner instanceof ASTVariableExpression v && v.name.old && v.name.name.equals(target.name.name)) self.put(v, Boolean.TRUE);
+          });
+        }
+      });
+    }
+    walk(def, node -> {
+      if (node instanceof ASTVariableExpression v && !self.containsKey(v) && stateFields.contains(v.name.name)) found.add(v.name.name);
+    });
+    return found;
+  }
+
+  /** 本定义里用 `x.f` 选出的字段名。 */
+  private static Set<String> selects(ASTDefinition def) {
+    Set<String> found = new LinkedHashSet<>();
+    walk(def, node -> {
+      if (node instanceof ASTFieldExpression field && field.field != null) found.add(field.field.name);
+    });
+    return found;
+  }
+
+  /** 本定义里用 `mk_T(…)` 模式按位置拆开的记录类型名。 */
+  private static Set<String> patterns(ASTDefinition def) {
+    Set<String> found = new LinkedHashSet<>();
+    walk(def, node -> {
+      if (node instanceof ASTRecordPattern record) found.add(record.typename.name);
+    });
+    return found;
+  }
+
+  private static void names(StringBuilder out, Set<String> names) {
+    out.append('[');
+    boolean first = true;
+    for (String name : names) {
+      if (!first) out.append(',');
+      first = false;
+      out.append(str(name));
+    }
+    out.append(']');
   }
 
   /** Visits every VDMJ AST object reachable from the root through fields and collections, once each. */

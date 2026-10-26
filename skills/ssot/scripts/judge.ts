@@ -1083,7 +1083,7 @@ function designOutcomes(design: string, sub: DesignSub, mode: StampMode): Outcom
               if (kind && dc.category && !ALLOWED[dc.category].includes(kind)) warnings.push(`${where}：${dc.category} 类约束一般不写成 ${kind}（ssot-design 第一节）；确认规格里哪个类型或谓词排除了违反情形，指不出就换写法。`);
               if (dir && dc.owner) {
                 const expected = dc.owner.layer === 'business' ? `business/${dc.owner.holder}` : 'architecture';
-                if (!inDir(dir, expected)) warnings.push(`${where}：草稿把它归给 ${dc.owner.layer === 'business' ? `业务 ${dc.owner.holder}` : `架构（${dc.owner.holder}）`}，落点却在 ${dir}。`);
+                if (!inDir(dir, expected)) warnings.push(`${where}：草稿把它归给 ${dc.owner.layer === 'business' ? `业务 ${dc.owner.holder}` : `架构（${dc.owner.holder}）`}，落点却在 ${dir}。归属错在草稿就改草稿的 owner，错在落点就搬元素（ssot-design 第一节「重新划分架构与业务」）。`);
               }
               const rejectable = REJECTABLE.find((k) => k === kind);
               if (rejectable && typeof item.element === 'string' && spec.elements.has(item.element)) landed.get(rejectable)!.add(item.element);

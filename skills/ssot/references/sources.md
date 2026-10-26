@@ -33,7 +33,7 @@
 
 ## 判据：充分与无偏差
 
-- Jackson, M. (2000). "Problem Analysis and Structure." NATO Summer School, Marktoberdorf（[作者手稿](https://people.csail.mit.edu/dnj/teaching/6898/papers/mj-marktoberdorf.pdf)）；Jackson, M. (2005). "Problem frames and software engineering." *Information and Software Technology* 47, 903–912, DOI 10.1016/j.infsof.2005.08.004：需求、领域性质与机器规格是三份描述，要论证“规格 ∧ 领域性质 ⇒ 需求”。据此在草稿里写领域性质与每块需求的论证，不在任何论证里的约束是多余的。他在 *Software Requirements & Specifications*（1995）“The Fudge Factor” 一条记录了把环境目标写成不变式、让系统的本职工作消失的错误，据此规定领域性质不写成不变式。
+- Jackson, M. (2000). "Problem Analysis and Structure." NATO Summer School, Marktoberdorf（[作者手稿](https://people.csail.mit.edu/dnj/teaching/6898/papers/mj-marktoberdorf.pdf)）；Jackson, M. (2005). "Problem frames and software engineering." *Information and Software Technology* 47, 903–912, DOI 10.1016/j.infsof.2005.08.004：需求、领域性质与机器规格是三份描述，要论证“规格 ∧ 领域性质 ⇒ 需求”。据此在草稿里写领域性质与每块需求的论证，不在任何论证里的约束是多余的。机器与环境只经共享现象交互，环境一方只能观察机器交出的现象；据此要求论证里参与者每一步用的值，都是它本来知道的或前一个连接交给它的。他在 *Software Requirements & Specifications*（1995）“The Fudge Factor” 一条记录了把环境目标写成不变式、让系统的本职工作消失的错误，据此规定领域性质不写成不变式。
 - Jones, C. B. (1990)，出处见「规格：VDM-SL」，§9.3：一个模型有偏差（bias），当且仅当存在两个不同的状态，任何一串可用的操作都区分不了它们；无偏差的模型只保留操作观察得到的区分。据此把“观察者需要才展开”落成无偏差判据，并由验证判 `bias`。§3.1：确定的函数也可以隐式规定，显式体是一种设计选择，不由“结果唯一”推出。
 - Wing, J. M. (1990). "A Specifier's Introduction to Formal Methods." *Computer* 23(9), 8–22，DOI 10.1109/2.58215：规格要排除不可接受的实现，同时不带实现偏差（implementation bias）。据此要求每条约束的违反情形被规格拒绝，体与谓词只写约束要求的承诺。
 - 工具的两种落地是本项目自己的近似，不是上述作者的方法：违反情形的实例交给 VDMJ 求值，只证明落点拒绝了写下的那一个违反情形，不证明实例真违反了需求；静态检查只认得出“没有任何定义读到”的状态分量，读到了不等于能区分，记录字段与其余情形由验证判断。

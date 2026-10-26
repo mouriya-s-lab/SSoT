@@ -7,7 +7,7 @@ description: SSoT设计真源（Markdown+VDM-SL文学式规格）总纲与路由
 
 完整通过检查的示例设计见 [`references/example/design/`](references/example/design/)；它是怎样从一版照编程习惯写的模型，按两条判据一步步改出来的，见 [`references/example/construction.md`](references/example/construction.md)。
 
-**默认工作边界：只专注 `design/` 本身。** 执行任何 `ssot` 任务时，**默认禁止查看目标仓库中 `design/` 之外的任何文件（包括实现代码、测试、配置文件、其他文档，以及 `legacy-design/`），也禁止查看 `git` 历史或 diff**；`legacy-design/` 仅在当前任务明确是执行 `ssot-migration` 存量迁移时才允许读取；`ssot-draft` 与 `ssot-verify` 另可读取用户明确提供的需求材料，`ssot-draft` 在目标仓库的 `.tmp/ssot-draft/` 写草稿，`ssot-design` 读取这份草稿并在 `.tmp/ssot-design/` 写落点台账，`ssot-verify` 在 `.tmp/ssot-verify/` 写各验证方的验证台账（不读草稿与落点台账）。用户给出的是原始来源设计（旧设计文档、旧说明等，而不是本轮的需求）时，任何块都不直接读它：`ssot-draft` 派发 `ssot:reader` 代读，只读它写的 `.tmp/ssot-draft/source/` 与 `.tmp/ssot-source/requirements.md`（规则见 `ssot-draft` 第〇节）；`ssot-migration` 例外，它本来就是要无损搬运原文。**禁止使用 `discuss`、`mentor`、`task:*` 等通用 subagent**（仅 `ssot-draft` 按其自身规则使用本 skill `agents/` 目录下预置的 `ssot:reader`，`ssot-verify` 按其自身规则使用 `ssot:argon` 与 `ssot:fable`）。验证 `design/` 时只以 `ssot` 系列 skill 与 `design/` 自身为准，不受目标仓库 `.claude/rules/` 中既有模块划分或旧审查条文的预设绑架；运行 `ssot` 命令行工具直接用终端工具（如 `exec_command`），不绕用 Python `eval` 调 `subprocess`。不要找任何借口去翻看 `design/` 之外的内容；如果确实认为某一步非看某个外部文件不可，只能向用户提议并等待许可，绝不是默认行为。
+**默认工作边界：只专注 `design/` 本身。** 执行任何 `ssot` 任务时，**默认禁止查看目标仓库中 `design/` 之外的任何文件（包括实现代码、测试、配置文件、其他文档，以及 `legacy-design/`），也禁止查看 `git` 历史或 diff**；`legacy-design/` 仅在当前任务明确是执行 `ssot-migration` 存量迁移时才允许读取；`ssot-draft` 与 `ssot-verify` 另可读取用户明确提供的需求材料，`ssot-draft` 在目标仓库的 `.tmp/ssot-draft/` 写草稿，`ssot-design` 读取这份草稿并在 `.tmp/ssot-design/` 写落点台账，`ssot-verify` 在 `.tmp/ssot-verify/` 写各验证方的验证台账（不读草稿与落点台账）。用户给出的是原始来源设计（旧设计文档、旧说明等，而不是本轮的需求）时，任何块都不直接读它：`ssot-draft` 派发 `ssot:reader` 代读，只读它写的 `.tmp/ssot-draft/source/` 与 `.tmp/ssot-source/requirements.md`（规则见 `ssot-draft` 第〇节）；`ssot-migration` 例外，它本来就是要无损搬运原文。**禁止使用 `discuss`、`mentor`、`task:*` 等通用 subagent**（仅 `ssot-draft` 按其自身规则使用本 skill `agents/` 目录下预置的 `ssot:reader`，`ssot-verify` 按其自身规则使用 `ssot:argon` 与 `ssot:fable`；任何块在细项多时按第四节「细项多时，分身逐项判断」fork 自己的分身）。验证 `design/` 时只以 `ssot` 系列 skill 与 `design/` 自身为准，不受目标仓库 `.claude/rules/` 中既有模块划分或旧审查条文的预设绑架；运行 `ssot` 命令行工具直接用终端工具（如 `exec_command`），不绕用 Python `eval` 调 `subprocess`。不要找任何借口去翻看 `design/` 之外的内容；如果确实认为某一步非看某个外部文件不可，只能向用户提议并等待许可，绝不是默认行为。
 
 ---
 
@@ -133,5 +133,17 @@ flowchart TB
 - **修法先问出处。** 任何错误、警告或验证问题，修法先问被诊断的东西有没有草稿约束来源：没有就删掉它、取消导出、删掉说明里多说的话，或退回 `token` / `is not yet specified`；名字要保留但内容未定的，保持占位；只有草稿约束确实要求、规格里又确实缺了，才补出这条约束要求的谓词或结构，用违反情形的实例确认规格拒绝了它，并照常记进台账。不为消掉诊断、通过编译或让证明义务成立而新增元素、字段、参数、导出、调用、守卫或谓词，也不把占位展开。
 - **范围。** `ssot design elements` 只枚举本轮相对基线新增、改动或删除的元素。`ssot verify` 用 `--dir <目录>`（含子目录）与 `--constraint <编号>` 只核对一批义务；不带范围、没有错误，才算整份判完。`ssot check` 与 VDMJ 求值总是装入全部规格。
 - **生命周期。** 草稿、基线与落点台账属于一轮设计，验证结论交付后删除；验证台账跨轮保留，下一轮只重判缺判、过期与孤儿（见 `ssot-verify` 第九节）。
+
+### 细项多时，分身逐项判断
+
+一轮里要判断的细项多时（多条约束各攻五种情形、每条约束问归属、一批元素各问几问、几处划分的信号、多条应有约束各查遗漏），不要在一个上下文里挨个想完：前面的结论会挤占后面的注意，越往后判得越草。把每一项交给一个分身，每个分身只想一个问题，承受的压力就小得多：
+
+1. **取当前会话的模型与 effort。** 当前会话文件的路径在环境变量 `$PI_SESSION_FILE`，用 `read` 的 JSON 查询读它：模型取最后一条 `model_change`（`role` 为 `default` 或缺省）的模型，没有时取最后一条助手消息的 `provider/model`；effort 取最后一条 `thinking_level_change` 的 `thinkingLevel`。
+2. **建临时 subagent。** 在当前项目的 `.omp/agents/` 写一个临时定义，名字带会话号免得与别的会话冲突（如 `ssot-clone-<$PI_SESSION_ID 前 8 位>.md`）。frontmatter 写 `name`、`description`、`model: <provider/model>`、`thinking-level: <effort>`；正文写明它是当前会话的分身，只回答分配给它的那一个问题，可以读文件、运行只读命令与 VDMJ 求值，不改任何文件，回报结论与依据。
+3. **fork，不 shake。** 用 `fork_task`，每个问题一个 task：`agent` 写这个临时 subagent，`shake: false`（分身要带着完整的上下文：需求、草稿、已经读过的规格与台账），`isolated: false`（只想不写）。task 里只放一个问题，例如“C3 的 `compose` 一槽：两个连接先后组合，能不能构造出规格允许、却违反 C3 的状态？能就给出 witness”。
+4. **收回结论，自己写。** 分身的结论由当前会话核对后写进台账、改设计；台账与设计只有当前会话一个写入者。分身之间结论冲突时，当前会话按依据裁决，必要时再分一个分身只看这一处冲突。
+5. **用完删掉临时定义。**
+
+分身只从自己的会话 fork：验证方（`ssot:fable`、`ssot:argon`）分出的分身带着验证方的上下文，作者的分身带着作者的上下文，两边不互相 fork。已经到了 task 递归上限、不能再派生时，照常自己逐项判。
 
 理论与方法论文献出处见 [`references/sources.md`](references/sources.md)。

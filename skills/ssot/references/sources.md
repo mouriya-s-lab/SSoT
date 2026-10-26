@@ -36,7 +36,7 @@
 - Jackson, M. (2000). "Problem Analysis and Structure." NATO Summer School, Marktoberdorf（[作者手稿](https://people.csail.mit.edu/dnj/teaching/6898/papers/mj-marktoberdorf.pdf)）；Jackson, M. (2005). "Problem frames and software engineering." *Information and Software Technology* 47, 903–912, DOI 10.1016/j.infsof.2005.08.004：需求、领域性质与机器规格是三份描述，要论证“规格 ∧ 领域性质 ⇒ 需求”。据此在草稿里写领域性质与每块需求的论证，不在任何论证里的约束是多余的。他在 *Software Requirements & Specifications*（1995）“The Fudge Factor” 一条记录了把环境目标写成不变式、让系统的本职工作消失的错误，据此规定领域性质不写成不变式。
 - Jones, C. B. (1990)，出处见「规格：VDM-SL」，§9.3：一个模型有偏差（bias），当且仅当存在两个不同的状态，任何一串可用的操作都区分不了它们；无偏差的模型只保留操作观察得到的区分。据此把“观察者需要才展开”落成无偏差判据，并由验证判 `bias`。§3.1：确定的函数也可以隐式规定，显式体是一种设计选择，不由“结果唯一”推出。
 - Wing, J. M. (1990). "A Specifier's Introduction to Formal Methods." *Computer* 23(9), 8–22，DOI 10.1109/2.58215：规格要排除不可接受的实现，同时不带实现偏差（implementation bias）。据此要求每条约束的违反情形被规格拒绝，体与谓词只写约束要求的承诺。
-- 工具的两种落地是本项目自己的近似，不是上述作者的方法：违反情形的实例交给 VDMJ 求值，只证明规格拒绝了写下的那一个违反情形；静态检查只认得出“没有任何定义读到”的状态分量与字段，读到了不等于能区分，其余由验证判断。
+- 工具的两种落地是本项目自己的近似，不是上述作者的方法：违反情形的实例交给 VDMJ 求值，只证明落点拒绝了写下的那一个违反情形，不证明实例真违反了需求；静态检查只认得出“没有任何定义读到”的状态分量，读到了不等于能区分，记录字段与其余情形由验证判断。
 
 ## 文字与文学式规格
 
@@ -57,6 +57,6 @@
 
 ## 脚本
 
-- [VDMJ](https://github.com/nickbattle/vdmj)：VDM-SL 的解析器、类型检查器、证明义务生成器与解释器；`scripts/Outline.java` 用它的解析器读出模块、定义、字段与 import，以及每个定义读到的状态分量、选出的字段与按位置拆开的记录，并按语法树节点的类别找出反模式与审查对象；`check` 用它做类型检查与证明义务，没人用的顶层定义取自它的 Warning 5000；`ssot design constraints` 用它对违反情形的实例求值。
+- [VDMJ](https://github.com/nickbattle/vdmj)：VDM-SL 的解析器、类型检查器、证明义务生成器与解释器；`scripts/Outline.java` 用它的解析器读出模块、定义、字段与 import，以及每个定义读到的状态分量，并按语法树节点的类别找出反模式与审查对象；`check` 用它做类型检查与证明义务，没人用的顶层定义取自它的 Warning 5000；`ssot design constraints` 用它对违反情形的实例求值，`ssot design attack` 与 `ssot verify attack` 用它对反例求值。
 - Battle, N., Ellyton, M. (2024). ["QuickCheck for VDM"](https://arxiv.org/abs/2410.02046). *Proceedings of the 22nd Overture Workshop*：为证明义务寻找反例或证明；`check` 把反例当作违规，把未定的义务交给人判断。
 - omp 的 judge（jev 模型）：对给定材料回答校准过的是非问题；`scripts/review.py` 用它审查需要理解含义的反模式，问题与阈值由 `scripts/review-calibration.json` 的正反样本校准。

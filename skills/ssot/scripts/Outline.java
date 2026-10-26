@@ -22,7 +22,6 @@ import com.fujitsu.vdmj.ast.modules.ASTImportedFunction;
 import com.fujitsu.vdmj.ast.modules.ASTImportedOperation;
 import com.fujitsu.vdmj.ast.modules.ASTImportedType;
 import com.fujitsu.vdmj.ast.statements.ASTCallStatement;
-import com.fujitsu.vdmj.ast.expressions.ASTFieldExpression;
 import com.fujitsu.vdmj.ast.patterns.ASTRecordPattern;
 import com.fujitsu.vdmj.ast.patterns.ASTIgnorePattern;
 import com.fujitsu.vdmj.ast.patterns.ASTPattern;
@@ -191,10 +190,6 @@ public class Outline {
           hits(out, candidates(def));
           out.append(",\"reads\":");
           names(out, reads(def, stateFields));
-          out.append(",\"selects\":");
-          names(out, selects(def));
-          out.append(",\"patterns\":");
-          names(out, patterns(def));
           out.append('}');
         }
         out.append("]}");
@@ -576,24 +571,6 @@ public class Outline {
     }
     walk(def, node -> {
       if (node instanceof ASTVariableExpression v && !self.containsKey(v) && stateFields.contains(v.name.name)) found.add(v.name.name);
-    });
-    return found;
-  }
-
-  /** 本定义里用 `x.f` 选出的字段名。 */
-  private static Set<String> selects(ASTDefinition def) {
-    Set<String> found = new LinkedHashSet<>();
-    walk(def, node -> {
-      if (node instanceof ASTFieldExpression field && field.field != null) found.add(field.field.name);
-    });
-    return found;
-  }
-
-  /** 本定义里用 `mk_T(…)` 模式按位置拆开的记录类型名。 */
-  private static Set<String> patterns(ASTDefinition def) {
-    Set<String> found = new LinkedHashSet<>();
-    walk(def, node -> {
-      if (node instanceof ASTRecordPattern record) found.add(record.typename.name);
     });
     return found;
   }

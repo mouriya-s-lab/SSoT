@@ -61,10 +61,6 @@ export type Definition = {
   readonly candidates: readonly Hit[];
   /** 本定义读到的本模块状态分量；一条更新式只把分量改成新值时不算读（见 Outline.java 的 reads）。 */
   readonly reads: readonly string[];
-  /** 本定义里用 `x.f` 选出的字段名。 */
-  readonly selects: readonly string[];
-  /** 本定义里用 `mk_T(…)` 模式按位置拆开的记录类型名。 */
-  readonly patterns: readonly string[];
 };
 type ImportItem = { readonly kind: 'all' | 'type' | 'value' | 'function' | 'operation'; readonly name: string | null; readonly renamed: string | null };
 type Import = { readonly module: string; readonly line: number; readonly items: readonly ImportItem[] };

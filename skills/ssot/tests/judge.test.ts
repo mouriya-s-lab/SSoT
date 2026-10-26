@@ -301,7 +301,7 @@ describe('design', () => {
     expect(cli('design', 'elements', design).out).toContain('没有本轮开始时的设计基线');
   });
 
-  test('本轮动过的模块里，没有任何定义读到的状态分量与记录字段是实现偏差', () => {
+  test('本轮动过的模块里，没有任何定义读到的状态分量是实现偏差；记录字段不静态断言', () => {
     const { root, design } = workspace();
     draft(root);
     cli('draft', 'status', root);
@@ -314,8 +314,8 @@ describe('design', () => {
     const out = cli('design', 'elements', design).out;
     expect(out).toContain('Run`Runs.seen');
     expect(out).toContain('没有任何定义读到状态分量 seen');
-    // Started 带 struct 导出：系统外的调用方读得到它的字段，工具不判它不可观察。
-    expect(out).not.toContain('选出 at');
+    // 记录字段可以经整个记录的相等、集合成员被导出结果区分，不经字段选择也观察得到：工具不断言它不可观察。
+    expect(out).not.toContain('Run`Started.at（');
   });
 
   test('违反情形的实例：post 拒绝它才算守住，接受它就报约束没有守住', () => {
@@ -346,7 +346,47 @@ describe('design', () => {
     expect(cli('design', 'constraints', design).out).toContain('post 接受了这次违反约束的变化');
     // 没给实例：落点有 post 就要有 by: post 的实例。
     put(root, '.tmp/ssot-design/constraints/c.yaml', 'constraints:\n  - constraint: C1\n    landing: [{kind: post, element: "Run`Start"}]\n');
-    expect(cli('design', 'constraints', design).out).toContain('落点有 post，要给一个违反情形的实例');
+    expect(cli('design', 'constraints', design).out).toContain('落点 post Run`Start 还没有经求值确认的违反实例');
+    // 实例的操作不在落点里：别处的 post 拒绝它，不算这条约束守住了。
+    ledger(`      - by: post
+        operation: "Run\`Finish"
+        args: ["mk_token(1)"]
+        before: "mk_Runs({1 |-> mk_token(1)}, {mk_token(1)})"
+        after: "mk_Runs({1 |-> mk_token(1)}, {mk_token(1)})"
+        violates: "true"
+`);
+    expect(cli('design', 'constraints', design).out).toContain('不是这条约束 post 落点里的元素');
+  });
+
+  test('pre 里有不展开的判定：拒绝实例与反例都按准入成立求值', () => {
+    const { root, design } = workspace();
+    draft(root);
+    cli('draft', 'status', root);
+    const run = join(design, 'architecture/run.md');
+    writeFileSync(
+      run,
+      readFileSync(run, 'utf8')
+        .replace('\noperations\n', '\nfunctions\n  -- 请求是否可以开始；由调用方的规则决定，这里不展开\n  Eligible: RequestNo -> bool\n  Eligible(r) == is not yet specified;\n\noperations\n')
+        .replace('  ext wr byRequest wr live\n  post (is_Started(r)', '  ext wr byRequest wr live\n  pre Eligible(request)\n  post (is_Started(r)'),
+    );
+    put(
+      root,
+      '.tmp/ssot-design/constraints/c.yaml',
+      `constraints:\n  - constraint: C1\n    landing: [{kind: post, element: "Run\`Start"}]\n    rejects:\n      - by: post\n        operation: "Run\`Start"\n        args: ["1"]\n        result: "mk_Started(mk_token(2))"\n        before: "mk_Runs({1 |-> mk_token(1)}, {mk_token(1)})"\n        after: "mk_Runs({1 |-> mk_token(2)}, {mk_token(2)})"\n        violates: "result.run <> before.byRequest(1)"\n`,
+    );
+    const out = cli('design', 'constraints', design).out;
+    expect(out).not.toContain('rejects[0]');
+    expect(out).not.toContain('Error 4024');
+    // 反例：规格允许结果未知且运行表不变；不展开的准入不归本规格定，不挡住反例。
+    const slot = '{verdict: not_applicable, reason: 测试}';
+    put(
+      root,
+      '.tmp/ssot-design/attack/attack.yaml',
+      `attacks:\n  - constraint: C1\n    initial: ${slot}\n    call:\n      verdict: counterexample\n      reason: 测试\n      witness:\n        operation: "Run\`Start"\n        args: ["1"]\n        result: "<Unknown>"\n        before: "mk_Runs({|->}, {})"\n        after: "mk_Runs({|->}, {})"\n        violates: "result = <Unknown>"\n    compose: ${slot}\n    bypass: ${slot}\n    import: ${slot}\n`,
+    );
+    const attack = cli('design', 'attack', design).out;
+    expect(attack).toContain('call 有反例，约束不成立');
+    expect(attack).not.toContain('Error 4024');
   });
 
   test('不变式拒绝违反情形：构造时报错才算守住', () => {
@@ -354,11 +394,14 @@ describe('design', () => {
     draft(root);
     cli('draft', 'status', root);
     const ledger = (value: string) =>
-      put(root, '.tmp/ssot-design/constraints/c.yaml', `constraints:\n  - constraint: C1\n    landing: [{kind: inv, element: "Run\`Runs"}]\n    rejects:\n      - {by: inv, module: Run, value: "${value}"}\n`);
+      put(root, '.tmp/ssot-design/constraints/c.yaml', `constraints:\n  - constraint: C1\n    landing: [{kind: inv, element: "Run\`Runs"}]\n    rejects:\n      - {by: inv, element: "Run\`Runs", value: "${value}"}\n`);
     ledger('mk_Runs({|->}, {mk_token(1)})');
     expect(cli('design', 'constraints', design).out).not.toContain('rejects[0]');
     ledger('mk_Runs({1 |-> mk_token(1)}, {mk_token(1)})');
     expect(cli('design', 'constraints', design).out).toContain('inv 没有拒绝这个违反情形');
+    // 报错的是请求号自己的不变式，不是落点 Runs 的：不算 Runs 守住了。
+    ledger('(lambda x : RequestNo & x)(0)');
+    expect(cli('design', 'constraints', design).out).toContain('不是 Run`Runs 的不变式拒绝了它');
   });
 
   test('改成占位的元素不是实现偏差，只要交代来由', () => {
@@ -390,5 +433,20 @@ describe('design', () => {
     // 运行 1 仍活着时交回它是 post 允许的；violates 却不成立，同样不算反例。
     attack('mk_Runs({1 |-> mk_token(1)}, {mk_token(1)})', 'mk_Runs({1 |-> mk_token(1)}, {mk_token(1)})');
     expect(cli('design', 'attack', design).out).toContain('反例不成立');
+  });
+
+  test('作者自攻求值成立的反例是错误：设计不能交付', () => {
+    const { root, design } = workspace();
+    draft(root);
+    cli('draft', 'status', root);
+    const slot = '{verdict: not_applicable, reason: 测试}';
+    put(
+      root,
+      '.tmp/ssot-design/attack/attack.yaml',
+      `attacks:\n  - constraint: C1\n    initial: ${slot}\n    call:\n      verdict: counterexample\n      reason: Finish 之后运行不再活着\n      witness:\n        operation: "Run\`Finish"\n        args: ["mk_token(1)"]\n        before: "mk_Runs({1 |-> mk_token(1)}, {mk_token(1)})"\n        after: "mk_Runs({1 |-> mk_token(1)}, {})"\n        violates: "mk_token(1) not in set after.live"\n    compose: ${slot}\n    bypass: ${slot}\n    import: ${slot}\n`,
+    );
+    const run = cli('design', 'attack', design, '--stamp');
+    expect(run.code).toBe(1);
+    expect(run.out).toContain('改设计直到构造不出这个反例');
   });
 });

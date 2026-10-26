@@ -852,29 +852,20 @@ function elementObligations(spec: Spec): Obligation[] {
 
 /**
  * 无偏差（Jones）：任何一串导出操作都区分不了的状态区分，不该写进规格。工具只能静态、保守地判断：
- * 确定没有任何定义读到它时判为不可观察（unobservable）；读到了不等于能区分，仍由判断者在 verify 的 bias 里判（undetermined）。
- * 只看状态分量与记录字段；并类型的分支、显式体与谓词不在这里判。
+ * 状态分量没有任何定义读到它时判为不可观察（unobservable）；读到了不等于能区分，仍由判断者在 verify 的 bias 里判（undetermined）。
+ * 记录字段不在这里判：整个记录的相等、集合成员、映射键都会比较它，不经字段选择也能被导出结果区分，静态看不出就不断言。
  */
 type Observability = 'unobservable' | 'undetermined';
 
-function observability(spec: Spec, e: Element): Observability {
-  const d = e.definition;
+function observability(e: Element): Observability {
   const field = e.field;
-  if (field === null) return 'undetermined';
-  if (d.kind === 'state') return e.module.definitions.some((x) => x.reads.includes(field)) ? 'undetermined' : 'unobservable';
-  if (d.kind !== 'type') return 'undetermined';
-  // 记录带 struct 导出：系统外的调用方能读它的字段。
-  if (e.module.exports.all || e.module.exports.items.some((x) => x.kind === 'struct' && x.name === d.name)) return 'undetermined';
-  const names = new Set([d.name, ...spec.modules.flatMap((m) => m.imports.filter((i) => i.module === e.module.name).flatMap((i) => i.items.filter((it) => it.name === d.name && it.renamed).map((it) => it.renamed!)))]);
-  const read = spec.modules.some((m) => m.definitions.some((x) => x.selects.includes(field) || x.patterns.some((p) => names.has(p))));
-  return read ? 'undetermined' : 'unobservable';
+  if (field === null || e.definition.kind !== 'state') return 'undetermined';
+  return e.module.definitions.some((x) => x.reads.includes(field)) ? 'undetermined' : 'unobservable';
 }
 
-/** 不可观察的元素：为什么是偏差、怎样处理。设计端报错，验证端报警告。 */
+/** 不可观察的状态分量：为什么是偏差、怎样处理。设计端报错，验证端报警告。 */
 function biasNote(e: Element): string {
-  return e.definition.kind === 'state'
-    ? `没有任何定义读到状态分量 ${e.field}：它只被自己的更新式改写，任何一串操作都区分不了它的取值，是实现偏差。删掉它；需求确实要求有人看到它时，是规格缺了观察它的连接，回到草稿。`
-    : `没有任何定义用字段名选出 ${e.field}，也没有定义按位置拆开 ${e.definition.name}，${e.definition.name} 也没有带 struct 导出给系统外：没有观察者读得到这个字段，是实现偏差。删掉它；需求确实要求有人读到它时，是规格缺了读它的连接，回到草稿。`;
+  return `没有任何定义读到状态分量 ${e.field}：它只被自己的更新式改写，任何一串操作都区分不了它的取值，是实现偏差。删掉它；需求确实要求有人看到它时，是规格缺了观察它的连接，回到草稿。`;
 }
 
 /** 本轮要交代来由的元素：相对基线新增或原文改动的，以及本轮删掉的。没动过的旧元素不归本轮草稿解释。 */
@@ -1013,10 +1004,10 @@ function designOutcomes(design: string, sub: DesignSub, mode: StampMode): Outcom
   const ledger = (s: string) => join(repo, '.tmp', 'ssot-design', s);
   const scope: Scope = { dirs: [], constraints: [] };
   if (wants('elements')) {
-    // 本轮动过的模块里，确定没有观察者的状态分量与记录字段：实现偏差，直接报错，不设判断槽。
+    // 本轮动过的模块里，确定没有观察者的状态分量：实现偏差，直接报错，不设判断槽。
     const touched = new Set([...spec.elements.values()].filter((e) => baseline.get(e.key) !== e.source).map((e) => e.module.name));
     const biased = [...spec.elements.values()]
-      .filter((e) => touched.has(e.module.name) && observability(spec, e) === 'unobservable')
+      .filter((e) => touched.has(e.module.name) && observability(e) === 'unobservable')
       .map((e) => error('elements', `${e.key}（${e.module.place.path}:${e.line}）`, biasNote(e)));
     const judged = runStamped(
       {
@@ -1081,6 +1072,7 @@ function designOutcomes(design: string, sub: DesignSub, mode: StampMode): Outcom
             const dc = draft!.constraints.get(o.key)!;
             const landing = Array.isArray(record.landing) ? record.landing : [];
             if (landing.length === 0) slots.errors.push(`${o.key}.landing：写出这条约束落在规格的哪里。`);
+            const landed = new Map<Rejectable, Set<string>>(REJECTABLE.map((k) => [k, new Set<string>()]));
             const kinds = landing.map((item, i) => {
               const where = `${o.key}.landing[${i}]`;
               if (!isObj(item)) {
@@ -1093,21 +1085,24 @@ function designOutcomes(design: string, sub: DesignSub, mode: StampMode): Outcom
                 const expected = dc.owner.layer === 'business' ? `business/${dc.owner.holder}` : 'architecture';
                 if (!inDir(dir, expected)) warnings.push(`${where}：草稿把它归给 ${dc.owner.layer === 'business' ? `业务 ${dc.owner.holder}` : `架构（${dc.owner.holder}）`}，落点却在 ${dir}。`);
               }
+              const rejectable = REJECTABLE.find((k) => k === kind);
+              if (rejectable && typeof item.element === 'string' && spec.elements.has(item.element)) landed.get(rejectable)!.add(item.element);
               return kind;
             });
             if (kinds.length > 0 && kinds.every((k) => k === 'semantic')) warnings.push(`${o.key}：这条约束只写进了「语义」，规格里没有类型或谓词排除它；交付时单独列出。`);
             const rejects = Array.isArray(record.rejects) ? record.rejects : [];
-            const confirmed = new Set<Rejectable>();
+            const confirmed = new Set<string>();
             rejects.forEach((r, i) => {
               if (!isObj(r)) slots.errors.push(`${o.key}.rejects[${i}]：应当是 {by, …}。`);
               else {
-                const by = rejection(spec, r, `${o.key}.rejects[${i}]`, slots, deps);
-                if (by) confirmed.add(by);
+                const by = rejection(spec, r, `${o.key}.rejects[${i}]`, slots, deps, landed);
+                if (by) confirmed.add(`${by} ${String(by === 'inv' ? r.element : r.operation)}`);
               }
             });
-            const rejectable = REJECTABLE.filter((k) => kinds.includes(k));
-            for (const k of rejectable) if (!confirmed.has(k)) slots.errors.push(`${o.key}.rejects：落点有 ${k}，要给一个违反情形的实例，让工具求值确认 ${k} 拒绝它（by: ${k}）。`);
-            if (rejectable.length === 0 && !kinds.every((k) => k === 'semantic')) warnings.push(`${o.key}：落点里没有 pre、post 或 inv，没有经求值确认规格拒绝违反情形；交付时单独列出。`);
+            for (const [k, elements] of landed) {
+              for (const ref of elements) if (!confirmed.has(`${k} ${ref}`)) slots.errors.push(`${o.key}.rejects：落点 ${k} ${ref} 还没有经求值确认的违反实例，给一个让 ${ref} 的 ${k} 拒绝的实例（by: ${k}）。`);
+            }
+            if ([...landed.values()].every((e) => e.size === 0) && !kinds.every((k) => k === 'semantic')) warnings.push(`${o.key}：落点里没有 pre、post 或 inv，没有经求值确认规格拒绝违反情形；交付时单独列出。`);
             return { errors: slots.errors, warnings, deps };
           },
         },
@@ -1122,7 +1117,7 @@ function designOutcomes(design: string, sub: DesignSub, mode: StampMode): Outcom
     const constraints = new Map<string, Expected>(
       [...draft!.constraints.values()].map((c) => [c.id, { id: c.id, record: c.record, dir: c.owner?.layer === 'business' ? `business/${c.owner.holder}` : 'architecture', subject: canonical(c.record) }]),
     );
-    outcomes.push(attackOutcome(spec, constraints, join(ledger('attack'), 'attack.yaml'), yamlFiles(ledger('attack')), scope, mode, rel));
+    outcomes.push(attackOutcome('author', spec, constraints, join(ledger('attack'), 'attack.yaml'), yamlFiles(ledger('attack')), scope, mode, rel));
   }
   return outcomes;
 }
@@ -1316,16 +1311,24 @@ function witness(spec: Spec, w: Obj, where: string, slots: Slots, deps: Record<s
     }
     const bindings = [state ? `before = ${before}` : null, state ? `after = ${after}` : null, result ? `result = ${result}` : null].filter(Boolean);
     const stateArgs = state ? ['before'] : [];
-    const parts = [
-      d.hasPre ? `pre_${d.name}(${[...args, ...stateArgs].join(', ')})` : null,
-      `post_${d.name}(${[...args, ...(result ? ['result'] : []), ...(state ? ['before', 'after'] : [])].join(', ')})`,
-      `(${violates})`,
-    ].filter(Boolean);
     const written = new Set(d.ext.filter((x) => x.mode === 'wr').flatMap((x) => x.names));
     const frame = state ? state.fields.filter((f) => !written.has(f.name)).map((f) => f.name) : [];
-    const body = frame.length > 0 ? `mk_(${parts.join(' and ')}, [${frame.map((f) => `before.${f} = after.${f}`).join(', ')}])` : parts.join(' and ');
-    const expression = bindings.length > 0 ? `let ${bindings.join(', ')} in ${body}` : body;
-    const run = evaluate(spec.design, spec.modules, element.module.name, expression);
+    const expressionWith = (admission: boolean) => {
+      const parts = [
+        admission && d.hasPre ? `pre_${d.name}(${[...args, ...stateArgs].join(', ')})` : null,
+        `post_${d.name}(${[...args, ...(result ? ['result'] : []), ...(state ? ['before', 'after'] : [])].join(', ')})`,
+        `(${violates})`,
+      ].filter(Boolean);
+      const body = frame.length > 0 ? `mk_(${parts.join(' and ')}, [${frame.map((f) => `before.${f} = after.${f}`).join(', ')}])` : parts.join(' and ');
+      return bindings.length > 0 ? `let ${bindings.join(', ')} in ${body}` : body;
+    };
+    let expression = expressionWith(true);
+    let run = evaluate(spec.design, spec.modules, element.module.name, expression);
+    // pre 里不展开的判定（is not yet specified）求不出值：它的内容不归本规格定，规格对这次调用的准入没有拒绝，按允许求值。
+    if (run.kind === 'Failed' && /Error 4024/.test(run.text) && d.hasPre) {
+      expression = expressionWith(false);
+      run = evaluate(spec.design, spec.modules, element.module.name, expression);
+    }
     if (run.kind === 'Failed') s.errors.push(`${where}：反例求值出错，规格不接受它：${run.text.split('\n').join('；')}（表达式：${expression}）`);
     else {
       const values = [...run.text.matchAll(/\b(true|false)\b/g)].map((m) => m[1] === 'true');
@@ -1357,31 +1360,38 @@ const REJECTABLE = ['post', 'pre', 'inv'] as const;
 type Rejectable = (typeof REJECTABLE)[number];
 
 const REJECTS_HINT =
-  'rejects：每个 pre、post、inv 落点各给一个草稿违反情形的具体实例，工具用 VDMJ 求值，确认规格拒绝它。by: post 写 {operation, args, result, before, after, violates}：pre 与 violates 成立，post 必须不成立（或这次变化改了没列进 ext wr 的分量，或 after 违反不变式）；by: pre 写 {operation, args, before, violates}：violates 成立，pre 必须不成立；by: inv 写 {module, value}：value 用 mk_ 构造违反情形的状态或值，构造时不变式必须报错。';
+  'rejects：每个 pre、post、inv 落点各给一个草稿违反情形的具体实例，工具用 VDMJ 求值，确认这个落点拒绝它。by: post 写 {operation, args, result, before, after, violates}：operation 是落点里的 post 元素，pre 与 violates 成立，post 必须不成立（或这次变化改了没列进 ext wr 的分量，或 after 违反不变式）；pre 里有不展开的判定时按准入成立求值；by: pre 写 {operation, args, before, violates}：operation 是落点里的 pre 元素，violates 成立，pre 必须不成立；by: inv 写 {element, value}：element 是落点里的 inv 元素，value 构造违反情形的值，必须是这个元素自己的不变式报错（mk_ 构造记录或状态，非记录类型用 (lambda x : T & x)(v)）。';
 
 /**
- * 充分性（Jackson）的一个实例：草稿的违反情形写成具体的值，规格必须拒绝它。拒绝是存在性的事实，VDMJ 对给定的值求值就能确认；
- * 规格接受了它，就是约束没有守住。返回确认成立的落点种类，实例不成立时返回 null。
+ * 充分性（Jackson）的一个实例：草稿的违反情形写成具体的值，这条约束的落点必须拒绝它。拒绝是存在性的事实，VDMJ 对给定的值求值就能确认；
+ * 规格接受了它，就是约束没有守住。实例只认落点里登记的元素：别处的谓词或不变式拒绝了它，不算这条约束守住了。
+ * 返回确认成立的落点种类，实例不成立时返回 null。
  */
-function rejection(spec: Spec, r: Obj, where: string, slots: Slots, deps: Record<string, string>): Rejectable | null {
+function rejection(spec: Spec, r: Obj, where: string, slots: Slots, deps: Record<string, string>, landed: ReadonlyMap<Rejectable, ReadonlySet<string>>): Rejectable | null {
   const s = new Slots(r, where);
   const by = s.choice('by', REJECTABLE);
   const fail = (message: string) => s.errors.push(`${where}：${message}`);
+  const notLanded = (kind: Rejectable, ref: string) => fail(`${ref} 不是这条约束 ${kind} 落点里的元素；实例要由落点自己的 ${kind} 拒绝，落点里列出的有：${[...(landed.get(kind) ?? [])].join('、') || '无'}。`);
   switch (by) {
     case null:
       break;
     case 'inv': {
-      s.only(['by', 'module', 'value']);
-      const name = s.text('module');
+      s.only(['by', 'element', 'value']);
+      const ref = s.text('element');
       const value = s.text('value');
-      const module = spec.modules.find((m) => m.name === name);
-      if (name && !module) fail(`没有模块 ${name}。`);
-      if (module && value) {
-        deps[`模块 ${module.name}`] = sources(spec.design, module).module;
-        const run = evaluate(spec.design, spec.modules, module.name, value);
-        if (run.kind === 'Value') fail(`这个值满足全部不变式（求值得到 ${run.text.trim()}）：inv 没有拒绝这个违反情形。`);
-        else if (!/Error 4079|invariant/i.test(run.text)) fail(`求值出错，但不是不变式拒绝了它：${run.text.split('\n').join('；')}`);
+      const element = ref ? spec.elements.get(ref) : undefined;
+      if (ref && !landed.get('inv')?.has(ref)) {
+        notLanded('inv', ref);
+        break;
       }
+      if (!element || !value) break;
+      deps[element.key] = element.source;
+      const name = element.definition.name;
+      const run = evaluate(spec.design, spec.modules, element.module.name, value);
+      // VDMJ 报不变式错误时点名违反的类型：4079 是 mk_ 构造记录或状态，4060 是非记录类型。别的类型报错，是别的不变式拒绝了它。
+      const own = new RegExp(`Error 4079: Type invariant violated by mk_(\\w+\`)?${name} arguments|Error 4060: Type invariant violated for (\\w+\`)?${name}\\b`);
+      if (run.kind === 'Value') fail(`这个值满足全部不变式（求值得到 ${run.text.trim()}）：${ref} 的 inv 没有拒绝这个违反情形。`);
+      else if (!own.test(run.text)) fail(`求值出错，但不是 ${ref} 的不变式拒绝了它：${run.text.split('\n').join('；')}`);
       break;
     }
     case 'pre':
@@ -1396,6 +1406,10 @@ function rejection(spec: Spec, r: Obj, where: string, slots: Slots, deps: Record
       const element = ref ? spec.elements.get(ref) : undefined;
       if (ref && (!element || element.field !== null || !element.definition.kind.includes('operation'))) {
         fail(`${ref} 不是规格里的操作。`);
+        break;
+      }
+      if (ref && !landed.get(by)?.has(ref)) {
+        notLanded(by, ref);
         break;
       }
       if (!element || !violates) break;
@@ -1416,13 +1430,20 @@ function rejection(spec: Spec, r: Obj, where: string, slots: Slots, deps: Record
       const post = `post_${d.name}(${[...args, ...(result ? ['result'] : []), ...(state ? ['before', 'after'] : [])].join(', ')})`;
       const written = new Set(d.ext.filter((x) => x.mode === 'wr').flatMap((x) => x.names));
       const frame = by === 'post' && state ? state.fields.filter((f) => !written.has(f.name)).map((f) => `before.${f.name} = after.${f.name}`) : [];
-      const parts = by === 'pre' ? [`(${violates})`, pre] : [`(${violates})`, pre, post, ...frame];
-      const expression = `${bindings.length > 0 ? `let ${bindings.join(', ')} in ` : ''}mk_(${parts.join(', ')})`;
-      const run = evaluate(spec.design, spec.modules, element.module.name, expression);
+      const expressionWith = (admission: string) =>
+        `${bindings.length > 0 ? `let ${bindings.join(', ')} in ` : ''}mk_(${(by === 'pre' ? [`(${violates})`, admission] : [`(${violates})`, admission, post, ...frame]).join(', ')})`;
+      let expression = expressionWith(pre);
+      let run = evaluate(spec.design, spec.modules, element.module.name, expression);
+      // pre 里不展开的判定（is not yet specified）求不出值：post 是否拒绝与准入无关，按准入成立再求一次。
+      if (by === 'post' && run.kind === 'Failed' && /Error 4024/.test(run.text) && d.hasPre) {
+        expression = expressionWith('true');
+        run = evaluate(spec.design, spec.modules, element.module.name, expression);
+      }
       if (run.kind === 'Failed') {
         // before 合法而 after 违反不变式：这次变化构造不出来，是不变式拒绝了它。
         const rejectedByInv = by === 'post' && state !== undefined && /Error 4079/.test(run.text) && evaluate(spec.design, spec.modules, element.module.name, `let before = ${before} in true`).kind === 'Value';
-        if (!rejectedByInv) fail(`求值出错：${run.text.split('\n').join('；')}（表达式：${expression}）`);
+        if (by === 'pre' && /Error 4024/.test(run.text)) fail(`pre 求值先碰到了不展开的判定（is not yet specified）：把守住这条约束的合取项写在它之前，违反情形在这一项就被拒绝（表达式：${expression}）。`);
+        else if (!rejectedByInv) fail(`求值出错：${run.text.split('\n').join('；')}（表达式：${expression}）`);
         break;
       }
       const values = [...run.text.matchAll(/\b(true|false)\b/g)].map((m) => m[1] === 'true');
@@ -1812,8 +1833,11 @@ function attackHint(spec: Spec, e: Expected): string {
 /**
  * 五种违反情形：对每条约束试着构造规格允许、却违反它的情况，反例由 VDMJ 求值核对。
  * 验证方攻击自己写下的应有约束，作者在设计时攻击草稿约束，用的是同一套槽位与求值。
+ * 求值成立的反例：作者一方是错误（约束没守住，设计不能交付，改设计）；验证一方是警告（验证只报告，不改设计）。
  */
-function attackOutcome(spec: Spec, constraints: ReadonlyMap<string, Expected>, target: string, files: readonly string[], scope: Scope, mode: StampMode, rel: (p: string) => string): Outcome {
+type AttackSide = 'author' | 'verifier';
+
+function attackOutcome(side: AttackSide, spec: Spec, constraints: ReadonlyMap<string, Expected>, target: string, files: readonly string[], scope: Scope, mode: StampMode, rel: (p: string) => string): Outcome {
   const lifecycleOf = (id: string) => (constraints.get(id)?.record.category === 'lifecycle' ? LIFECYCLE_QUESTIONS : []);
   return runStamped(
     {
@@ -1863,7 +1887,19 @@ function attackOutcome(spec: Spec, constraints: ReadonlyMap<string, Expected>, t
             case 'counterexample': {
               const w = s.object('witness');
               if (w) witness(spec, w, `${id}.${slot}.witness`, s, deps);
-              if (s.errors.length === 0) warnings.push(`${slot} 有反例，约束不成立：${reason ?? ''}${w && typeof w.operation === 'string' ? placed(spec, [w.operation]) : ''}`);
+              if (s.errors.length === 0) {
+                const found = `${slot} 有反例，约束不成立：${reason ?? ''}${w && typeof w.operation === 'string' ? placed(spec, [w.operation]) : ''}`;
+                switch (side) {
+                  case 'author':
+                    s.errors.push(`${id}.${slot}：${found}。改设计直到构造不出这个反例，再重判这一槽。`);
+                    break;
+                  case 'verifier':
+                    warnings.push(found);
+                    break;
+                  default:
+                    assertNever(side);
+                }
+              }
               break;
             }
             default:
@@ -1948,7 +1984,7 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
 
   if (wants('attack')) {
     if (expectBlocked) outcomes.push(needsExpect('attack'));
-    else outcomes.push(attackOutcome(spec, expected, target('attack'), files('attack'), scope, mode, rel));
+    else outcomes.push(attackOutcome('verifier', spec, expected, target('attack'), files('attack'), scope, mode, rel));
   }
 
   if (wants('elements')) {
@@ -1958,7 +1994,7 @@ function verifyOutcomes(design: string, sub: VerifySub, as: string, scope: Scope
         .filter((e) => e.field === null && e.definition.kind === 'implicit operation' && e.definition.ext.length === 0 && inScope({ dir: e.module.place.dir, constraint: null }, scope))
         .map((e) => warning('elements', `${e.key}（${e.module.place.path}:${e.line}）`, '不读写任何状态的隐式操作：写成函数（functions），不写成 operations。'));
       const biased = [...spec.elements.values()]
-        .filter((e) => inScope({ dir: e.module.place.dir, constraint: null }, scope) && observability(spec, e) === 'unobservable')
+        .filter((e) => inScope({ dir: e.module.place.dir, constraint: null }, scope) && observability(e) === 'unobservable')
         .map((e) => warning('elements', `${e.key}（${e.module.place.path}:${e.line}）`, biasNote(e)));
       const judged = runStamped(
           {

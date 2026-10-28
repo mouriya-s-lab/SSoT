@@ -97,7 +97,7 @@ VDM-SL 在本仓库的核心价值是**抽象过滤**：只锚定多视角权衡
 
 - 语义反模式审查 `review.py` 在 omp 的 Python `eval` 里调用 `jev`；
 - 验证 subagent `ssot:argon`、`ssot:fable` 与原始来源代读 subagent `ssot:reader` 是 omp 的 agent 定义（[`skills/ssot/agents/`](skills/ssot/agents/)），模型按 omp 的模型名写定（`ssot:reader` 写的是 `task:mid` 当前绑定的 `openai-codex/gpt-6-1-sol:high`，改 `task:mid` 的绑定时要同步改它）；
-- 分身（总纲第四节，逐项判断与五个方向的决策都用它）依赖 omp 的会话文件（`$PI_SESSION_FILE` 里的 `model_change`、`thinking_level_change`）、项目 `.omp/agents/` 下的临时 agent 定义与不 shake 的 `fork_task`；`ssot:argon`、`ssot:fable` 因此允许派生（`spawns: "*"`），只用来 fork 自己的分身；
+- 分身（总纲第四节，一个分身同时判五件互不相干的事）依赖 omp 的会话文件（`$PI_SESSION_FILE` 里的 `model_change`、`thinking_level_change`）、项目 `.omp/agents/` 下的临时 agent 定义与不 shake 的 `fork_task`；`ssot:argon`、`ssot:fable` 因此允许派生（`spawns: "*"`），只用来 fork 自己的分身；
 - skill 内的脚本与参考文件经 omp 的 `skill://` 地址加载。
 
 ## 安装

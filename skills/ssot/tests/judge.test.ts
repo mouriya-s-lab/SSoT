@@ -470,4 +470,28 @@ describe('design', () => {
     expect(run.code).toBe(1);
     expect(run.out).toContain('改设计直到构造不出这个反例');
   });
+
+  test('只被架构模块导入的连接按导入关系排除绕开的调用；没有谓词的系统接口不能这样排除', () => {
+    const { root, design } = workspace();
+    draft(root);
+    cli('draft', 'status', root);
+    // 让 Run`Status 只被架构子模块 Attempt 导入：它成为内部连接。
+    const attempt = join(design, 'architecture/attempt/attempt.md');
+    writeFileSync(attempt, readFileSync(attempt, 'utf8').replace('imports from Run types RunId renamed RunId', 'imports from Run types RunId renamed RunId operations Status renamed Status'));
+    expect(cli('design', 'attack', design).out).toContain('Report`Daily[场景]（系统接口，系统外调用）');
+    const slot = '{verdict: not_applicable, reason: 测试}';
+    const ledger = (bypass: string) =>
+      put(root, '.tmp/ssot-design/attack/attack.yaml', `attacks:\n  - constraint: C1\n    initial: ${slot}\n    call: ${slot}\n    compose: ${slot}\n    bypass: {verdict: excluded, by: ["${bypass}"], reason: 测试}\n    import: ${slot}\n`);
+    ledger('Run`Status');
+    const internal = cli('design', 'attack', design, '--stamp').out;
+    expect(internal).not.toContain('导入关系挡不住直接调用');
+    // 排除依据记下了它的全部导入方：导入关系变了，这条记录跟着过期。
+    const stamp = readFileSync(join(root, '.tmp/ssot-design/attack/attack.stamp.yaml'), 'utf8');
+    expect(stamp).toContain('Run`Status 的调用方');
+    expect(stamp).toContain('Attempt');
+    writeFileSync(attempt, readFileSync(attempt, 'utf8').replace(' operations Status renamed Status', ''));
+    expect(cli('design', 'attack', design).out).toContain('过期');
+    ledger('Report`Daily');
+    expect(cli('design', 'attack', design).out).toContain('Report`Daily 是系统接口，系统外调用，导入关系挡不住直接调用');
+  });
 });

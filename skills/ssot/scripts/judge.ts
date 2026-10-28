@@ -1545,7 +1545,7 @@ const FRAME_QUESTION: Question = { slot: 'frame', ask: '每个 or 分支都写�
  */
 const STRUCTURE_BIAS: Question = {
   slot: 'bias',
-  ask: '无偏差：取两个只在这里不同的合法状态或值，存在一串导出操作（系统外调用方经导出连接调用的也算），让它们的结果或能否调用不同；找不到就是实现偏差，判 problem，修法是删掉它或收回成 token。能由别的分量算出的冗余分量也是偏差，修法是写成纯函数投影',
+  ask: '无偏差：取两个只在这里不同的合法状态或值，存在一串导出操作（系统外调用方经系统接口调用的也算），让它们的结果或能否调用不同；找不到就是实现偏差，判 problem，修法是删掉它或收回成 token。能由别的分量算出的冗余分量也是偏差，修法是写成纯函数投影',
   evidence: '区分它的导出操作',
 };
 const BODY_BIAS: Question = {
@@ -1812,13 +1812,41 @@ function pendingProofs(design: string, spec: Spec): ReadonlyMap<string, ProofObl
   return pending;
 }
 
+/**
+ * 一个导出操作是内部连接还是系统接口。只被架构模块导入的是内部连接：规格里谁能调用它由导入关系决定，导入它的模块就是全部合法调用方。
+ * 被业务单元导入、或没有任何模块导入（留给系统外的调用方）的是系统接口：谁都可能直接调用它，绕开场景的调用要由谓词挡住。
+ */
+type Reach = { readonly kind: 'internal'; readonly importers: readonly string[] } | { readonly kind: 'interface'; readonly importers: readonly string[] };
+
+function reach(spec: Spec, module: Located, name: string): Reach {
+  const importers = spec.modules.filter((m) => m.imports.some((i) => i.module === module.name && i.items.some((it) => it.kind === 'all' || it.name === name)));
+  const names = importers.map((m) => m.name).sort();
+  return importers.length > 0 && importers.every((m) => m.place.layer === 'architecture') ? { kind: 'internal', importers: names } : { kind: 'interface', importers: names };
+}
+
+function reachNote(r: Reach): string {
+  switch (r.kind) {
+    case 'internal':
+      return `内部连接，只由 ${r.importers.join('、')} 调用`;
+    case 'interface':
+      return r.importers.length > 0 ? `系统接口，${r.importers.join('、')} 导入，有业务单元导入，系统外也可调用` : '系统接口，系统外调用';
+    default:
+      return assertNever(r);
+  }
+}
+
 function attackHint(spec: Spec, e: Expected): string {
   const owned = spec.modules.filter((m) => m.place.dir === e.dir);
   const names = new Set(owned.map((m) => m.name));
   const importers = spec.modules.filter((m) => m.imports.some((i) => names.has(i.module)));
   const states = owned.flatMap((m) => m.definitions.filter((d) => d.kind === 'state').map((d) => `${m.name}\`${d.name}(${d.fields.map((f) => f.name).join(', ')})`));
   const ops = [...owned, ...importers].flatMap((m) =>
-    m.definitions.filter((d) => d.kind.includes('operation')).map((d) => `${m.name}\`${d.name}${d.ext.length > 0 ? `[${d.ext.map((x) => `${x.mode} ${x.names.join(' ')}`).join('; ')}]` : d.explicit ? '[场景]' : ''}`),
+    m.definitions
+      .filter((d) => d.kind.includes('operation'))
+      .map((d) => {
+        const exported = m.exports.all || m.exports.items.some((x) => x.kind === 'operation' && x.name === d.name);
+        return `${m.name}\`${d.name}${d.ext.length > 0 ? `[${d.ext.map((x) => `${x.mode} ${x.names.join(' ')}`).join('; ')}]` : d.explicit ? '[场景]' : ''}${exported ? `（${reachNote(reach(spec, m, d.name))}）` : ''}`;
+      }),
   );
   const edges = importers.map((m) => `${m.name} -> ${m.imports.filter((i) => names.has(i.module)).map((i) => i.module).join(', ')}`);
   return [
@@ -1827,6 +1855,7 @@ function attackHint(spec: Spec, e: Expected): string {
     `操作：${[...new Set(ops)].join('；') || '无'}`,
     `导入 ${e.dir} 的模块：${edges.join('；') || '无'}`,
     `每个槽：verdict 为 excluded（by 列出排除它的元素）| not_applicable | counterexample（witness：{operation, args, result, before, after, violates} 或 {module, expression}）| undecided`,
+    'bypass 与 import 槽：内部连接只由导入它的模块调用，by 写这个连接，工具按导入关系核对；系统接口要由谓词挡住。',
   ].join('\n');
 }
 
@@ -1876,6 +1905,26 @@ function attackOutcome(side: AttackSide, spec: Spec, constraints: ReadonlyMap<st
               const found = refs(spec, by, `${id}.${slot}.by`, s, deps);
               if (found.length > 0 && found.every((f) => f.element?.definition.explicit && f.element.definition.kind === 'explicit operation')) {
                 warnings.push(`${slot}：只拿场景作排除的依据；场景能走通只说明那一条路没有违反，找出排除它的类型或谓词。`);
+              }
+              if (slot === 'bypass' || slot === 'import') {
+                for (const f of found) {
+                  const el = f.element;
+                  if (!el || el.field !== null || !el.definition.kind.includes('operation')) continue;
+                  const m = el.module;
+                  if (!(m.exports.all || m.exports.items.some((x) => x.kind === 'operation' && x.name === el.definition.name))) continue;
+                  const r = reach(spec, m, el.definition.name);
+                  // 导入关系变了，按它判的排除跟着过期。
+                  deps[`${el.key} 的调用方`] = r.importers.join(', ');
+                  switch (r.kind) {
+                    case 'internal':
+                      break;
+                    case 'interface':
+                      if (!el.definition.hasPre && !el.definition.hasPost) warnings.push(`${slot}：${el.key} 是${reachNote(r)}，导入关系挡不住直接调用，它又没有 pre 或 post：找出挡住这次调用的谓词。`);
+                      break;
+                    default:
+                      assertNever(r);
+                  }
+                }
               }
               break;
             }

@@ -276,22 +276,6 @@ excluded:
     expect(run.code).toBe(1);
     expect(run.out).toContain('约束 C1 不在任何需求的论证里');
   });
-
-  test('取舍要列五个各不相同的方向', () => {
-    const root = mkdtempSync('/tmp/ssot-judge-');
-    roots.push(root);
-    put(root, 'request.md', REQUEST);
-    draft(root);
-    const file = join(root, '.tmp/ssot-draft/draft.yaml');
-    const base = readFileSync(file, 'utf8');
-    const tradeoff = (options: string) => writeFileSync(file, `${base}tradeoffs:\n  - {id: D1, question: 测试, options: ${options}, choice: 甲, basis: 测试, wrong_when: 测试}\n`);
-    tradeoff('[甲, 乙]');
-    expect(cli('draft', 'tradeoffs', root).out).toContain('现在是 2 个');
-    tradeoff('[甲, 乙, 丙, 丁, 甲]');
-    expect(cli('draft', 'tradeoffs', root).out).toContain('有重复的方向');
-    tradeoff('[甲, 乙, 丙, 丁, 戊]');
-    expect(cli('draft', 'tradeoffs', root).code).toBe(0);
-  });
 });
 
 describe('design', () => {

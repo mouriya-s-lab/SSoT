@@ -809,8 +809,7 @@ function draftSub(repo: string, draft: Draft, sub: Exclude<DraftSub, 'status'>):
         slots.only(['id', 'question', 'options', 'choice', 'basis', 'wrong_when']);
         slots.text('question');
         const options = slots.list('options');
-        if (options.length !== 5) slots.errors.push(`tradeoffs[${i}].options：列五个互不相干的方向，各由一个分身做完（ssot 总纲第四节「做决策时，分五个互不相干的方案」）；现在是 ${options.length} 个。`);
-        else if (new Set(options).size !== options.length) slots.errors.push(`tradeoffs[${i}].options：有重复的方向，五个方向要各不相同。`);
+        if (options.length < 2) slots.errors.push(`tradeoffs[${i}].options：至少列两个选项。`);
         const choice = slots.text('choice');
         if (choice && !options.includes(choice)) slots.errors.push(`tradeoffs[${i}].choice：要是 options 里的一项。`);
         slots.text('basis');

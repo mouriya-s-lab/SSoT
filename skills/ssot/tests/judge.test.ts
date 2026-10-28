@@ -404,6 +404,27 @@ describe('design', () => {
     expect(cli('design', 'constraints', design).out).toContain('不是 Run`Runs 的不变式拒绝了它');
   });
 
+  test('导入方的 post 用到父模块的不透明身份：违反实例照样能求值，规格原文仍不许导入方自造身份', () => {
+    const { root, design } = workspace();
+    draft(root);
+    cli('draft', 'status', root);
+    // RunId 不带 struct 导出；Attempt 只导入它。日志没有追加这条尝试：Record 的 post 必须拒绝。
+    put(
+      root,
+      '.tmp/ssot-design/constraints/c.yaml',
+      'constraints:\n  - constraint: C1\n    landing: [{kind: post, element: "Attempt`Record"}]\n    rejects:\n      - by: post\n        operation: "Attempt`Record"\n        args: ["mk_Entry(mk_token(1), <Unknown>)"]\n        before: "mk_Log([])"\n        after: "mk_Log([])"\n        violates: "after.entries = before.entries"\n',
+    );
+    const out = cli('design', 'constraints', design).out;
+    expect(out).not.toContain('rejects[0]');
+    expect(out).not.toContain('Error 3129');
+    // 规格原文里导入方自己造 RunId：类型检查仍然报错。
+    const attempt = join(design, 'architecture/attempt/attempt.md');
+    writeFileSync(attempt, readFileSync(attempt, 'utf8').replace('post entries = entries~ ^ [e];', 'post entries = entries~ ^ [e, mk_Entry(mk_token(0), <Unknown>)];'));
+    const check = cli('check', design);
+    expect(check.code).toBe(1);
+    expect(check.out).toContain('architecture/attempt/attempt.md:37: [typecheck] Error 3129');
+  });
+
   test('改成占位的元素不是实现偏差，只要交代来由', () => {
     const { root, design } = workspace();
     draft(root);

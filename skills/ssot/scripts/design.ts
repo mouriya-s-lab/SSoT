@@ -374,10 +374,17 @@ function codeSpans(raw: string): string[] {
 /**
  * VDMJ 自带的 Markdown 读取器的行号会偏，所以给每个文件生成一份同样行数的 .vdmsl：```vdm 块里的行原样保留，
  * 其余行留空。VDMJ 报的行号就是 Markdown 里的行号；路径把 .vdmsl 换回 .md。
+ *
+ * exact：与设计原文相同，检查、解析与 ssot vdmj 用它。
+ * open：每个模块的导出换成 exports all，只供违反实例与反例求值。不透明的身份（不带 struct 导出的类型）只有定义它的模块
+ * 写得出值，而 VDMJ 求值只看得见默认模块自己的定义与导入；求值要在使用身份的模块里写出具体的身份值，只能在这份副本里放开构造。
+ * 谓词照原样求值；导入方能否读结构、能否自造身份，仍由 exact 副本上的类型检查判。
  */
+type ShadowMode = 'exact' | 'open';
+
 let shadowRoot: string | null = null;
 
-export function shadow(design: string, places: readonly Place[]): string {
+export function shadow(design: string, places: readonly Place[], mode: ShadowMode): string {
   if (shadowRoot) rmSync(shadowRoot, { recursive: true, force: true });
   const root = mkdtempSync('/tmp/ssot-');
   shadowRoot = root;
@@ -385,12 +392,28 @@ export function shadow(design: string, places: readonly Place[]): string {
     const file = readMarkdown(design, place.path);
     const spec = new Set<number>();
     for (const fence of file.fences) if (fence.kind === 'Spec') fence.body.forEach((_, k) => spec.add(fence.line + 1 + k));
-    const text = file.lines.map((l) => (spec.has(l.line) ? l.raw : '')).join('\n');
+    const lines = file.lines.map((l) => (spec.has(l.line) ? l.raw : ''));
+    const text = (mode === 'open' ? openExports(lines) : lines).join('\n');
     const target = join(root, toShadow(place.path));
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, text);
   }
   return root;
+}
+
+/** 把 exports 到 definitions 之间的行换成 exports all，其余行留空，行号不变。 */
+function openExports(lines: readonly string[]): string[] {
+  const out = [...lines];
+  let start = -1;
+  out.forEach((line, i) => {
+    if (/^\s*exports\b/.test(line)) start = i;
+    else if (start >= 0 && /^\s*definitions\b/.test(line)) {
+      out[start] = 'exports all';
+      for (let k = start + 1; k < i; k++) out[k] = '';
+      start = -1;
+    }
+  });
+  return out;
 }
 
 process.on('exit', () => {
@@ -457,7 +480,7 @@ function layout(design: string): { readonly places: readonly Place[]; readonly d
 
 function outline(design: string, places: readonly Place[]): readonly ParsedFile[] {
   if (places.length === 0) return [];
-  const root = shadow(design, places);
+  const root = shadow(design, places, 'exact');
   const run = java(['-cp', classpath(), OUTLINE, ...places.map((p) => toShadow(p.path))], root);
   const json = run.lines.find((line) => line.startsWith('['));
   if (run.code !== 0 || !json) throw new Error(`VDMJ 解析器没有给出结果：\n${run.lines.join('\n')}`);
@@ -950,7 +973,7 @@ export function vdmj(
 ): { readonly diagnostics: readonly Diagnostic[]; readonly warnings: readonly string[]; readonly obligations: Obligations; readonly proofs: readonly ProofObligation[] } {
   const files = [...new Set(modules.map((m) => toShadow(m.place.path)))].sort();
   // qc 默认只看当前模块；模式 .* 覆盖全部模块。VDMJ 读的是与 Markdown 同行号的 .vdmsl 影子文件。
-  const run = java(['-cp', classpath(), 'com.fujitsu.vdmj.plugins.VDMJ', '-vdmsl', '-q', '-i', ...files], shadow(design, modules.map((m) => m.place)), 'pog\nqc .*\nquit\n');
+  const run = java(['-cp', classpath(), 'com.fujitsu.vdmj.plugins.VDMJ', '-vdmsl', '-q', '-i', ...files], shadow(design, modules.map((m) => m.place), 'exact'), 'pog\nqc .*\nquit\n');
   const lines = run.lines.map((line) => line.replace(/^(> )+/, '').replaceAll('.vdmsl)', '.md)').replaceAll(".vdmsl'", ".md'"));
   const diagnostics: Diagnostic[] = [];
   const warnings: string[] = [];
@@ -1036,10 +1059,13 @@ export function vdmj(
 /** VDMJ 对一个表达式求值的结果：打印出的值，或求值、类型检查报的错。 */
 export type Evaluation = { readonly kind: 'Value'; readonly text: string } | { readonly kind: 'Failed'; readonly text: string };
 
-/** 以 module 为默认模块，用设计里的全部规格求一个表达式的值。每次一个 JVM：解释器报过一次运行时错误后会停在调试状态，不能接着求下一个。 */
+/**
+ * 以 module 为默认模块，用设计里的全部规格求一个表达式的值；导出在放开的副本里（shadow 的 open），使用身份的模块也写得出不透明身份的值。
+ * 每次一个 JVM：解释器报过一次运行时错误后会停在调试状态，不能接着求下一个。
+ */
 export function evaluate(design: string, modules: readonly Located[], module: string, expression: string): Evaluation {
   const files = [...new Set(modules.map((m) => toShadow(m.place.path)))].sort();
-  const run = java(['-cp', classpath(), 'com.fujitsu.vdmj.plugins.VDMJ', '-vdmsl', '-q', '-default', module, '-e', expression, ...files], shadow(design, modules.map((m) => m.place)));
+  const run = java(['-cp', classpath(), 'com.fujitsu.vdmj.plugins.VDMJ', '-vdmsl', '-q', '-default', module, '-e', expression, ...files], shadow(design, modules.map((m) => m.place), 'open'));
   // 只留值或错误本身：「Execution:」标题、Java 栈帧与计时都不是结论。
   const lines = run.lines
     .map((l) => l.trim().replace(/^EXCEPTION: VDMErrorsException |^Execution: /, ''))
@@ -1198,7 +1224,7 @@ function passthrough(design: string, args: readonly string[]): number {
   const places = [...new Map(loaded.modules.map((m) => [m.place.path, m.place])).values()];
   const files = places.map((p) => toShadow(p.path)).sort();
   const run = Bun.spawnSync(['java', '-cp', classpath(), 'com.fujitsu.vdmj.plugins.VDMJ', '-vdmsl', '-q', ...args, ...files], {
-    cwd: shadow(design, places),
+    cwd: shadow(design, places, 'exact'),
     stdin: 'inherit',
     stdout: 'inherit',
     stderr: 'inherit',

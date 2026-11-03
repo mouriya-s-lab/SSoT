@@ -1,6 +1,6 @@
 import type { Edit, Mutation } from "../mutations";
 
-/** fixtures/base 已用生成的 initial 初始化（A2 迁移）；保留这处编辑只为断言基线确实如此。 */
+/** tests/base 已用生成的 initial 初始化（A2 迁移）；保留这处编辑只为断言基线确实如此。 */
 const initial: readonly Edit[] = [{
   file: "behavior/flow.qnt",
   find: "ledger' = L::initial,",

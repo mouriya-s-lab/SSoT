@@ -1,4 +1,4 @@
-// W2（回放：F2 frame、F4 behavior.call、F7 结局计数）的 check 级突变，形状同 fixtures/mutations.ts。
+// W2（回放：F2 frame、F4 behavior.call、F7 结局计数）的 check 级突变，形状同 tests/mutations.ts。
 // replay.initial 与 behavior.init 互为冗余：初态不等于 initial 的 Quint 写法必然先被 behavior.init 拦下，而回放只在没有 error 时运行，
 // 所以 replay.initial 没有 check 级突变；它由直接回放夹具（手写轨迹调用 replay()）覆盖。
 import type { Edit, Mutation } from "../mutations";
@@ -6,7 +6,7 @@ import type { Edit, Mutation } from "../mutations";
 const LEDGER = "contract/shop.ledger.vdmsl";
 const FLOW = "behavior/flow.qnt";
 
-/** fixtures/base 已用生成的 initial 初始化（A2 迁移）；保留这处编辑只为断言基线确实如此。 */
+/** tests/base 已用生成的 initial 初始化（A2 迁移）；保留这处编辑只为断言基线确实如此。 */
 const initial: Edit = { file: FLOW, find: "ledger' = L::initial,", replace: "ledger' = L::initial," };
 
 /** 给账本加一个只读操作 isRecorded（ext rd entries；post 对任意后状态都可满足，QuickCheck 不报 FAILED）。 */

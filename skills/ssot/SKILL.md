@@ -86,7 +86,7 @@ SignalColour = <Red> | <Amber> | <FlashingAmber> | <Green>
 
 需求清单 `<design>/requirements.md` 不是载体：每条需求是一个列表项，以 `REQ-<编号>` 开头，原文由用户给出，模型只给它编号，不改动原文。LikeC4 元素用 metadata `req` 引用这些 id（只标在元素上，不标在关系上）；`ssot status` 只报告哪些 id 没有落点，不宣称需求已经兑现。依据与理由写进元素的 `description`，关系的依据写进它源元素的 `description`；`//` 注释不算依据。
 
-`<design>/.gen/` 下的 `structure.json` 与 `contract.qnt` 由 `ssot gen` 生成，只读，禁止手改。各载体怎样写，见 `ssot-write/references/` 下的 `structure.md`、`contract.md`、`behavior.md`；VDM 语法查 [`references/vdm/`](references/vdm/README.md)。
+`<design>/.gen/` 下的 `structure.json` 与 `contract.qnt` 由 `ssot gen` 生成，只读，禁止手改。各载体怎样写，见 `ssot-write/references/` 下的 `structure.md`、`contract.md`、`behavior.md`；三种载体合在一起的完整示例是 [`references/example/design/`](references/example/design/)（soroi）；VDM 语法查 [`references/vdm/`](references/vdm/README.md)。
 
 ## 三、权威顺序
 

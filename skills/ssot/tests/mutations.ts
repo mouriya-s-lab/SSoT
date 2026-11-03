@@ -109,7 +109,7 @@ export const mutations: readonly Mutation[] = [
   {
     id: "struct-views-missing",
     expect: "struct.views",
-    description: "非叶元素 shop 没有 view of",
+    description: "有子元素的 shop 没有 view of",
     edits: [{ file: C4, find: "  view shopLayer of shop {\n    include *\n  }", replace: "" }],
     regen: true,
   },

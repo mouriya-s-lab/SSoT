@@ -222,7 +222,7 @@ function views(s: Structure): Diagnostic[] {
   }
   for (const e of nonLeaf) {
     const vs = scoped.get(e.fqn) ?? [];
-    if (vs.length === 0) out.push(diag("struct.views", element(e.fqn), e.at, `非叶元素 ${e.fqn} 没有 view of`));
+    if (vs.length === 0) out.push(diag("struct.views", element(e.fqn), e.at, `有子元素的元素 ${e.fqn} 没有 view of`));
     if (vs.length > 1) out.push(diag("struct.views", element(e.fqn), e.at, `${e.fqn} 有多个 view of：${vs.join(", ")}`));
   }
   return out;

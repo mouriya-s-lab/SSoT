@@ -1,6 +1,6 @@
 // 逐层评审包：显示边的成员取自计算视图，落实义务只取自模型声明关系。
 import type { C4Relation, Structure } from "./compile/likec4";
-import { type Diagnostic, diag, format, view } from "./diag";
+import { type Diagnostic, assertNever, diag, format, view } from "./diag";
 import { within } from "./model";
 
 interface ReviewRelation {
@@ -18,8 +18,14 @@ interface Endpoint {
   readonly shownAs: string;
 }
 
-/** 真实关系与本层声明的关系：它就是本层两节点之间的声明；细化本层两节点之间的同种声明；本层两节点之间没有同种声明。 */
-type Layering = "declared" | "refines" | "undeclared";
+/**
+ * 真实关系在本层的位置：本层两节点之间的声明本身；细化同一条边下另一条更浅的同种关系（`of`，取最深的那条）；
+ * 或者同一条边下没有它细化的同种关系，只是在本层显示为这条边。
+ */
+type Layering =
+  | { readonly kind: "declared" }
+  | { readonly kind: "refines"; readonly of: ReviewRelation }
+  | { readonly kind: "shown" };
 
 interface EdgeRelation {
   readonly relation: ReviewRelation;
@@ -90,9 +96,12 @@ function endpoint(structure: Structure, nodes: readonly string[], fqn: string): 
 }
 
 function layering(relation: C4Relation, all: readonly C4Relation[], from: string, to: string): Layering {
-  const between = (r: C4Relation) => r.source === from && r.target === to;
-  if (between(relation)) return "declared";
-  return all.some((r) => between(r) && r.kind === relation.kind) ? "refines" : "undeclared";
+  if (relation.source === from && relation.target === to) return { kind: "declared" };
+  // 同种、两端各为它的祖先或自身、且不是它自己的关系；取两端最深的一条。
+  const coarser = all
+    .filter((r) => r !== relation && r.kind === relation.kind && within(relation.source, r.source) && within(relation.target, r.target))
+    .sort((a, b) => b.source.length + b.target.length - (a.source.length + a.target.length));
+  return coarser.length === 0 ? { kind: "shown" } : { kind: "refines", of: reviewRelation(coarser[0]!) };
 }
 
 export function reviewPacket(structure: Structure, viewId: string): ReviewPacket | null {
@@ -186,16 +195,23 @@ export function renderPacket(packet: ReviewPacket): string {
   lines.push(
     "## 本层显示的边与全部真实关系",
     "",
-    "每条边下列出它代表的、模型里声明的全部关系。端点不是本层节点时，另列该端点的标题与标签，以及它在本层归入哪个节点；带 #contract 的端点有自己的契约模块，是该元素的契约入口。",
+    "每条边下列出它代表的、模型里声明的全部关系。同一条边下的关系是同一条通路在不同深度的声明：标“细化”的那条把它所细化的那条落到更深的元素上，不是另一条通路。端点不是本层节点时，另列该端点的标题与标签，以及它在本层归入哪个节点。",
+    "标签：`#contract` 表示该元素有自己的 VDM 契约模块；没有 `#contract` 只说明它没有契约模块，不说明它不能被调用。`#leaf` 只表示作者决定不再拆分它。其余标签按模型原样列出。",
     "关系种类：`calls` 是运行期调用目标，`uses` 只用目标的契约词汇，二者都是源依赖目标；`callback` 是运行期回调一个依赖自己的元素，不形成依赖。",
     "",
   );
   if (packet.edges.length === 0) lines.push("无。", "");
-  const layeringText = { declared: "本层两节点之间的声明", refines: "细化本层两节点之间的同种声明", undeclared: "本层两节点之间没有同种声明" } as const;
   for (const edge of packet.edges) {
     lines.push(`### \`${edge.from}\` → \`${edge.to}\``, "");
     for (const { relation, source, target, layering } of edge.underlying) {
-      lines.push(`- ${markdown(relationText(relation))}（${layeringText[layering]}）`);
+      let position: string;
+      switch (layering.kind) {
+        case "declared": position = "本层两节点之间的声明"; break;
+        case "refines": position = `细化 ${markdown(relationText(layering.of))}`; break;
+        case "shown": position = "下层元素之间的声明，在本层显示为这条边"; break;
+        default: position = assertNever(layering);
+      }
+      lines.push(`- ${markdown(relationText(relation))}（${position}）`);
       for (const [side, end] of [["源端", source], ["目标端", target]] as const) {
         if (end.fqn === end.shownAs) continue;
         const tags = end.tags.length === 0 ? "无标签" : end.tags.map((tag) => `#${markdown(tag)}`).join("、");

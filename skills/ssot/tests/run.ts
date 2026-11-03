@@ -90,7 +90,7 @@ async function status(c: StatusCase): Promise<Outcome> {
 const argv = Bun.argv.slice(2);
 const jobsAt = argv.indexOf("--jobs");
 const jobs = jobsAt >= 0 ? Math.max(1, Number(argv[jobsAt + 1])) : 4;
-const only = new Set(argv.filter((a, i) => a !== "--jobs" && i !== jobsAt + 1));
+const only = new Set(argv.filter((a, i) => a !== "--jobs" && !(jobsAt >= 0 && i === jobsAt + 1)));
 const tasks: { readonly id: string; readonly run: () => Promise<Outcome> }[] = [
   ...all.map((m) => ({ id: m.id, run: () => mutation(m) })),
   ...statusCases.map((c) => ({ id: c.id, run: () => status(c) })),

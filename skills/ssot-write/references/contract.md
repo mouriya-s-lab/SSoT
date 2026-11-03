@@ -1,6 +1,6 @@
 # 契约的写法（VDM-SL）
 
-`ssot-write-contract` 照这里为一个 `#contract` 元素写它的模块，`ssot-verify-contract` 照这里判断。例子取自 soroi 示例设计的 `soroi`、`soroi_store`、`soroi_workspace` 模块；VDM 语法查 [`../../ssot/references/vdm/`](../../ssot/references/vdm/README.md)。
+`ssot-write-contract` 照这里为一个 `#contract` 元素写它的模块，`ssot-verify-contract` 照这里判断。例子取自 soroi 示例设计（[`../../ssot/references/example/design/`](../../ssot/references/example/design/)）的 `soroi`、`soroi_store`、`soroi_workspace` 模块；VDM 语法查 [`../../ssot/references/vdm/`](../../ssot/references/vdm/README.md)。
 
 ## 一、契约只写数据上的承诺
 

@@ -1,6 +1,6 @@
 # 结构的写法（LikeC4）
 
-`ssot-write-level` 与 `ssot-write-deploy` 照这里写 `design/structure/*.c4`，`ssot-verify-structure` 照这里判断。例子取自 soroi 示例设计：使用方 `caller`，系统 `soroi`（含 `engine`、`store`、`workspace`），外部执行方 `preset`。
+`ssot-write-level` 与 `ssot-write-deploy` 照这里写 `design/structure/*.c4`，`ssot-verify-structure` 照这里判断。例子取自 soroi 示例设计（[`../../ssot/references/example/design/`](../../ssot/references/example/design/)）：使用方 `caller`，系统 `soroi`（含 `engine`、`store`、`workspace`），外部执行方 `preset`。
 
 ## 一、结构只写层级关系
 
@@ -63,7 +63,7 @@
 | `#contract` | 该元素承载一个契约模块 | 必须有 `design/contract/<fqn>.vdmsl` |
 | `#shared` | 该元素的模块可被全部后代 import | 同时带 `#contract`，且有子元素 |
 | `#business` | 该元素及其后代是业务元素 | 不重复标在业务元素的后代上 |
-| `#leaf` | 该元素故意不再拆分（判据见第二节「什么时候展开」） | 没有子元素；由写它所在那一层的 `ssot-write-level` 写下，结构评审核对 |
+| `#leaf` | 该元素故意不再拆分（判据见第二节「什么时候展开」） | 没有子元素；由 `ssot-write-level` 写下：建子元素时给故意不拆的子元素写，被派去展开一个元素、却判断它不该再拆时给它自己写；结构评审核对 |
 
 信任边界等其他标签可以自由声明（示例用 `#implementer`、`#untrusted`）。标签名、元素种类、关系种类、metadata 的键与值都不得等于任何 VDM 定义名或 Quint 声明名。
 

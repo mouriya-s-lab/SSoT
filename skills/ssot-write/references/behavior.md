@@ -1,6 +1,6 @@
 # 行为的写法（Quint）
 
-`ssot-write-behavior` 照这里写一个可运行的 Quint 模块，`ssot-verify-behavior` 照这里判断。例子取自 soroi 示例设计的 `design/behavior/engine.qnt`。
+`ssot-write-behavior` 照这里写一个可运行的 Quint 模块，`ssot-verify-behavior` 照这里判断。例子取自 soroi 示例设计（[`../../ssot/references/example/design/`](../../ssot/references/example/design/)）的 `design/behavior/engine.qnt`。
 
 ## 一、行为只写跨连接的次序
 

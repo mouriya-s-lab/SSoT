@@ -1,0 +1,56 @@
+-- 使用方与引擎之间的操作面（REQ-8）：只有启动、停下、派生三种操作。
+-- 三种操作的处理次序由 design/behavior 持有；这里只给出请求与回复的数据契约。
+module soroi_engine_control
+imports
+  from soroi
+    types RunId; Raw; Shape; ParseResult; Path
+    functions parse,
+  from soroi_store
+    types AttrName,
+  from soroi_engine_derivation
+    types EditReq; Rejected
+exports
+  types
+    struct StartReq; struct StartReply; struct StopReply; struct DeriveReq; struct DeriveReply;
+  functions
+    parseInputs : map soroi_store`AttrName to soroi`Shape * map soroi_store`AttrName to soroi`Raw
+                  -> map soroi_store`AttrName to soroi`ParseResult
+  operations
+    Start : StartReq ==> StartReply;
+    Stop : soroi`RunId ==> StopReply;
+    Derive : DeriveReq ==> DeriveReply
+definitions
+types
+  StartReq ::
+    workflow : token
+    inputs   : map soroi_store`AttrName to soroi`Raw;
+  StartReply = soroi`RunId | <InputRejected>;
+  -- REQ-57：并入的 Stop 遇到已经 Finished 的运行得到用户错误。
+  StopReply = <Stopped> | <AlreadyFinished> | <EngineDefect>;
+  DeriveReq ::
+    source   : soroi`RunId
+    -- REQ-42：请求携带的命令当前目录，编辑值里的文件路径以它为根。
+    cwd      : soroi`Path
+    edits    : seq of soroi_engine_derivation`EditReq
+    parallel : [nat1];
+  -- REQ-42：编辑被拒绝时没有新运行。
+  DeriveReply = soroi`RunId | soroi_engine_derivation`Rejected | <EngineDefect>;
+
+functions
+  -- REQ-2：任务输入与闭包参数、程序 stdout、介入改值经同一个 parser。
+  parseInputs : map soroi_store`AttrName to soroi`Shape * map soroi_store`AttrName to soroi`Raw
+                -> map soroi_store`AttrName to soroi`ParseResult
+  parseInputs(decl, raws) == {a |-> soroi`parse(decl(a), raws(a)) | a in set dom raws}
+  pre dom raws subset dom decl;
+
+operations
+  Start : StartReq ==> StartReply
+  Start(req) == is not yet specified;
+
+  Stop : soroi`RunId ==> StopReply
+  Stop(target) == is not yet specified;
+
+  Derive : DeriveReq ==> DeriveReply
+  Derive(req) == is not yet specified;
+
+end soroi_engine_control

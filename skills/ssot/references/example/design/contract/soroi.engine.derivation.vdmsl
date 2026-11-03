@@ -1,0 +1,181 @@
+-- 派生的契约：编辑准入、派生记录、编辑进入实际输入、受影响集合、沿用与重跑分区、派生环境重建。
+-- 先停旧运行、再发布新运行的次序由 design/behavior 持有。
+module soroi_engine_derivation
+imports
+  from soroi
+    types RunId; RuntimeId; Raw; Shape; Parsed; Path
+    functions parse; parsed; valueOf,
+  from soroi_store
+    types Position; Time; AttrName; OutputName;
+          Sourced; Bound; InputRecord; CapturedValue;
+          RuntimeReason; Out; Thrown; RuntimeFault;
+          Own; Edit; DerivationId; Derived; RunRecord
+exports all
+definitions
+types
+  -- REQ-42：一次介入请求中的一个编辑；值仍是原始文本，按属性声明结构交给 parser。
+  EditReq ::
+    at   : soroi`RuntimeId
+    attr : soroi_store`AttrName
+    raw  : soroi`Raw;
+
+  -- 旧运行中每个 Own 运行项所在节点 preset 的 [inputs] 声明。
+  InputDecls = map soroi`RuntimeId to map soroi_store`AttrName to soroi`Shape;
+
+  Validation = Admitted | Rejected;
+  Admitted ::
+    edits : seq of soroi_store`Edit;
+  Rejected ::
+    reason : RejectedEdit;
+  RejectedEdit = <ForeignRuntime> | <UnknownAttr> | <DuplicateEdit> | <BadValue>;
+
+  -- REQ-47–REQ-49：压平后的旧运行：每个运行项都是 Own 记录（Ref 已解析为它的源记录）。
+  Flat = map soroi`RuntimeId to soroi_store`Own;
+
+  Partition ::
+    refs  : set of soroi`RuntimeId
+    rerun : set of soroi_store`Position;
+
+  -- REQ-38：派生运行的可消费环境。
+  CaughtValue = CaughtThrown | CaughtRuntime;
+  CaughtThrown ::
+    label   : seq of char
+    payload : soroi`Parsed
+    inputs  : map soroi_store`AttrName to soroi_store`Sourced;
+  CaughtRuntime ::
+    text   : seq of char
+    inputs : map soroi_store`AttrName to soroi_store`Sourced;
+  Env ::
+    outputs : map soroi_store`Position to map soroi_store`OutputName to soroi_store`CapturedValue
+    caught  : map soroi_store`Position to CaughtValue;
+
+functions
+  -- REQ-42：编辑值沿用运行入口的输入文件边界：文件路径以请求携带的命令当前目录为根展开成原始值。
+  --      边界规则本身属于运行入口（REQ-1），不在本设计范围内。
+  bounded : soroi`Path * soroi`Raw -> soroi`Raw
+  bounded(-, -) == is not yet specified;
+
+  -- REQ-42：at 属于旧运行，attr 属于该节点 preset 的 [inputs]，同一 (at, attr) 至多一次，
+  --      值经输入文件边界、再按属性结构经同一个 parser 且为 Present；任一不满足则整个介入被拒绝。
+  validateEdits : InputDecls * soroi`Path * seq of EditReq -> Validation
+  validateEdits(decls, cwd, rs) ==
+    if exists r in set elems rs & r.at not in set dom decls then mk_Rejected(<ForeignRuntime>)
+    else if exists r in set elems rs & r.attr not in set dom decls(r.at) then mk_Rejected(<UnknownAttr>)
+    else if exists i, j in set inds rs & i < j and rs(i).at = rs(j).at and rs(i).attr = rs(j).attr
+      then mk_Rejected(<DuplicateEdit>)
+    else if exists r in set elems rs & not soroi`parsed(soroi`parse(decls(r.at)(r.attr), bounded(cwd, r.raw)))
+      then mk_Rejected(<BadValue>)
+    else mk_Admitted([mk_soroi_store`Edit(rs(i).at, rs(i).attr,
+                        soroi`valueOf(soroi`parse(decls(rs(i).at)(rs(i).attr), bounded(cwd, rs(i).raw))))
+                      | i in set inds rs])
+  post (is_Admitted(RESULT) <=>
+          (forall r in set elems rs &
+             r.at in set dom decls and r.attr in set dom decls(r.at) and
+             soroi`parsed(soroi`parse(decls(r.at)(r.attr), bounded(cwd, r.raw)))) and
+          (forall i, j in set inds rs & i < j => mk_(rs(i).at, rs(i).attr) <> mk_(rs(j).at, rs(j).attr))) and
+       (is_Admitted(RESULT) =>
+          let mk_Admitted(es) = RESULT in
+            len es = len rs and
+            forall i in set inds rs &
+              es(i).at = rs(i).at and es(i).attr = rs(i).attr and
+              soroi`parse(decls(rs(i).at)(rs(i).attr), bounded(cwd, rs(i).raw)) = es(i).value);
+
+  -- REQ-44：新运行复制旧运行的定义与环境，startedAt 取新时间，parallel 取请求值否则沿用，
+  --      派生关系里保存新的 DerivationId 与本次编辑；编辑值不回写 inputs。
+  deriveRecord : soroi_store`RunRecord * soroi_store`DerivationId * soroi`RunId * seq of soroi_store`Edit * [nat1] * soroi_store`Time
+                 -> soroi_store`RunRecord
+  deriveRecord(old, did, src, es, par, t) ==
+    mu(old,
+       startedAt   |-> t,
+       parallel    |-> (if par = nil then old.parallel else par),
+       derivedFrom |-> mk_soroi_store`Derived(did, src, es))
+  post RESULT.bundle = old.bundle and RESULT.task = old.task and RESULT.workflow = old.workflow and
+       RESULT.inputs = old.inputs and RESULT.workspace = old.workspace and RESULT.harness = old.harness and
+       RESULT.startedAt = t and RESULT.parallel = (if par = nil then old.parallel else par) and
+       RESULT.derivedFrom = mk_soroi_store`Derived(did, src, es);
+
+  -- REQ-45：被编辑位置的新激活中，编辑属性取编辑值，来源记为 Edit。
+  editedInput : soroi_store`InputRecord * soroi`RuntimeId * seq of soroi_store`Edit -> soroi_store`InputRecord
+  editedInput(base, old, es) ==
+    mu(base, attrs |-> base.attrs ++
+         {e.attr |-> mk_soroi_store`Sourced(e.value, <Edit>) | e in set elems es & e.at = old})
+  pre forall e1, e2 in set elems es & e1.at = e2.at and e1.attr = e2.attr => e1 = e2
+  post RESULT.controls = base.controls and
+       dom RESULT.attrs = dom base.attrs union {e.attr | e in set elems es & e.at = old} and
+       forall a in set dom RESULT.attrs &
+         (exists e in set elems es & e.at = old and e.attr = a and
+            RESULT.attrs(a) = mk_soroi_store`Sourced(e.value, <Edit>)) or
+         ((not exists e in set elems es & e.at = old and e.attr = a) and RESULT.attrs(a) = base.attrs(a));
+
+  positions : Flat -> set of soroi_store`Position
+  positions(f) == {f(r).start.position | r in set dom f};
+
+  -- REQ-47：不可引用：Halted、没有线消费的异常、无 end。
+  unreferable : soroi_store`Own * bool -> bool
+  unreferable(o, consumed) ==
+    o.fin = nil or
+    o.fin.outcome = <Halted> or
+    (not consumed and (is_soroi_store`Thrown(o.fin.outcome) or is_soroi_store`RuntimeFault(o.fin.outcome)));
+
+  -- REQ-47：A₀ 是每个编辑 at 的位置与全部不可引用记录的位置的并集。
+  seeds : Flat * set of soroi`RuntimeId * seq of soroi_store`Edit -> set of soroi_store`Position
+  seeds(f, consumed, es) ==
+    {f(e.at).start.position | e in set elems es & e.at in set dom f} union
+    {f(r).start.position | r in set dom f & unreferable(f(r), r in set consumed)};
+
+  -- REQ-48：只有 Bound、Judge、Continue 带位置并参与传播；TaskInput 与 Edit 没有位置。
+  sourcePositions : soroi_store`InputRecord -> set of soroi_store`Position
+  sourcePositions(i) ==
+    {s.source.at | s in set rng i.attrs & is_soroi_store`Bound(s.source)} union
+    {c.at | c in set i.controls};
+
+  spread : Flat * set of soroi_store`Position -> set of soroi_store`Position
+  spread(f, a) ==
+    a union {f(r).start.position | r in set dom f & sourcePositions(f(r).start.input) inter a <> {}};
+
+  -- REQ-48：沿来源传播到不动点得到 Affected：包含起点、对传播封闭的最小位置集合。
+  affected : Flat * set of soroi_store`Position -> set of soroi_store`Position
+  affected(f, a) ==
+    let n = spread(f, a) in if n = a then a else affected(f, n)
+  post a subset RESULT and spread(f, RESULT) = RESULT and
+       forall x in set power (a union positions(f)) & (a subset x and spread(f, x) = x) => RESULT subset x
+  measure card (positions(f) \ a);
+
+  -- REQ-49：不在 Affected 中的旧记录追加 Ref；Affected 中的位置重跑。
+  partition : Flat * set of soroi_store`Position -> Partition
+  partition(f, aff) ==
+    mk_Partition({r | r in set dom f & f(r).start.position not in set aff},
+                 aff inter positions(f))
+  post RESULT.refs subset dom f and RESULT.rerun subset positions(f) and
+       forall r in set dom f & (r in set RESULT.refs <=> f(r).start.position not in set aff) and
+                              (f(r).start.position in set RESULT.rerun <=> f(r).start.position in set aff);
+
+  -- REQ-38：环境只由记录重建，不执行程序。Out 的有值产出进入 outputs，被消费的异常进入 caught。
+  rebuildEnv : Flat * set of soroi`RuntimeId -> Env
+  rebuildEnv(f, consumed) ==
+    mk_Env(
+      {f(r).start.position |-> {c.name |-> c.value | c in set elems f(r).fin.outcome.captured
+                                                    & c.value <> <AbsentCapture>}
+       | r in set dom f & f(r).fin <> nil and is_soroi_store`Out(f(r).fin.outcome)},
+      {f(r).start.position |-> caughtOf(f(r))
+       | r in set dom f & r in set consumed and f(r).fin <> nil and
+         (is_soroi_store`Thrown(f(r).fin.outcome) or is_soroi_store`RuntimeFault(f(r).fin.outcome))})
+  pre forall r1, r2 in set dom f & r1 <> r2 => f(r1).start.position <> f(r2).start.position;
+
+  caughtOf : soroi_store`Own -> CaughtValue
+  caughtOf(o) ==
+    if is_soroi_store`Thrown(o.fin.outcome) then
+      mk_CaughtThrown(o.fin.outcome.label, o.fin.outcome.payload, o.start.input.attrs)
+    else mk_CaughtRuntime(reasonText(o.fin.outcome.reason), o.start.input.attrs)
+  pre o.fin <> nil and (is_soroi_store`Thrown(o.fin.outcome) or is_soroi_store`RuntimeFault(o.fin.outcome));
+
+  -- 原因的用户词文本由 CLI 文本约定给出，不在本设计范围内。
+  reasonText : soroi_store`RuntimeReason -> seq of char
+  reasonText(-) == is not yet specified;
+
+operations
+  -- REQ-47–REQ-49：按旧运行的记录给出沿用与重跑分区；派生运行为 refs 中的每个旧记录追加一条 Ref。
+  plan(f : Flat, consumed : set of soroi`RuntimeId, es : seq of soroi_store`Edit) p : Partition
+  post p = partition(f, affected(f, seeds(f, consumed, es)));
+
+end soroi_engine_derivation

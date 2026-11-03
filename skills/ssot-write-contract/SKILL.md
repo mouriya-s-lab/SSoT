@@ -13,7 +13,7 @@ description: SSoT 写一个带 contract 标签的元素的 VDM-SL 模块：导�
 
 | 项 | 内容 |
 |---|---|
-| 可读 | E 在 `structure/*.c4` 里的标题、描述、标签、metadata `req` 与关系；落在 E 上的 `req` 在 `design/requirements.md` 里的需求原文；`.gen/structure.json` 里 E 的 `allowedImports`；允许集合里每个模块的 `exports` 部分（只读签名，不读它们的定义体）；import 本模块的模块里引用本模块名字的地方（只看引用处，用来确认导出有消费者）；本模块原文；`ssot check`、`ssot eval` 的输出 |
+| 可读 | E 在 `structure/*.c4` 里的标题、描述、标签、metadata `req` 与关系；落在 E 上的 `req` 在 `design/requirements.md` 里的需求原文；`.gen/structure.json` 里 E 的 `allowedImports`；允许集合里每个模块的 `exports` 部分（只读签名，不读它们的定义体；以 `struct` 导出的类型，它的类型定义就是签名，可以读）；import 本模块的模块里引用本模块名字的地方（只看引用处，用来确认导出有消费者）；本模块原文；`ssot check`、`ssot eval` 的输出 |
 | 可改 | 只有 `contract/<E 的 fqn>.vdmsl`。不改 `structure/`、别的契约模块、`behavior/`、`.gen/` |
 | 工具工作集 | `ssot gen <design>`；`ssot check <design> --scope <V>`；`ssot eval <design> <本模块名> '<表达式>'` |
 | 末尾评审 | 派 `ssot:reviewer` 执行 `ssot-verify-contract`，`scope` 不变，只评本模块 |

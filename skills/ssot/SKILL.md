@@ -10,22 +10,31 @@ SSoT 把软件的结构、连接契约与跨连接次序写成三种可编译的
 ## 〇、怎样走这棵 skill 树
 
 1. 读完本文件。
-2. 运行 `ssot status <design>`。它从三种载体与 `check` 的诊断派生出**一项**前沿：`{skill, scope, reason}`。
+2. 运行 `ssot status <design>`。它从三种载体与 `check` 的诊断派生出**一项**前沿：`{skill, scope, reason}`。可派生的前沿只有五类：
+   - 还没有展开的非叶元素 → `ssot-write-level`；
+   - 带 `#contract` 却没有契约模块的元素 → `ssot-write-contract`；
+   - 编译或检查有 error 的切片 → 拥有该切片的写作叶子；
+   - 没有落点的 `req` → `ssot-draft-requirement`；
+   - 仍有未覆盖结局（`replay.outcome` 计数为 0 的变体）的行为模块 → `ssot-write-behavior`。
+
+   其余 info 提示（`hint.*`、`view.unrealized`）与 MAYBE 等未解决的证明义务不进前沿：它们只在写作叶子末尾的评审里交给评审者。评审判定“不构成问题”之后提示仍然在，若它们进前沿，`status` 会一遍遍派出同一次评审。所以 `status` 从不派出 verify 叶子。
 3. 只读 `skill` 指出的那一个叶子，按它只处理 `scope` 这一个切片。不读别的叶子，不顺手处理别的切片。
 4. 叶子交付（含它末尾的评审）后：交付里写明了下一项前沿（向上修正、评审要求修改、草稿交出的落点），就按列出的次序逐项执行它们，每项都是一个 `{skill, scope, reason}`；没写，就再运行 `ssot status` 取下一项。
 5. 用户直接指定了切片时跳过第 2 步，按下表的切片种类选叶子。
 
 | 叶子 | `scope` | 切片 |
 |---|---|---|
-| `ssot-draft-requirement` | 需求 id，或 `ssot-migrate-read` 交出的需求摘录路径 | 一条需求（摘录里的每条各做一遍） |
-| `ssot-write-level` | 视图 id | 一个元素的一层 |
-| `ssot-write-deploy` | 部署节点 fqn，或 `deployment`（部署块的顶层） | 一个部署节点及其嵌套内容 |
+| `ssot-draft-requirement` | 需求 id（`REQ-<编号>`），或 `ssot-migrate-read` 交出的需求摘录路径 | 一条需求（摘录里的每条各做一遍） |
+| `ssot-write-level` | 元素已有视图时为视图 id（顶层为 `index`）；元素还没有子元素、也就没有视图时为元素 fqn | 一个元素的一层 |
+| `ssot-write-deploy` | 部署视图 id | 该部署视图显示的部署节点及其嵌套内容 |
 | `ssot-write-contract` | 元素 fqn | 一个带 `#contract` 的元素的 VDM 模块 |
 | `ssot-write-behavior` | Quint 模块名 | 一个可运行的 Quint 模块 |
-| `ssot-verify-structure` | 视图 id | 同 `ssot-write-level`，独立评审 |
+| `ssot-verify-structure` | 视图 id 或部署视图 id | 同 `ssot-write-level` 或 `ssot-write-deploy`，独立评审 |
 | `ssot-verify-contract` | 元素 fqn | 同 `ssot-write-contract`，独立评审 |
 | `ssot-verify-behavior` | Quint 模块名 | 同 `ssot-write-behavior`，独立评审 |
 | `ssot-migrate-read` | 旧文档的一个区域 | 不由 `status` 派出；用户开始迁移时使用 |
+
+verify 叶子不由 `status` 派出：写作叶子在末尾按它的清单派评审者；用户直接指定评审某个切片时，也按上表选它。
 
 阶段 skill（`ssot-draft`、`ssot-write`、`ssot-verify`、`ssot-migration`）只说明本阶段的叶子与它们之间的关系，不单独执行。
 
@@ -72,6 +81,8 @@ SignalColour = <Red> | <Amber> | <FlashingAmber> | <Green>
 | 元素、嵌套（抽象层级）、依赖方向、部署、信任边界、依据与理由、需求落点（metadata `req`） | LikeC4 | `<design>/structure/*.c4` | 操作名、类型名、状态字段、数据内容、时序 |
 | 连接点（exports）、类型、状态、inv、操作的 pre/post、不透明身份 | VDM-SL | `<design>/contract/<元素 fqn>.vdmsl`，一个元素至多一个模块 | 模块树、时钟、进程、调度、崩溃与重启 |
 | 跨连接的先后、交错、窗口、停机与崩溃收束、覆盖目标 | Quint | `<design>/behavior/<模块名>.qnt` | 与 VDM 重名的类型或操作、手写的 VDM 数据契约、自己的初态 |
+
+需求清单 `<design>/requirements.md` 不是载体：每条需求是一个列表项，以 `REQ-<编号>` 开头，原文由用户给出，模型只给它编号，不改动原文。LikeC4 元素用 metadata `req` 引用这些 id（只标在元素上，不标在关系上）；`ssot status` 只报告哪些 id 没有落点，不宣称需求已经兑现。依据与理由写进元素的 `description`，关系的依据写进它源元素的 `description`；`//` 注释不算依据。
 
 `<design>/.gen/` 下的 `structure.json` 与 `contract.qnt` 由 `ssot gen` 生成，只读，禁止手改。各载体怎样写，见 `ssot-write/references/` 下的 `structure.md`、`contract.md`、`behavior.md`；VDM 语法查 [`references/vdm/`](references/vdm/README.md)。
 
@@ -126,7 +137,7 @@ Quint 轨迹 ──回放──▶ 在定义该操作的 VDM 模块里求 pre/po
 ## 六、诊断怎样用
 
 - **error 是能确证的错误**（如 `compile.*`、`struct.*`、`contract.imports`、`contract.body`、`behavior.init`、`replay.frame`），必须修。
-- **info 是提示**（`hint.*`、`view.unrealized`、`replay.outcome`、未解决的证明义务），交给评审者判断，不是待清零的错误，也不是拒绝设计的理由。
+- **info 是提示**（`hint.*`、`view.unrealized`、`replay.outcome`、MAYBE 等未解决的证明义务），交给写作叶子末尾的评审者判断，不是待清零的错误，也不是拒绝设计的理由。它们不进 `status` 的前沿；唯一的例外是 `replay.outcome` 里计数为 0 的变体：它让该行为模块作为“仍有未覆盖结局”进入前沿（第〇节）。
 - **修法先问出处。** 被诊断的东西没有需求或约束来源，就删掉它、取消导出或退回 `token`；只有来源确实要求而规格缺了，才补上。不为消掉诊断、通过编译或让工具满意而新增元素、字段、导出、守卫、谓词或消费者。
 
 ## 七、评审者与代读者

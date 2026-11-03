@@ -95,6 +95,7 @@ caller -[calls]-> soroi.engine.control '管理运行的生命周期'
 - 顶层恰有一个视图，id 为 `index`，没有 `of`，只含顶层元素。
 - 每个有子元素的元素恰有一个 `view <id> of <fqn>`，通常 `include *`。计算出的节点只能是该元素、它的直接子元素，以及与这些子元素（含后代）有关系的外部元素；不得出现孙辈。
 - 没有子元素的元素不建 `view of`。部署视图不受这几条约束。
+- **视图 id 的取法。** 新建 `view … of E` 时，id 取 E 的 fqn 最后一段加 `View`：`soroi.engine` → `engineView`。与已有的视图 id 重名时，前面再加父元素 fqn 的最后一段：`soroi.workspace.engine` 遇到已有的 `engineView` 时取 `workspaceEngineView`。已有的视图 id 不改。
 
 ```text
 view engineView of soroi.engine {
@@ -120,6 +121,18 @@ host execEnv 'execution environment' {
 
 节点描述写部署事实（这个进程可以退出与重启、它与谁分属不同信任边界）；重启之后谁按什么次序接管、重新附着得到什么，是行为与契约的事实，不写在节点上。
 
+部署节点由 `views` 里的部署视图显示，`ssot-write-deploy` 一次写一个部署视图所显示的节点：
+
+```text
+deployment view deployed {
+  title '部署与信任边界'
+  include daemonHost.**
+  include execEnv.**
+}
+```
+
+部署视图的 id 就是部署切片的名字（`ssot-write-deploy` 与 `ssot-verify-structure` 的 `scope`）。部署模型不在任何逻辑视图里，它的诊断按全局报告，所以部署切片的检查用 `ssot check <design> --scope index`。
+
 ## 八、依据、理由与需求
 
 **依据**写外部世界改变不了的事实、约束、系统级需求与质量要求，每条写出来源，并说明它让结构多了或少了什么（“所以……”）。质量要求写成“在〈环境〉下，〈刺激〉发生时，〈响应〉满足〈度量〉”，数值只在有出处时写。当前实现的目录、调用步骤、偶然行为与技术选型不是依据。
@@ -128,19 +141,19 @@ host execEnv 'execution environment' {
 
 依据与理由写进元素的 `description`：评审包带元素的描述，关系只带标题，`//` 注释不进模型，评审者都看不到。一条关系的依据与理由，写在依赖它的源元素的描述里。
 
-**需求落点。** 需求 id 写进承接它的元素的 metadata，键为 `req`：
+**需求落点。** 需求清单是 `design/requirements.md`：每条需求一个列表项，以 `REQ-<编号>` 开头，原文由用户给出，只编号、不改原文（由 `ssot-draft-requirement` 追加）。需求 id 写进承接它的元素的 metadata，键为 `req`；`req` 只标在元素上，不标在关系上：
 
 ```text
 control = component 'Control' {
   #contract
   description '使用方与引擎之间唯一的操作面：受理对运行生命周期的请求并分派'
   metadata {
-    req 'R8'
+    req 'REQ-8'
   }
 }
 ```
 
-一个元素承接多条需求时写成列表 `req ['R8', 'R40']`。`ssot status` 只报告哪些需求 id 没有落点；有落点不等于已兑现，兑现与否由评审判断。需求本身的论证、领域性质和拆分由 `ssot-draft-requirement` 写，结构只记落点。`req` 指向的每条需求都要有真实来源，并写成问题域里可以被观察到的结果（使用方或外部系统看到什么），不是机器的功能清单；结构不为一条功能清单式的“需求”造元素。
+一个元素承接多条需求时写成列表 `req ['REQ-8', 'REQ-40']`。`ssot status` 只报告哪些需求 id 没有落点；有落点不等于已兑现，兑现与否由评审判断。需求本身的论证、领域性质和拆分由 `ssot-draft-requirement` 写，结构只记落点。`req` 指向的每条需求都要有真实来源，并写成问题域里可以被观察到的结果（使用方或外部系统看到什么），不是机器的功能清单；结构不为一条功能清单式的“需求”造元素。
 
 两条不能用结构去补的情形：
 

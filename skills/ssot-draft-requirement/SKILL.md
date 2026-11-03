@@ -1,18 +1,32 @@
 ---
 name: ssot-draft-requirement
-description: SSoT 草稿叶子（一条需求）：写出需求的论证与领域性质，把它拆成结构、契约、次序三面并各指向一个落点，在落点元素上写 req；需要新元素时交给 ssot-write-level。由 ssot status 因没有落点的 req 派出，或接收 ssot-migrate-read 交出的需求。先读 ssot。
+description: SSoT 草稿叶子（一条需求）：把用户给的需求原文原样编号进 design/requirements.md（REQ-<编号>），写出它的论证与领域性质，拆成结构、契约、次序三面并各指向一个落点，在落点元素上写 req；需要新元素时交给 ssot-write-level。由 ssot status 因没有落点的 req 派出，或接收 ssot-migrate-read 交出的需求。先读 ssot。
 ---
 
 # ssot-draft-requirement：为一条需求定落点
 
-`scope` 是一个需求 id，或 `ssot-migrate-read` 交出的一个区域的需求摘录（那时对其中每条需求各做一遍）。本叶子不写任何载体的正文：它只决定需求由哪里兑现，并在落点元素上写下 `req`。
+`scope` 是一个需求 id（`REQ-<编号>`），或 `ssot-migrate-read` 交出的一个区域的需求摘录（那时对其中每条需求各做一遍）。本叶子不写任何载体的正文：它只决定需求由哪里兑现，并在落点元素上写下 `req`。
+
+## 需求清单
+
+需求清单是 `<design>/requirements.md`。每条需求一个列表项，以 `REQ-<编号>` 开头，后面是需求原文：
+
+```markdown
+- REQ-1 使用方停止一次运行后，这次运行不再产生新的运行项。
+- REQ-2 ……
+```
+
+- **原文由用户给出。** 需求的文字来自用户：用户在对话里说的，或用户给的需求材料里原文明写的。模型只给它编号，不改写、不拆分、不合并、不补充原文，也不自己写出需求。
+- **编号。** 新需求取清单里已有的最大编号加一，追加在末尾。已有的编号与原文不改。
+- **用户给的需求还不在清单里时**，先把它原样追加进清单并编号，再对它做下面各步。
+- **迁移来的摘录。** `scope` 是需求摘录时，摘录里标为“需求”的每一条按原样追加进清单并编号；标为“外部事实”或“约束”的不进清单，写进承担它的元素的描述作为依据，附摘录给出的出处。
 
 ## 五项
 
 | 项 | 内容 |
 |---|---|
-| 可读 | 这条需求的原文；`structure/*.c4` 里元素的 fqn、种类、标题、描述、标签、metadata `req` 与关系；带 `#contract` 的元素的模块 `exports` 部分（只读签名）；`behavior/` 下的模块名与它们 import 的生成模块；`ssot:reader` 为本需求或本区域写下的文件 |
-| 可改 | `structure/*.c4` 里：落点元素的 metadata `req`；承担某条领域性质的元素的描述里，追加这条领域性质与来源。不改元素、关系、视图与其他描述，不碰 `contract/`、`behavior/`、`.gen/` |
+| 可读 | `<design>/requirements.md`；`structure/*.c4` 里元素的 fqn、种类、标题、描述、标签、metadata `req` 与关系；带 `#contract` 的元素的模块 `exports` 部分（只读签名）；`behavior/` 下的模块名与它们 import 的生成模块；`ssot:reader` 为本需求或本区域写下的文件 |
+| 可改 | `<design>/requirements.md`：只追加新需求并编号（「需求清单」一节），不改已有条目。`structure/*.c4` 里：落点元素的 metadata `req`；承担某条领域性质、外部事实或约束的元素的描述里，追加它与来源。不改元素、关系、视图与其他描述，不碰 `contract/`、`behavior/`、`.gen/` |
 | 工具工作集 | `ssot gen <design>`；对每个落点元素所在的视图（它的父元素的视图）运行 `ssot check <design> --scope <视图>`；`ssot status <design>` 确认这条 `req` 不再没有落点 |
 | 末尾评审 | 无：落点是否兑现需求，由落点切片的写作叶子在它们的末尾评审里判断（`ssot-verify-structure` 的 S108 等） |
 | 向上修正 | 第四步列出的情形 |
@@ -42,11 +56,11 @@ description: SSoT 草稿叶子（一条需求）：写出需求的论证与领�
 
 ## 三、写 `req`
 
-在结构面与契约面的落点元素上，把需求 id 写进 metadata 的 `req`（写法见 `../ssot-write/references/structure.md` 的「八、依据、理由与需求」）。次序面不写进任何载体：在交付里写明它交给哪个 Quint 模块。运行第五项里的检查与 `ssot status`。
+在结构面与契约面的落点元素上，把需求 id 写进 metadata 的 `req`：只有一条时写 `req 'REQ-1'`，有多条时写成列表 `req ['REQ-1', 'REQ-2']`（写法见 `../ssot-write/references/structure.md` 的「八、依据、理由与需求」）。`req` 只标在元素上，不标在关系上。次序面不写进任何载体：在交付里写明它交给哪个 Quint 模块。运行第五项里的检查与 `ssot status`。
 
 ## 四、向上修正
 
-- 落点元素还不存在：停止，写明 `{skill: ssot-write-level, scope: <应当容纳它的父元素的视图 id>, reason: …}`。新元素写好后，这条 `req` 仍没有落点，`ssot status` 会再派回本叶子。
+- 落点元素还不存在：停止，写明 `{skill: ssot-write-level, scope: <应当容纳它的父元素的视图 id；父元素还没有子元素、也就没有视图时为父元素的 fqn>, reason: …}`。新元素写好后，这条 `req` 仍没有落点，`ssot status` 会再派回本叶子。
 - 落点元素存在、但不带 `#contract` 而契约面需要它：写明 `{skill: ssot-write-level, scope: <它的父元素的视图 id>, reason: …}`。
 - 原有的某个 `req` 落错了元素：只改那个 `req`，并在交付里写明改动与理由。
 

@@ -1,6 +1,6 @@
 ---
 name: ssot-verify-contract
-description: SSoT 契约评审清单（一个带 contract 标签的元素的 VDM-SL 模块）：带着 hint.* 提示判断最小性、所有权、身份与状态，并用 ssot eval 为每个 pre、post、inv 与纯函数求违反实例；评审者没看过设计，只报告不修改。由 ssot status 派出或由 ssot-write-contract 在末尾发起。先读 ssot。
+description: SSoT 契约评审清单（一个带 contract 标签的元素的 VDM-SL 模块）：带着 hint.* 提示判断最小性、所有权、身份与状态，并用 ssot eval 为每个 pre、post、inv 与纯函数求违反实例；评审者没看过设计，只报告不修改。由 ssot-write-contract 在末尾发起，或由用户直接指定；ssot status 不派出评审。先读 ssot。
 ---
 
 # ssot-verify-contract：评审一个契约模块
@@ -9,13 +9,13 @@ description: SSoT 契约评审清单（一个带 contract 标签的元素的 VDM
 
 ## 派发
 
-拿到这项前沿的会话不自己评：按 `ssot` 第七节派一个新的 `ssot:reviewer`，交给它本叶子名、`scope`、设计目录路径与 `ssot check <design> --scope <V>` 的输出。原样交付它的发现，本次不改任何文件。下面各节写给评审者。
+用户直接指定评审本切片时，会话不自己评：按 `ssot` 第七节派一个新的 `ssot:reviewer`，交给它本叶子名、`scope`、设计目录路径与 `ssot check <design> --scope <V>` 的输出。原样交付它的发现，本次不改任何文件。下面各节写给评审者。
 
 ## 五项
 
 | 项 | 内容 |
 |---|---|
-| 可读 | 本模块全文；E 在 `structure/*.c4` 里的描述、关系、标签与 `req`，以及这些 `req` 的需求原文；本模块 import 的模块的导出签名；import 本模块的模块里引用本模块名字的地方（只看引用处，不评那些模块）；派发者交给你的诊断 |
+| 可读 | 本模块全文；E 在 `structure/*.c4` 里的描述、关系、标签与 `req`，以及这些 `req` 在 `design/requirements.md` 里的需求原文；本模块 import 的模块的导出签名；import 本模块的模块里引用本模块名字的地方（只看引用处，不评那些模块）；派发者交给你的诊断 |
 | 可改 | 无。只报告。`ssot eval` 的求值结果只出现在本次交付里 |
 | 工具工作集 | `ssot check <design> --scope <V>`（派发者已运行时直接用它的输出）；`ssot eval <design> <本模块名> '<表达式>' [--bind …]` |
 | 末尾评审 | 本叶子就是评审，不再派评审 |
@@ -54,6 +54,7 @@ description: SSoT 契约评审清单（一个带 contract 标签的元素的 VDM
 | S19 | 契约只承诺稳定需求的结果与规律，不固定连接不变时可以替换的做法或常变的业务内容 | — |
 | S20 | 只有判定结果本身是需求承诺、独立实现必须一致时才写显式函数体；允许多个合格结果或不绑定算法时只写签名与性质 | — |
 | S27 | 结局类型只列合法调用方仍须分别处理的分支，不逐项列同一种失败的原因；违规准入的调用不编码成返回分支 | — |
+| S69 | 每个隐式操作的 `post`，逐个 `or` 分支核对：`ext wr` 里的每个分量在这一支都有约束（没变就写 `x = x~`）；漏写的那一支允许该分量变成任意值 | 无：`replay.frame` 只拦得住改动了 `ext rd` 分量或操作不写的分量的调用；`ext wr` 分量在某一支漏写约束，工具查不出，只能逐支读 |
 | S36 | 持续成立的关系先由持有事实的 `inv` 或产生事实的 `pre`/`post` 约束；只有观察者确实要按分支或读字段时才用类型结构排除非法组合 | — |
 | S41 | 系统接口（被业务导入或没有导入方的导出操作）靠自己的 `pre`/`post` 挡住违规的直接调用，不靠调用路径或“只由谁调用”的说明 | — |
 | S42 | 每种可观察的失败都写明调用方改用哪个连接恢复 | — |
@@ -61,7 +62,7 @@ description: SSoT 契约评审清单（一个带 contract 标签的元素的 VDM
 | S34 | 外部世界本身成立的领域性质没有写成本系统保证的不变量 | — |
 | S46 | 每个定义、谓词子句、参数与调用都服务某条需求约束或必需的连接；没有为过工具而造的元素、守卫或消费者 | — |
 
-`contract.po` 的 MAYBE、UNCHECKED、UNPROVED、TIMEOUT 是 info：逐条看它对应的谓词是否真有缺口，可以用第二节的方法求一个实例确认。
+`contract.po` 的 MAYBE、UNCHECKED、UNPROVED、TIMEOUT 是 info：逐条看它对应的谓词是否真有缺口，可以用第二节的方法求一个实例确认。这些 info 不进 `ssot status` 的前沿，只在这次评审里判断。
 
 ## 四、交付
 

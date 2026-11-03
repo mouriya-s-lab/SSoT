@@ -1,25 +1,29 @@
 ---
 name: ssot-write-level
-description: SSoT 写一个元素的一层（LikeC4）：写出它的直接子元素、本层关系与它的逐层视图，并让它在上一层的每条对外关系在本层都有子元素落实；末尾用 ssot view 评审包做结构评审。由 ssot status 派出，scope 是视图 id。先读 ssot。
+description: SSoT 写一个元素的一层（LikeC4）：写出它的直接子元素、本层关系与它的逐层视图，并让它在上一层的每条对外关系在本层都有子元素落实；末尾用 ssot view 评审包做结构评审。由 ssot status 派出，scope 是视图 id，元素还没有视图时是元素 fqn。先读 ssot。
 ---
 
 # ssot-write-level：写一个元素的一层
 
-`scope` 是一个视图 id。它是 `view <id> of E` 时，本切片是元素 E 的一层；它是 `index` 时，本切片是顶层（E 不存在，子元素就是顶层元素）。写法见 `../ssot-write/references/structure.md`，本层关系怎样落实见其中的「五、逐层声明关系与落实」。
+`scope` 是一个视图 id，或一个元素 fqn。写法见 `../ssot-write/references/structure.md`，本层关系怎样落实见其中的「五、逐层声明关系与落实」。下文的 V 是本层的视图 id：
+
+- `scope` 是 `view <id> of E` 的 id：本切片是元素 E 的一层，V 就是 `scope`；
+- `scope` 是 `index`：本切片是顶层（E 不存在，子元素就是顶层元素），V 是 `index`；
+- `scope` 是元素 E 的 fqn：E 还没有子元素、也就没有视图。V 按 `structure.md` 第六节的规则新取：E 的 fqn 最后一段加 `View`（`soroi.engine` → `engineView`）；与已有的视图 id 重名时，前面再加父元素 fqn 的最后一段（`workspaceEngineView`）。这时第一步的义务直接从 `structure/*.c4` 里 E 在上一层声明的关系读出；第二步第 3 条写好视图之后，才运行 `ssot view <design> <V>`。
 
 ## 五项
 
 | 项 | 内容 |
 |---|---|
-| 可读 | `structure/*.c4` 里：E 本身（标题、描述、标签、metadata `req`）、E 在上一层声明的关系、E 的现有直接子元素、与 E 有声明关系的外部元素的标题与描述；`ssot view` 与 `ssot check --scope` 的输出；落在 E 上的 `req` 对应的需求原文。不读 `contract/`、`behavior/`、`.gen/contract.qnt`：结构不依赖契约与行为 |
+| 可读 | `structure/*.c4` 里：E 本身（标题、描述、标签、metadata `req`）、E 在上一层声明的关系、E 的现有直接子元素、与 E 有声明关系的外部元素的标题与描述；`ssot view` 与 `ssot check --scope` 的输出；落在 E 上的 `req` 在 `design/requirements.md` 里的需求原文。不读 `contract/`、`behavior/`、`.gen/contract.qnt`：结构不依赖契约与行为 |
 | 可改 | `structure/*.c4` 里：E 的直接子元素（种类、id、标题、描述、标签）、本层声明的关系（第二步）、本层的视图（第二步第 3 条）、E 自己的 `#contract` 与 `#shared` 标签（只为第二步第 1 条的共用契约）。不改 E 的种类、id、标题、描述、其他标签与上一层关系，不改孙辈元素与别的元素，不写 `req`（归 `ssot-draft-requirement`），不碰 `contract/`、`behavior/`、`.gen/` |
-| 工具工作集 | `ssot gen <design>`；`ssot check <design> --scope <scope>`；`ssot view <design> <scope>` |
-| 末尾评审 | 派 `ssot:reviewer` 执行 `ssot-verify-structure`，`scope` 不变 |
+| 工具工作集 | `ssot gen <design>`；`ssot check <design> --scope <V>`；`ssot view <design> <V>` |
+| 末尾评审 | 派 `ssot:reviewer` 执行 `ssot-verify-structure`，`scope` 为 V |
 | 向上修正 | 第五步列出的情形：停止，下一项前沿是 E 的父元素的视图（E 是顶层元素时是 `index`） |
 
 ## 一、读上一层交给本层的义务
 
-运行 `ssot view <design> <scope>`。评审包的「上一层的对外关系」列出 E 在上一层声明的每条关系（一端恰好是 E，另一端 X 在 E 之外）。这是本层必须落实的全部对外关系，不多也不少：
+运行 `ssot view <design> <V>`。评审包的「上一层的对外关系」列出 E 在上一层声明的每条关系（一端恰好是 E，另一端 X 在 E 之外）。这是本层必须落实的全部对外关系，不多也不少：
 
 - 本层不能让 E 的子元素依赖一个 E 在上一层没有关系的外部元素；
 - E 在上一层的每条关系，本层都要有子元素承担。
@@ -30,19 +34,19 @@ E 自己没有声明关系、只有子元素之间的事，本层自由划分。
 
 1. **子元素。** 每个子元素是 E 内部的一个职责，比 E 细一级（种类见 `structure.md`）。按抽象划分，不按篇幅、执行步骤或文件切。几个子元素共用的契约材料放在 E 上（E 带 `#contract` 与 `#shared`），不放进其中一个子元素。只服务一项业务的东西放进带 `#business` 的元素，架构元素不依赖业务元素。描述写这个元素是什么、为什么需要它（依据与来源），不写操作、类型、字段或时序。
 2. **本层关系。** 关系只声明在本层：子元素之间的关系；以及落实 E 对外关系的关系 `c -> X` 或 `X -> c`（c 是子元素，X 就是上一层那条关系的另一端，不写成 X 的子元素：X 内部怎样承担，是写 X 那一层时的事）。种类与方向与上一层那条关系相同。关系标题只写依赖的职责，不写操作清单。
-3. **视图。** 有 E 时写 `view <scope> of E { include * }`；`scope` 是 `index` 时写顶层视图 `view index { include * }`，不带 `of`。
+3. **视图。** 有 E 时写 `view <V> of E { include * }`（E 原来没有视图时，V 按开头的规则新取）；V 是 `index` 时写顶层视图 `view index { include * }`，不带 `of`。
 
 不预建：没有职责的子元素、没有依赖的关系、为将来准备的标签都不写。
 
 ## 三、检查
 
-运行 `ssot gen <design>`，再运行 `ssot check <design> --scope <scope>`。error 必须修：`compile.c4`、`struct.*`、`vocab.slots` 都在本切片内修。
+运行 `ssot gen <design>`，再运行 `ssot check <design> --scope <V>`。error 必须修：`compile.c4`、`struct.*`、`vocab.slots` 都在本切片内修。
 
 删除、改名或改标签的子元素原来已有下一层或契约模块时，下游会报错（如 `contract.module`）。这些错误属于下游切片，由 `ssot status` 派给对应叶子；本叶子不去改下游文件。
 
 ## 四、核对落实
 
-再运行 `ssot view <design> <scope>`：
+再运行 `ssot view <design> <V>`：
 
 - 「上一层的对外关系」的每一条都有落实者；
 - `view.unrealized` 是 info：逐条看，它说明上一层那条关系在本层没人承担。要么是本层漏了子元素或关系，补上；要么上一层那条关系本来就不该有，属于第五步。
@@ -62,7 +66,7 @@ E 自己没有声明关系、只有子元素之间的事，本层自由划分。
 
 ## 六、末尾评审与交付
 
-1. 运行 `ssot check <design> --scope <scope> --base <开始时的提交>`（开始时的提交见 `ssot` 第四节），撤回作用域之外的改动。
-2. 按 `ssot` 第七节派 `ssot:reviewer`：交给它 `ssot-verify-structure`、`scope`、设计目录路径、本次 `ssot view` 的输出与 `check --scope` 的诊断。
+1. 运行 `ssot check <design> --scope <V> --base <开始时的提交>`（开始时的提交见 `ssot` 第四节），撤回作用域之外的改动。
+2. 按 `ssot` 第七节派 `ssot:reviewer`：交给它 `ssot-verify-structure`、V、设计目录路径、本次 `ssot view` 的输出与 `check --scope` 的诊断。
 3. 评审的发现在本切片可改范围内修，修完重跑第三、四步；发现指向上一层的，按第五步停止；指向别的切片的，写进交付。
 4. 交付：改了哪些元素与关系、`check --scope` 的结果、评审的发现与处理、下一项前沿（如有）。

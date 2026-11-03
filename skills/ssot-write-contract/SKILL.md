@@ -13,7 +13,7 @@ description: SSoT 写一个带 contract 标签的元素的 VDM-SL 模块：导�
 
 | 项 | 内容 |
 |---|---|
-| 可读 | E 在 `structure/*.c4` 里的标题、描述、标签、metadata `req` 与关系；落在 E 上的 `req` 对应的需求原文；`.gen/structure.json` 里 E 的 `allowedImports`；允许集合里每个模块的 `exports` 部分（只读签名，不读它们的定义体）；import 本模块的模块里引用本模块名字的地方（只看引用处，用来确认导出有消费者）；本模块原文；`ssot check`、`ssot eval` 的输出 |
+| 可读 | E 在 `structure/*.c4` 里的标题、描述、标签、metadata `req` 与关系；落在 E 上的 `req` 在 `design/requirements.md` 里的需求原文；`.gen/structure.json` 里 E 的 `allowedImports`；允许集合里每个模块的 `exports` 部分（只读签名，不读它们的定义体）；import 本模块的模块里引用本模块名字的地方（只看引用处，用来确认导出有消费者）；本模块原文；`ssot check`、`ssot eval` 的输出 |
 | 可改 | 只有 `contract/<E 的 fqn>.vdmsl`。不改 `structure/`、别的契约模块、`behavior/`、`.gen/` |
 | 工具工作集 | `ssot gen <design>`；`ssot check <design> --scope <V>`；`ssot eval <design> <本模块名> '<表达式>'` |
 | 末尾评审 | 派 `ssot:reviewer` 执行 `ssot-verify-contract`，`scope` 不变，只评本模块 |
@@ -40,7 +40,7 @@ description: SSoT 写一个带 contract 标签的元素的 VDM-SL 模块：导�
 运行 `ssot gen <design>`，再运行 `ssot check <design> --scope <V>`：
 
 - 本模块的 error（`compile.vdm`、`contract.module`、`contract.imports`、`contract.body`、`contract.po` 的 FAILED、`gen.*`、`replay.*` 中归本模块的）在本切片内修。修法先问出处（`ssot` 第六节），不为消掉诊断加东西。
-- `hint.*` 与未解决的证明义务是 info，交给末尾评审，不必清零。
+- `hint.*` 与 MAYBE 等未解决的证明义务是 info：它们不进 `status` 的前沿，交给末尾评审，不必清零。
 - 改了签名、类型或状态之后，行为文件会报 `compile.quint` 或回放错误：那是下游切片，由 `ssot status` 派给 `ssot-write-behavior`，本叶子不改 `behavior/`。
 
 ## 四、向上修正

@@ -1,163 +1,67 @@
 # SSoT
 
-把软件的**架构骨架、模块连接与核心不变量**写成可机械检验的文学式形式化规格（Markdown + VDM-SL），作为独立于实现代码的设计真源。
+把软件的结构、连接契约与跨连接次序写成三种可编译的原生文件，作为独立于实现代码的设计真源。方法与规则在 [`skills/ssot`](skills/ssot/SKILL.md)，本文件只是概览。
 
-## 解决什么问题
+## 三种载体的分工
 
-- **只写代码，设计承诺会被实现淹没**：代码必须完整可运行，不可违反的外部承诺与随时可替换的实现细节、边界处理混在一起，没有独立参照物检验实现是否跑偏。
-- **只写自然语言，文档必然漂移**：文字无法编译检查，同一概念在各处叫法不一；AI 编写文档时尤其容易自造同义词、复述表面结构，或把具体实现与易变业务当成架构写进设计。
+每类事实只有一个载体能写：
 
-本仓库用两条硬边界锁死设计文档：
+| 载体 | 文件 | 持有的事实 |
+|---|---|---|
+| LikeC4 | `design/structure/*.c4` | 元素与嵌套、依赖方向、部署与信任边界、依据与理由、需求落点（metadata `req`） |
+| VDM-SL | `design/contract/<元素 fqn>.vdmsl` | 连接点（exports）、类型、状态与 `inv`、操作的 `pre`/`post`、不透明身份；一个带 `#contract` 的元素一个模块 |
+| Quint | `design/behavior/<模块名>.qnt` | 跨连接的先后与交错、窗口、停机与崩溃收束、覆盖目标 |
 
-1. **骨架与实现分离**：骨架（由什么组成、用什么组成、为什么）先于业务，模块之间只经连接相接；**在连接不变时可以替换的做法属于实现，不写进设计**。
-2. **形式化规格与受控文字分工**：连接、数据类型、状态、前置/后置条件（`pre`/`post`）与不变量（`inv`）写成 ```` ```vdm ```` 代码块里的 VDM-SL 规格；规格表达不了的语义（定时、跨连接时序、进程/部署/信任边界、崩溃接管）写成同文件的自然语言。**规格里的名字是设计唯一的词汇**，文字只能用双反引号（如 ```` ``Run`Start`` ````）指认规格中已有的元素，禁止自造词或复述规格。
+需求清单 `design/requirements.md` 不是载体：每条需求以 `REQ-<编号>` 开头，原文由用户给出，只编号、不改原文。`design/.gen/` 由 `ssot gen` 生成，只读。
 
-## 为什么分成 `architecture`、`business`、`appendix` 三个桶
+## 权威顺序
 
-设计真正要锚定的是 `architecture/`（架构骨架与连接）；业务建在骨架导出的连接之上、随需求自由变动，不需要靠重型文档解释，也不应大量落入形式化规格。
-
-但存量项目的旧文档往往把**架构承诺、业务逻辑、实现做法与过程计划**混写在同一段话里。如果直接让 AI“只提取架构”，AI 要么会擅自丢弃有价值的业务规则与上下文，要么会把业务分支和实现细节硬塞进架构层。为此，设计目录划分为三个职责与依赖方向严格隔离的桶：
-
-```mermaid
-flowchart TB
-    G["依据：外部事实 · 约束 · 系统级需求与质量要求"] --> A["architecture/<br/>架构骨架 · 连接 · 核心状态与不变量"]
-    A -->|"只经导出的操作与类型接入"| B["business/<br/>从旧文档剥离的业务需求与接入场景"]
-    A -.->|"引用证据 / 存放实现参考"| X["appendix/<br/>examples/ · evidence/ · reference/"]
+```text
+LikeC4 模型 ──gen──▶ .gen/structure.json（元素树、依赖、每个元素允许 import 的模块）
+VDM 模块（手写，import 只落在 LikeC4 授予的范围里）
+VDM 投影 ──gen──▶ .gen/contract.qnt（类型、Call 变体、状态类型、initial）
+Quint 行为（手写，契约调用只用生成的 Call，初态只用生成的 initial）
+Quint 轨迹 ──回放──▶ 在定义该操作的 VDM 模块里求 pre/post/inv 与 frame
 ```
 
-| 目录 | 角色 | 约束规则 |
+只顺着这个方向写：下游缺了什么，回到上游去改，不在下游另写一份上游的事实。
+
+## skill 树：阶段 × 切片
+
+一次调用只处理一个有界切片。`ssot status <design>` 从三种载体与检查结果派生出下一项前沿 `{skill, scope, reason}`；不保存“已确认”或“已评审”的记录。
+
+| 阶段 | 叶子 | 切片 |
 |---|---|---|
-| `architecture/` | **设计核心**：模块树、对外连接（`exports`）、核心类型、状态与不变量 | 禁止引用 `business/`；父模块不依赖子模块；不得包含只服务单一业务单元的定义或分支 |
-| `business/` | **业务隔离区与连接探针**：承接旧文档剥离出的业务需求，或用轻量场景验证骨架连接可走通 | 单向 import `architecture/` 导出的连接；业务单元之间只经导出操作协作 |
-| `appendix/` | **实现与材料安置区**：示例（`examples/`）、调研与历史证据（`evidence/`）、实现参考（`reference/`） | 不出现在阅读次序中，不设立设计规则 |
+| 总纲 [`ssot`](skills/ssot/SKILL.md) | — | 方法、分工、权威顺序、切片模型、命令 |
+| [`ssot-draft`](skills/ssot-draft/SKILL.md) | [`ssot-draft-requirement`](skills/ssot-draft-requirement/SKILL.md) | 一条需求：编号、论证与领域性质、三面落点、写 `req` |
+| [`ssot-write`](skills/ssot-write/SKILL.md) | [`ssot-write-level`](skills/ssot-write-level/SKILL.md) | 一个元素的一层（LikeC4） |
+| | [`ssot-write-deploy`](skills/ssot-write-deploy/SKILL.md) | 一个部署视图显示的部署节点（LikeC4） |
+| | [`ssot-write-contract`](skills/ssot-write-contract/SKILL.md) | 一个带 `#contract` 的元素的模块（VDM-SL） |
+| | [`ssot-write-behavior`](skills/ssot-write-behavior/SKILL.md) | 一个可运行的 Quint 模块 |
+| [`ssot-verify`](skills/ssot-verify/SKILL.md) | [`ssot-verify-structure`](skills/ssot-verify-structure/SKILL.md)、[`ssot-verify-contract`](skills/ssot-verify-contract/SKILL.md)、[`ssot-verify-behavior`](skills/ssot-verify-behavior/SKILL.md) | 与对应写作叶子相同的切片；由写作叶子在末尾派评审者执行，或由用户直接指定 |
+| [`ssot-migration`](skills/ssot-migration/SKILL.md) | [`ssot-migrate-read`](skills/ssot-migrate-read/SKILL.md) | 旧文档的一个区域：由代读者只交出概念与原文明说的需求 |
 
-## 仓库构成
-
-本仓库由 `ssot` 阐述设计的思考思路（多视角下的权衡、值与动作的位置、积压感与责任边界、需要定义多少东西及定义得对不对），默认只专注于 `design/` 本身（不查看 `design/` 之外的仓库文件或 `git` 历史），并实行**显式单块路由**：用户未明确指定具体做哪一块时先询问并停止（不继续、不预读其他 skill）；用户明确指定后，必须完整读完并只执行对应的那一个子 skill：
-
-| 目录 | 块 / 角色 | 说明 |
-|---|---|---|
-| [`skills/ssot`](skills/ssot/SKILL.md) | **总纲 · 思考思路与路由门控** | 阐述设计的思考思路、三桶目录结构、CLI 工具（`scripts/design.ts`）与模型审查脚本（`scripts/review.py`）、通过检查的[示例设计](skills/ssot/references/example/design/)，以及显式单块路由门控 |
-| [`skills/ssot-migration`](skills/ssot-migration/SKILL.md) | **存量旧文档迁移块** | 将混杂的存量设计文档无损迁入三桶目录：遵循“只搬运、不判断对错、不改原意”，先勘察概念定义处与设计中心，搬完骨架后按区域把每条陈述拆层归入 `architecture/`、`business/` 或 `appendix/`；搬完一条从旧文档删一条，旧文档清空即迁移完成 |
-| [`skills/ssot-draft`](skills/ssot-draft/SKILL.md) | **设计草稿块** | 写 VDM 之前分清定义、执行、事实与索引，写出领域性质（外部世界本身成立、本系统不保证的事实），给每条约束写出允许的变化、不变的关系与违反情形，经换跑法、范围两项判定筛选；每块需求写出论证：哪些约束加上哪些领域性质推出它，不在任何论证里的约束是多余的；再判定由架构还是业务持有；有原始来源设计时不直接读它，由 `ssot:reader` 在独立上下文里代读，只交出概念、原文明说的需求与出处；草稿写成目标仓库的 `.tmp/ssot-draft/draft.yaml`，由 `ssot draft` 逐项核对 |
-| [`skills/ssot-design`](skills/ssot-design/SKILL.md) | **按草稿写设计块** | 按约束类别选写法，把每条约束的违反情形写成具体的值，由工具用 VDMJ 求值确认落点拒绝它，再按五种违反情形自己攻草稿约束，求值成立的反例是错误、改到不成立；落地时发现架构与业务划分不对（含既有 `design/` 的划分），改草稿归属并重新划分；本轮新增、改动、删除的每个 VDM 元素都对应草稿中的一条约束（没动过的旧元素不归本轮解释），工具对没有任何定义读到的状态分量直接报实现偏差；写不进去时区分换写法、重新划分与回草稿；落点与元素来由记进台账，由 `ssot design` 逐项核对 |
-| [`skills/ssot-verify`](skills/ssot-verify/SKILL.md) | **独立验证块** | 由未参与本轮设计的 `ssot:fable` 与 `ssot:argon` 只凭需求材料写出应有长相、领域性质、需求论证与应有约束，再读设计，先判整体长相，再逐条构造违反情形并用 VDMJ 求值核对，逐项审查元素（含无偏差）、场景、调用、文字与模块，核对归属；每一步由 `ssot verify` 的子命令枚举判断义务，可按目录或约束分批，验证台账跨轮保留；只报告，不修改 |
-
-## 检验机制
-
-为防止 AI 用“合法但空洞”的规格敷衍（例如把规格写成空名字登记表、用字符串装一切状态、写 `post true` 或 `post r = r` 这类恒真条件），或审查时跳过抽象逻辑直接逐行找茬，验收由三层组成：
-
-1. **确定性检查与形式化验证（`ssot check`）**
-   - **布局与文字（`layout` / `form` / `prose`）**：核对目录与 `README.md` 小节次序、根 `README.md` 阅读次序完整性；正文只允许 `vdm` 与图/文法代码块（`mermaid`、`ebnf`、`text`），并用转译器拦截混入文字或图表块的 TypeScript 声明；校验双反引号引用的限定名全部存在，业务单元「需求」的每条都引用了走通它的场景；校验“索引：路径:行号”指向的文件与行存在（不写进 VDM 的内容要么留索引，要么写 `is not yet specified` 表示未定义）。
-   - **结构与依赖（`structure`）**：强制一文件至多一个具名 VDM-SL 模块、每个定义与字段必有 `--` 说明注释、同名类型只在一个模块展开、模块依赖单向无环。
-   - **AST 反模式（`antipattern`）**：拒绝规格中的字符串字面量（必须提升为类型）、显式体里的局部变量/循环/赋值、恒真的后置条件或不变式（`post true`、`post r = r`、`inv … == true`）、恒不可满足的后置条件或不变式（`post false`、`e < e`），以及规格内无处使用的顶层定义。
-   - **VDMJ + QuickCheck（`parse` / `typecheck` / `quickcheck`）**：调用 VDMJ 完成语法与类型检查，生成证明义务并用 QuickCheck 搜索反例；末尾输出规格、注释、图与文字的行数占比，暴露向纯文字退化的苗头。
-2. **语义反模式模型审查（`review.py`）**
-   - 在 omp 的 `eval` 中调用 `jev`，对程序无法单凭语法判定的 12 类反模式做概率审查（问题与阈值经 [`review-calibration.json`](skills/ssot/scripts/review-calibration.json) 的调参集零误判校准，留出集只报误报与漏报）：用 `seq of char` 偷藏状态/身份、多 `bool` 字段堆叠互斥状态、逐项枚举失败原因、说明注释只复述类型形状、显式体写实现过程、空名字登记表、模拟时钟/进程等运行机制、把单一业务塞进架构、文字复述规格、文字自造词、依据无来源或拿技术选型当理由、图表块里塞其他语言代码。
-3. **逐项判断台账（`ssot draft` / `ssot design` / `ssot verify`）**
-   - 语义判断仍由人或 agent 做，工具保证每一项都判了：从需求材料、草稿、规格语法树（元素、字段、`ext`、导出、场景里的调用与分支、显式体里的调用点）、`README.md` 段落、设计目录与 VDMJ 证明义务里枚举判断义务，要求台账逐项写下结论与证据；缺判、槽位没填、引用找不到、记录过期是错误，判为有问题或未能判定的是警告。
-   - 审查问题一问一槽：整个设计与每个目录的长相先判（`overview`），再逐项细查元素的说明是否兑现、用词是否误导、无偏差（每个区分都有导出操作观察得到）、导出、结局与恢复、投影、帧条件；场景的结局处理、校验次序与返回值；调用的值流；每段依据、需求、理由与语义；每个目录的拆分、包含关系、架构与业务边界与积压；整份设计的形式统计与导航。判 `ok` 等于断言某样东西存在的问题（使用位置、兑现承诺的谓词、处理结局的分支、区分元素的导出操作等），`ok` 也要指出它在哪里。
-   - 两种值由工具求值：设计端把违反情形写成具体的调用或值，落点里登记的那个 `post`、`pre` 或 `inv` 必须拒绝它（不变式拒绝时，VDMJ 报错点名的必须是落点的类型）；验证端把反例写成结构化的调用或表达式，规格必须接受它、又违反约束。工具拼出 `pre_Op`、`post_Op` 交给 VDMJ，并核对没列进 `ext wr` 的状态分量前后相同；`pre` 里不展开的判定求不出值时，`post` 的拒绝按准入成立求值。求值在一份把导出放开成 `exports all` 的副本里做，使用身份的模块也写得出不透明身份的值；`ssot check` 仍按原文检查导入方不许自造身份。反例用到的身份要在 `before` 里已经存在或来自需求、领域性质。作者自攻求值成立的反例是错误，验证端的反例是警告。
-   - 攻击的 `bypass`、`import` 两槽分清内部连接与系统接口：只被架构模块导入的导出操作是内部连接，调用方由导入关系决定，判排除时工具读出它的全部导入方作依据；被业务单元导入或没有导入方的是系统接口，绕开场景的调用只能由它的 `pre`/`post` 挡住，没有谓词却判排除时工具警告。工具在攻击候选里给每个导出操作标出种类。
-   - 无偏差的静态检查：工具从 VDMJ 语法树取出每个定义读到的状态分量，没有任何定义读到的状态分量直接报成实现偏差；读到了不等于能区分。记录字段会被整个记录的相等、集合成员或映射键区分，工具不静态断言；这些由验证的 `bias` 判。
-   - 每条记录盖章时记下它依据的原文（调用记录还包括被调连接的结果类型），设计改了只让依据变了的记录过期；设计端只要求本轮改动的元素对应本轮草稿，验证台账跨轮保留，下一轮只重判缺判、过期与孤儿；验证可按 `--dir` 或 `--constraint` 分批，不带范围没有错误才算整份判完。
-
-## 为什么用 Fable 与 Argon：已有样本上的观察
-
-本节是本项目在若干真实设计库上、按两阶段阅读流程观察到的模型表现，是选择验证方的依据，不是对模型能力的普遍结论；换了样本、提示或模型版本，表现可能不同。
-
-VDM-SL 在本仓库的核心价值是**抽象过滤**：只锚定多视角权衡下的核心概念、模块连接与状态不变量，把外部观察者不分支、不读取的一切内部结构压回 `= token`。在这些样本上，通用代码大模型常带着代码工作的习惯：保住既有框架、找局部可证伪的 bug、做加法打补丁。直接用于编写或审查 VDM-SL 时，观察到四种会损害这一价值的倾向：
-
-1. **以线性符号执行替代宏观视角审视**：面对上千行规格时，模型默认启动逐行脑内解释器，搜寻局部 `if/else` 分支差异或单行 `pre`/`post` 守卫遗漏，跳过“在当前软件视角下设计整体应该长什么样、哪些定义根本不该存在”的前提追问，只给既有模块划分发通行证。
-2. **把上游过度定义的“假插头”当成下游未接通的实现管道**：当上游模块脱离观察者视角凭空展开了多余的结构体、字段或参数时，规格往往在下游塞入通配符丢弃（`-`）、恒传空映射（`{|->}`）、自比恒真式或只写不读字段以糊弄 VDMJ 类型检查。通用模型默认“已声明的类型与字段皆为神圣需求”，不提议把上游过度定义整片砍回 `= token`，反而要求在下游补齐数据装填管道、透传参数或持久化表，把用于做减法的形式化规格异化为不断膨胀的实现蓝图。
-3. **用命令式实现与数据库存储习惯篡改形式化约定**：
-   - 将刻意隐藏内部机制的 `= token` 误判为“未接通的接口”，要求补齐将业务值序列化塞入运行载体的装填连接；
-   - 将连接面仅用于陈述 `inv` 与 `post` 的说明性数学 `state` 当成内存结构体或 SQL 表，要求做第三范式外键去重、合并状态映射，或追问运行期环境句柄在崩溃重启后从哪张表读取；
-   - 将 VDM-SL 显式体无循环约定下的“全集纯函数 + 单代表元参数场景”误判为漏写 `for` 循环或批量接口，并顺手提出抽共用辅助函数（DRY）、补不可信 RPC 入参防御守卫、或用“首写胜出幂等锁”掩盖生命周期确认权归属不清。
-4. **面对机械检查报错时规避检查器而非简化设计**：当状态映射嵌套过深引发 QuickCheck 组合爆炸超时，或 `review.py` 报出实现体（`impl_body`）与业务入架构（`business_in_arch`）时，通用模型倾向于把显式纯函数改写为无状态隐式 `operations`（`post r = ...`）以绕过 AST 提取，或仅删除注释里的敏感词而把越界结构留在 `architecture/`。
-
-在强制实行“单块路由 + 两阶段阅读（先只读全部 `README.md` 与依赖图确立需求及应有长相，再读 `.md` VDM 规格对照）”并清除外部规则干扰后，几个模型在这些设计库上的表现、主观计分（优点计正分、缺点计负分，基准 $\pm 100$）与据此作出的选择如下：
-
-| 模型 | 优点（对设计真源的正向贡献） | 缺点（盲区与对规格的破坏风险） | 优点计分 | 缺点计分 | 净分 | 结果裁定 |
-|---|---|---|---:|---:|---:|---|
-| `gemini-4-argon`（`ssot:argon`） | 1. 顺着“谁实际观察值结构”反推，抓出根模块双层值 AST 过度展开及单一业务限制向事实记录层的泄漏（样本中只有它这样做）；<br/>2. 把 400+ 行臃肿模块拆解为三类混杂视角（越界拆形状、替下游重写反向图、循环维度脱节）；<br/>3. 覆盖了输出拼接（`++`）抹平信任边界来源、崩溃分支误调出口裁决与空壳字段丢弃；<br/>4. 遵循 VDM-SL 代表元场景与静态类型可见性，样本中没有报出死代码或数据库范式类误报。 | 1. 依赖图呈合法无环 DAG 时，对单纯从依赖方向暴露的视角倒置（静态契约反向导入运行期边界）不如 `fable` 敏感；<br/>2. 单跑时漏检了“有判定无执行主人”的悬空责任与仅存于散文的受理窗口生命周期，且偶受上游假插头诱导提出补绑定说明。 | $+85$ | $-25$ | $+60$ | **选作验证方**：结构减法、多视角拆解与 VDM-SL 语义守恒方面表现最好；缺点多是局部漏检而非破坏性药方，与 `fable` 互补 |
-| `claude-fable-5-1`（`ssot:fable`） | 1. 第一阶段（仅读 `README.md` 与依赖图）最先从依赖图看穿“静态定义契约反向导入运行期执行边界”的视角倒置（样本中只有它这样做）；<br/>2. 捕捉到“有纯函数判定但全链路无主人触发”的悬空责任与仅写在散文里的生命周期窗口；<br/>3. 能在多步推演中自行推翻“配置未落库”等存储偏见伪问题。 | 1. 默认接受底座模块既有的多层值/形状 AST 前提，没看出跨层结构过度展开与业务限制向架构泄漏；<br/>2. 想法未经静态可见性校验时，偶尔提议把需跨模块分支匹配的耐久事实改成 `seq of token`（忽略 VDM-SL 无泛型与向下转型、`architecture/` 不可反向导入 `business/`，照改会导致规格无法编译）。 | $+75$ | $-35$ | $+40$ | **选作验证方**：依赖方向与责任边界的检出在样本中最好；违反类型可见性的提议可通过与 `argon` 交叉合拢滤除 |
-| `claude-opus-5-5` | 1. 识别出跨模块过程式图遍历算法积压（7 个图可达性函数/类型）并提议整片删除；<br/>2. 识别出中断结局放错层引发的四处特判积压与只写不读的快照字段。 | 1. 常脑补运行期多线程并发抢写，开出“把事实落定操作改为首写胜出幂等锁”这类违背“机制即信号”的加法补丁；<br/>2. 漏检了静态契约反向导入运行期边界的视角倒置，接受了根模块多层 AST 过度展开；<br/>3. 夹带孤立未引用导出与“重连需重传配置”等代码级碎屑，且被假插头误导去补输入管道。 | $+50$ | $-70$ | $-20$ | **不选**：样本中的有效发现已被 `fable` + `argon` 覆盖，残留的幂等锁补丁与代码级找茬会把实现机制塞进架构连接面 |
-| `gpt-6.1-sol` | 1. 局部契约与信任边界严密性高，抓出了输出映射拼接（`++`）破坏来源隔离、导致不可信主体伪造捕获值的漏洞；<br/>2. 识别出 `README.md` 依据循环自证与崩溃恢复责任缺口，没有报死代码碎屑。 | 1. 架构立场保守：`ssot graph` 无环就判“现有模块骨架成立，问题不是类型或模块太多，而是值没穿过连接”；<br/>2. 在样本中没有识别出整片过程式图可达性算法冗余、跨层 AST 过度展开与模块依赖视角倒置；<br/>3. 面对上游过度定义的假插头，开出“规定静态程序与动态输入在何处结合进入闭包”的反向药方。 | $+35$ | $-75$ | $-40$ | **不选**：倾向给臃肿骨架放行并补传参管道，单用会削弱 VDM-SL 做概念减法与抽象过滤的作用 |
-
-在这些样本上，单一模型即使被要求当场书写形式化推演证明，也没有跳出自身的盲区：没看见视角倒置或 AST 积压的模型，用证明工具去钉死局部边界 bug；而直觉敏锐的模型（`fable`）在未受静态可见性约束时，提出过在 VDM-SL 类型系统中无法编译的跨模块 `token` 化方案。
-
-`fable` 与 `argon` 在样本中的长处与盲区互补，因此本项目的验证流程这样规定：
-
-- **验证（`ssot-verify`）由 `fable` 与 `argon` 两方独立进行、结论并列**：`ssot:fable` 侧重模块依赖方向上的视角倒置、有判定无主人的悬空责任与散文生命周期缺口；`ssot:argon` 侧重顺着“谁观察值结构”识别跨层 AST 过度展开、多来源职责积压与信任边界失守，并用 VDM-SL 模块类型可见性筛除不成立的重构提议。两方各写各的验证台账；验证方必须是没有参与本轮草稿与设计的上下文，写过本轮设计的主 agent 无论是什么模型都只派发两方、并列汇总、不裁决。
-
-## 兼容性
-
-本仓库只兼容 omp，其他任何 harness 都需要当场改造。依赖 omp 的环节：
-
-- 语义反模式审查 `review.py` 在 omp 的 Python `eval` 里调用 `jev`；
-- 验证 subagent `ssot:argon`、`ssot:fable` 与原始来源代读 subagent `ssot:reader` 是 omp 的 agent 定义（[`skills/ssot/agents/`](skills/ssot/agents/)），模型按 omp 的模型名写定（`ssot:reader` 写的是 `task:mid` 当前绑定的 `openai-codex/gpt-6-1-sol:high`，改 `task:mid` 的绑定时要同步改它）；
-- 分身（总纲第四节，一个分身同时判五件互不相干的事）依赖 omp 的会话文件（`$PI_SESSION_FILE` 里的 `model_change`、`thinking_level_change`）、项目 `.omp/agents/` 下的临时 agent 定义与不 shake 的 `fork_task`；`ssot:argon`、`ssot:fable` 因此允许派生（`spawns: "*"`），只用来 fork 自己的分身；
-- skill 内的脚本与参考文件经 omp 的 `skill://` 地址加载。
+评审者 `ssot:reviewer` 与代读者 `ssot:reader` 是 omp 的 agent 定义，在 [`skills/ssot/agents/`](skills/ssot/agents/)。
 
 ## 安装
 
-安装全部 5 个 skill：
-
 ```sh
-npx skills add mouriya-s-lab/SSoT --skill ssot ssot-migration ssot-draft ssot-design ssot-verify --global --agent codex claude-code --yes
+npx skills add mouriya-s-lab/SSoT --skill ssot ssot-draft ssot-draft-requirement ssot-write ssot-write-level ssot-write-deploy ssot-write-contract ssot-write-behavior ssot-verify ssot-verify-structure ssot-verify-contract ssot-verify-behavior ssot-migration ssot-migrate-read --global --agent codex claude-code --yes
 ```
 
-检查依赖 **Java 11+** 与 **Bun**。装好 skill 后运行一次：
+装好后运行一次 `ssot setup`（第一次还没有 `ssot` 命令时，运行 `bun ~/.agents/skills/ssot/scripts/ssot.ts setup`）。它准备检查所需的工具，并把 `ssot` 装进 PATH；细节见 [`setup.md`](skills/ssot/references/setup.md)。
 
-```sh
-bun ~/.agents/skills/ssot/scripts/design.ts setup
-```
+## 命令
 
-它从 Maven Central 拉取 VDMJ 与 QuickCheck 最新正式版到 `${XDG_DATA_HOME:-~/.local/share}/vdmj/`，把 `ssot` 与 `vdmj` 两个命令装进 `~/.local/bin`；缺 Java 或 `~/.local/bin` 不在 `PATH` 上时按输出处理，细节见 [`references/setup.md`](skills/ssot/references/setup.md)。
-
-后续更新：
-
-```sh
-npx skills update ssot ssot-migration ssot-draft ssot-design ssot-verify --global
-```
-
-## 使用
-
-| 命令 | 用途 |
+| 命令 | 作用 |
 |---|---|
-| `ssot setup` | 检查 Java，下载或更新 VDMJ 与 QuickCheck，把 `ssot` 与 `vdmj` 装进 `~/.local/bin` |
-| `ssot init <repo>` | 初始化 `<repo>/design`（生成阅读次序 `README.md`、`architecture/README.md` 与 `appendix/` 三类子目录） |
-| `ssot module <design> <a/b>` | 新建架构子模块目录与 `README.md`，并追加到阅读次序 |
-| `ssot unit <design> <name>` | 新建业务单元目录与 `README.md`，并追加到阅读次序 |
-| `ssot check <design> [--json]` | 运行全部确定性检查、VDMJ 类型检查与 QuickCheck 反例搜索 |
-| `ssot graph <design> [--json]` | 导出目录、模块与 `imports` 依赖关系的 Mermaid 图或 JSON |
-| `ssot vdmj <design> [args...]` | 以设计里的全部规格直接运行 VDMJ（如 `-i` 进入解释器、`-e` 求值） |
-| `ssot draft <子命令> <repo>` | 逐项核对草稿 `.tmp/ssot-draft/draft.yaml`（需求论证、领域性质、对象、约束、归属、不进 VDM 的内容、取舍）；第一次运行时记下本轮开始的设计基线 |
-| `ssot design <子命令> <design> [--stamp …]` | 逐项核对落点台账 `.tmp/ssot-design/`（本轮新增、改动、删除的每个规格元素的来由，每条草稿约束的落点与违反情形实例的求值，作者对草稿约束的五种违反情形攻击，本轮动过的模块里没有观察者的状态分量与字段） |
-| `ssot verify <子命令> <design> --as <验证方> [--dir …] [--constraint …] [--stamp …]` | 逐项核对验证台账 `.tmp/ssot-verify/<验证方>/`（只凭需求材料写下的应有长相、领域性质、需求论证与应有约束，三问、整体对照、五种违反情形与生命周期四问、元素与场景反查、调用值流、文字与模块、归属、证明义务、模型审查、结论）；`report` 把台账排成交付视图 |
-| `vdmj [args...] <files>` | VDMJ 本身（带 QuickCheck 插件），读 `.vdmsl` 文件 |
+| `ssot setup` | 准备检查所需的工具，把 `ssot` 装进 PATH |
+| `ssot gen <design>` | 重新生成 `.gen/` |
+| `ssot check <design>` | 全量检查：编译三种载体、生成链新鲜度、跨载体规则、模拟、覆盖目标、回放、证明义务 |
+| `ssot check <design> --scope <视图 id>` | 仍编译全部内容，模拟、回放、QuickCheck 只在该视图的切片闭包内运行，只报告该切片的诊断 |
+| `ssot check <design> --scope <视图 id> --base <rev>` | 另列出 `<rev>` 之后落在该作用域之外的改动，提示应交给哪个叶子 |
+| `ssot view <design> <视图 id>` | 输出本层评审包 |
+| `ssot eval <design> <模块> '<表达式>' [--bind …]` | 在原样规格里求一个 VDM 表达式，用来构造违反实例 |
+| `ssot status <design>` | 派生一项前沿 `{skill, scope, reason}` |
 
-在 omp 的 Python `eval` 中运行语义反模式审查；验证时用 `save` 把每条材料的判断存进验证方的台账根，交给 `ssot verify review`：
-
-```python
-%load skill://ssot/scripts/review.py
-await review("/path/to/repo/design")
-await review("/path/to/repo/design", save="/path/to/repo/.tmp/ssot-verify/<验证方>/review.json")
-```
-
-## 开发自测
-
-修改本仓库的检查脚本或审查校准集后，运行以下自测（需已完成 `setup`；在仓库根运行 `bun skills/ssot/scripts/design.ts setup`，PATH 上的 `ssot` 就指向本仓库的脚本）：
-
-```sh
-# 用真实 VDMJ 跑 CLI 回归测试（仅在自有 /tmp/ssot-check-*、/tmp/ssot-judge-* 临时目录读写夹具）
-bun test skills/ssot/tests/check.test.ts skills/ssot/tests/judge.test.ts
-```
-
-改动 `review.py` 的问题措辞、阈值或 [`review-calibration.json`](skills/ssot/scripts/review-calibration.json) 后，在 omp 的 `eval` 中运行校准，全部样本零误判才算通过：
-
-```python
-%load skills/ssot/scripts/review.py
-await calibrate()
-```
+`check` 的退出码：`0` 通过，`1` 有 error，`3` 验证没有做完（`resource.deadline`），不是设计被拒绝。

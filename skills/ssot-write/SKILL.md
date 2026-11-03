@@ -1,6 +1,6 @@
 ---
 name: ssot-write
-description: SSoT 写作阶段说明：按权威顺序 LikeC4→VDM→Quint，一次写一个有界切片（一层、一个部署节点、一个契约模块、一个行为模块），并在末尾评审本切片。先读 ssot；具体工作只在 ssot-write-* 叶子里做。
+description: SSoT 写作阶段说明：按权威顺序 LikeC4→VDM→Quint，一次写一个有界切片（一层、一个部署视图显示的部署节点、一个契约模块、一个行为模块），并在末尾评审本切片。先读 ssot；具体工作只在 ssot-write-* 叶子里做。
 ---
 
 # ssot-write：写作阶段
@@ -10,7 +10,7 @@ description: SSoT 写作阶段说明：按权威顺序 LikeC4→VDM→Quint，�
 | 叶子 | 切片 | 载体 | 末尾评审的清单 |
 |---|---|---|---|
 | `ssot-write-level` | 一个元素的一层 | LikeC4 | `ssot-verify-structure` |
-| `ssot-write-deploy` | 一个部署节点 | LikeC4 | `ssot-verify-structure` |
+| `ssot-write-deploy` | 一个部署视图显示的部署节点 | LikeC4 | `ssot-verify-structure` |
 | `ssot-write-contract` | 一个带 `#contract` 的元素 | VDM-SL | `ssot-verify-contract` |
 | `ssot-write-behavior` | 一个可运行的 Quint 模块 | Quint | `ssot-verify-behavior` |
 

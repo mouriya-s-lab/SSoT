@@ -34,11 +34,11 @@ export const statusCases: readonly StatusCase[] = [
   },
   {
     id: "status-error",
-    description: "ledger 的契约有类型错误：前沿是 ledger 的 write-contract（error 先于其他各类）",
+    description: "ledger 的契约有类型错误，同时 REQ-1 没有落点：前沿是 ledger 的 write-contract（error 先于其他各类）",
     edits: [
       ...rejected,
       { file: "contract/shop.ledger.vdmsl", find: "post entries = entries~ munion {o |-> amount};", replace: "post entries = entries~ munion {o |-> amountX};" },
-      { file: C4, find: "      #contract #leaf\n      description '订单的记账事实'", replace: "      #contract\n      description '订单的记账事实'" },
+      { file: "requirements.md", find: null, replace: "# 需求\n\n- REQ-1 用户下单后，订单金额被记账。\n" },
     ],
     regen: false,
     expect: { skill: "ssot-write-contract", scope: "shop.ledger" },

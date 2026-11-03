@@ -14,4 +14,4 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun install --no-save
-      - run: bunx tsc --noEmit --strict -p .
+      - run: ./node_modules/.bin/tsc --noEmit --strict -p .

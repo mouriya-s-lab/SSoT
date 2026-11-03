@@ -1,0 +1,105 @@
+{
+  "generatedBy": "ssot gen",
+  "elements": [
+    {
+      "fqn": "shop",
+      "kind": "system",
+      "parent": null,
+      "children": [
+        "shop.api",
+        "shop.ledger"
+      ],
+      "tags": [
+        "contract",
+        "shared"
+      ],
+      "business": false,
+      "contract": {
+        "module": "shop",
+        "shared": true,
+        "allowedImports": []
+      }
+    },
+    {
+      "fqn": "shop.api",
+      "kind": "container",
+      "parent": "shop",
+      "children": [],
+      "tags": [
+        "business",
+        "contract",
+        "leaf"
+      ],
+      "business": true,
+      "contract": {
+        "module": "shop_api",
+        "shared": false,
+        "allowedImports": [
+          "shop",
+          "shop_ledger"
+        ]
+      }
+    },
+    {
+      "fqn": "shop.ledger",
+      "kind": "container",
+      "parent": "shop",
+      "children": [],
+      "tags": [
+        "contract",
+        "leaf"
+      ],
+      "business": false,
+      "contract": {
+        "module": "shop_ledger",
+        "shared": false,
+        "allowedImports": [
+          "shop"
+        ]
+      }
+    },
+    {
+      "fqn": "user",
+      "kind": "actor",
+      "parent": null,
+      "children": [],
+      "tags": [],
+      "business": false,
+      "contract": null
+    }
+  ],
+  "relations": [
+    {
+      "source": "shop.api",
+      "target": "shop.ledger",
+      "kind": "calls",
+      "title": "记下订单金额"
+    },
+    {
+      "source": "user",
+      "target": "shop.api",
+      "kind": "calls",
+      "title": "下单"
+    }
+  ],
+  "views": [
+    {
+      "id": "index",
+      "of": null,
+      "nodes": [
+        "shop",
+        "user"
+      ]
+    },
+    {
+      "id": "shopLayer",
+      "of": "shop",
+      "nodes": [
+        "shop",
+        "shop.api",
+        "shop.ledger",
+        "user"
+      ]
+    }
+  ]
+}

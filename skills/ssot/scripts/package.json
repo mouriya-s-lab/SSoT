@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "dependencies": {
+    "@informalsystems/quint": "latest",
+    "likec4": "latest",
+    "typescript": "latest",
+    "@types/bun": "latest"
+  }
+}

@@ -10,12 +10,14 @@ SSoT 把软件的结构、连接契约与跨连接次序写成三种可编译的
 ## 〇、怎样走这棵 skill 树
 
 1. 读完本文件。
-2. 运行 `ssot status <design>`。它从三种载体与 `check` 的诊断派生出**一项**前沿：`{skill, scope, reason}`。可派生的前沿只有五类：
-   - 还没有展开的非叶元素 → `ssot-write-level`；
-   - 带 `#contract` 却没有契约模块的元素 → `ssot-write-contract`；
-   - 编译或检查有 error 的切片 → 拥有该切片的写作叶子；
+2. 运行 `ssot status <design>`。它从三种载体与 `check` 的诊断派生出**一项**前沿，输出一行 JSON `{skill, scope, reason}`。可派生的前沿只有五类，按下面的先后只报第一项：
+   - 编译或检查有 error 的切片 → 拥有该切片的写作叶子（先 LikeC4，再 VDM，再 Quint）；
    - 没有落点的 `req` → `ssot-draft-requirement`；
+   - 还没有展开的非叶元素，即没有子元素、也没有 `#leaf` 标签的非 `actor` 元素 → `ssot-write-level`（浅层先）；
+   - 带 `#contract` 却没有契约模块的元素 → `ssot-write-contract`；
    - 仍有未覆盖结局（`replay.outcome` 计数为 0 的变体）的行为模块 → `ssot-write-behavior`。
+
+   五类都没有时输出“没有前沿”。`check` 因资源超时没有做完（退出码 `3`）时，`status` 报告验证没有做完、不派生前沿，退出码也是 `3`：用更长的 `--deadline <秒>` 重跑 `status`，不把它当成没有前沿。
 
    其余 info 提示（`hint.*`、`view.unrealized`）与 MAYBE 等未解决的证明义务不进前沿：它们只在写作叶子末尾的评审里交给评审者。评审判定“不构成问题”之后提示仍然在，若它们进前沿，`status` 会一遍遍派出同一次评审。所以 `status` 从不派出 verify 叶子。
 3. 只读 `skill` 指出的那一个叶子，按它只处理 `scope` 这一个切片。不读别的叶子，不顺手处理别的切片。
@@ -130,9 +132,9 @@ Quint 轨迹 ──回放──▶ 在定义该操作的 VDM 模块里求 pre/po
 | `ssot check <design> --scope <视图 id> --base <rev>` | 另列出 `<rev>` 之后落在该作用域之外的改动，提示应交给哪个叶子 |
 | `ssot view <design> <视图 id>` | 输出本层评审包：汇总边代表的真实关系、被展开元素在上一层的对外关系由哪个子元素落实、未落实的关系 |
 | `ssot eval <design> <模块> '<表达式>' [--bind …]` | 在原样规格里求一个 VDM 表达式，用来构造违反实例 |
-| `ssot status <design>` | 派生一项前沿 `{skill, scope, reason}` |
+| `ssot status <design> [--deadline 秒]` | 运行一次全量 `check`，派生一项前沿 `{skill, scope, reason}`；没有前沿时输出“没有前沿” |
 
-`check` 的退出码：`0` 通过；`1` 有 error 级诊断；`3` 没有 error，但有 `resource.deadline`（验证没有做完，不是设计被拒绝）。`check` 可能运行数分钟：用能设截止时间的方式运行它，不在前台死等，不加 `--verbosity 1`。
+`check` 的退出码：`0` 通过；`1` 有 error 级诊断；`3` 没有 error，但有 `resource.deadline`（验证没有做完，不是设计被拒绝）。`check` 与 `status` 可能运行数分钟：用能设截止时间的方式运行它们，不在前台死等，不加 `--verbosity 1`。
 
 ## 六、诊断怎样用
 

@@ -1,0 +1,31 @@
+-- 记账事实：每个订单至多记一次，关账后不再记账。
+module shop_ledger
+imports
+  from shop types OrderId renamed OrderId
+exports
+  types struct Closed
+  operations
+    record : OrderId * nat ==> ();
+    close : OrderId ==> Closed
+definitions
+types
+  Closed = <Closed>;
+state Ledger of
+  entries : map OrderId to nat
+  closed  : set of OrderId
+inv mk_Ledger(es, cs) == cs subset dom es
+init s == s = mk_Ledger({|->}, {})
+end
+operations
+  record(o : OrderId, amount : nat)
+  ext wr entries
+      rd closed
+  pre o not in set dom entries and o not in set closed
+  post entries = entries~ munion {o |-> amount};
+
+  close(o : OrderId) r : Closed
+  ext rd entries
+      wr closed
+  pre o in set dom entries
+  post closed = closed~ union {o} and r = <Closed>;
+end shop_ledger

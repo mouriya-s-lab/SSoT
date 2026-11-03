@@ -1,0 +1,485 @@
+// 每条规则至少一处违反。edit.find 为 null 表示新建或整体替换该文件。
+export interface Edit {
+  readonly file: string;
+  readonly find: string | null;
+  readonly replace: string;
+}
+
+export interface Mutation {
+  readonly id: string;
+  readonly expect: string;
+  readonly description: string;
+  readonly edits: readonly Edit[];
+  /** 施加后先运行 gen（让 .gen 跟上，单独暴露被测规则）。 */
+  readonly regen: boolean;
+  readonly args?: readonly string[];
+  /** 期望通过（用于作用域：违反在作用域外时不报告）。 */
+  readonly expectPass?: boolean;
+  readonly outputIncludes?: readonly string[];
+  readonly outputExcludes?: readonly string[];
+}
+
+const C4 = "structure/model.c4";
+const LEDGER = "contract/shop.ledger.vdmsl";
+const API = "contract/shop.api.vdmsl";
+const FLOW = "behavior/flow.qnt";
+
+export const mutations: readonly Mutation[] = [
+  {
+    id: "baseline",
+    expect: "-",
+    description: "未改动的夹具设计通过",
+    edits: [],
+    regen: false,
+    expectPass: true,
+  },
+  {
+    id: "compile-c4",
+    expect: "compile.c4",
+    description: "LikeC4 语法错误：关系目标不存在",
+    edits: [{ file: C4, find: "api -[calls]-> ledger '记下订单金额'", replace: "api -[calls]-> nowhere '记下订单金额'" }],
+    regen: false,
+  },
+  {
+    id: "compile-vdm",
+    expect: "compile.vdm",
+    description: "VDM 类型错误：post 引用了未定义的名字",
+    edits: [{ file: LEDGER, find: "post entries = entries~ munion {o |-> amount};", replace: "post entries = entries~ munion {o |-> amountX};" }],
+    regen: true,
+  },
+  {
+    id: "compile-quint",
+    expect: "compile.quint",
+    description: "Quint 类型错误：Call 载荷少了字段",
+    edits: [{ file: FLOW, find: "L::record({ o: o, amount: amt })", replace: "L::record({ o: o })" }],
+    regen: false,
+  },
+  {
+    id: "struct-kinds",
+    expect: "struct.kinds",
+    description: "specification 声明了约定外的元素种类 database",
+    edits: [{ file: C4, find: "  element component\n", replace: "  element component\n  element database\n" }],
+    regen: true,
+  },
+  {
+    id: "struct-kinds-relation",
+    expect: "struct.kinds",
+    description: "关系没有写种类",
+    edits: [{ file: C4, find: "user -[calls]-> shop.api '下单'", replace: "user -> shop.api '下单'" }],
+    regen: true,
+  },
+  {
+    id: "struct-nesting",
+    expect: "struct.nesting",
+    description: "container 嵌在 container 里（子不比父细）",
+    edits: [
+      {
+        file: C4,
+        find: "      description '订单的记账事实'\n    }",
+        replace: "      description '订单的记账事实'\n      journal = container 'Journal'\n    }",
+      },
+      { file: C4, find: "  view shopLayer of shop {\n    include *\n  }", replace: "  view shopLayer of shop {\n    include *\n  }\n  view ledgerLayer of shop.ledger {\n    include *\n  }" },
+    ],
+    regen: true,
+  },
+  {
+    id: "compile-c4-parent-dep",
+    expect: "compile.c4",
+    description: "父元素依赖自己的子元素：LikeC4 原生拒绝（父不依赖子由编译器保证，不另写规则）",
+    edits: [{ file: C4, find: "    api -[calls]-> ledger '记下订单金额'", replace: "    api -[calls]-> ledger '记下订单金额'\n    this -[uses]-> ledger '读取账本'" }],
+    regen: true,
+  },
+  {
+    id: "struct-layering",
+    expect: "struct.layering",
+    description: "架构元素 ledger 依赖业务元素 api",
+    edits: [{ file: C4, find: "    api -[calls]-> ledger '记下订单金额'", replace: "    api -[calls]-> ledger '记下订单金额'\n    ledger -[callback]-> api '通知'\n    ledger -[uses]-> api '读取订单'" }],
+    regen: true,
+  },
+  {
+    id: "struct-acyclic",
+    expect: "struct.acyclic",
+    description: "两个业务元素互相依赖",
+    edits: [
+      { file: C4, find: "    ledger = container 'Ledger' {\n      #contract", replace: "    ledger = container 'Ledger' {\n      #contract #business" },
+      { file: C4, find: "    api -[calls]-> ledger '记下订单金额'", replace: "    api -[calls]-> ledger '记下订单金额'\n    ledger -[calls]-> api '退款'" },
+    ],
+    regen: true,
+  },
+  {
+    id: "struct-views-missing",
+    expect: "struct.views",
+    description: "非叶元素 shop 没有 view of",
+    edits: [{ file: C4, find: "  view shopLayer of shop {\n    include *\n  }", replace: "" }],
+    regen: true,
+  },
+  {
+    id: "struct-views-grandchild",
+    expect: "struct.views",
+    description: "逐层视图展开到孙辈元素",
+    edits: [
+      { file: C4, find: "      description '订单的记账事实'\n    }", replace: "      description '订单的记账事实'\n      journal = component 'Journal'\n    }" },
+      { file: C4, find: "  view shopLayer of shop {\n    include *\n  }", replace: "  view shopLayer of shop {\n    include *\n    include shop.ledger.*\n  }\n  view ledgerLayer of shop.ledger {\n    include *\n  }" },
+    ],
+    regen: true,
+  },
+  {
+    id: "struct-views-dynamic",
+    expect: "struct.views",
+    description: "动态视图（时序）不允许出现在 LikeC4",
+    edits: [{ file: C4, find: "  view index {", replace: "  dynamic view ordering {\n    user -> shop.api '下单'\n  }\n  view index {" }],
+    regen: true,
+  },
+  {
+    id: "struct-ids",
+    expect: "struct.ids",
+    description: "承载契约的元素 id 含下划线",
+    edits: [
+      { file: C4, find: "ledger = container 'Ledger'", replace: "led_ger = container 'Ledger'" },
+      { file: C4, find: "api -[calls]-> ledger '记下订单金额'", replace: "api -[calls]-> led_ger '记下订单金额'" },
+    ],
+    regen: false,
+  },
+  {
+    id: "vocab-slots",
+    expect: "vocab.slots",
+    description: "metadata 里写了 VDM 操作名",
+    edits: [{ file: C4, find: "    api -[calls]-> ledger '记下订单金额'", replace: "    api -[calls]-> ledger '记下订单金额' {\n      metadata {\n        ops 'record, close'\n      }\n    }" }],
+    regen: true,
+  },
+  {
+    id: "vocab-slots-tag",
+    expect: "vocab.slots",
+    description: "标签名是 VDM 类型名",
+    edits: [
+      { file: C4, find: "  tag business\n", replace: "  tag business\n  tag Reply\n" },
+      { file: C4, find: "      #business #contract", replace: "      #business #contract #Reply" },
+    ],
+    regen: true,
+  },
+  {
+    id: "contract-module-missing",
+    expect: "contract.module",
+    description: "#contract 元素没有契约文件",
+    edits: [{ file: C4, find: "  user = actor 'User'", replace: "  user = actor 'User'\n  audit = system 'Audit' {\n    #contract\n  }" }],
+    regen: false,
+  },
+  {
+    id: "contract-module-name",
+    expect: "contract.module",
+    description: "模块名与元素路径映射不一致",
+    edits: [
+      { file: API, find: "module shop_api", replace: "module ShopApi" },
+      { file: API, find: "end shop_api", replace: "end ShopApi" },
+    ],
+    regen: false,
+  },
+  {
+    id: "contract-module-orphan",
+    expect: "contract.module",
+    description: "契约文件没有对应的 #contract 元素",
+    edits: [{ file: "contract/shop.audit.vdmsl", find: null, replace: "module shop_audit\nexports all\ndefinitions\ntypes\n  Entry = token;\nend shop_audit\n" }],
+    regen: false,
+  },
+  {
+    id: "contract-imports",
+    expect: "contract.imports",
+    description: "api import 了没有关系授权的 ledger 之外的模块（ledger 反向 import api）",
+    edits: [{ file: LEDGER, find: "  from shop types OrderId renamed OrderId\n", replace: "  from shop types OrderId renamed OrderId,\n  from shop_api types Reply\n" }],
+    regen: true,
+  },
+  {
+    id: "gen-unmappable",
+    expect: "gen.unmappable",
+    description: "导出操作的参数类型是 real，Quint 不能表示",
+    edits: [
+      { file: API, find: "    place : OrderId * nat ==> Reply", replace: "    place : OrderId * real ==> Reply" },
+      { file: API, find: "  place(o : OrderId, amount : nat) r : Reply", replace: "  place(o : OrderId, amount : real) r : Reply" },
+    ],
+    regen: false,
+  },
+  {
+    id: "gen-names-pattern",
+    expect: "gen.names",
+    description: "导出操作的形参不是标识符",
+    edits: [
+      { file: API, find: "    place : OrderId * nat ==> Reply", replace: "    place : OrderId * nat ==> Reply;\n    cancel : OrderId ==> Reply" },
+      { file: API, find: "  post true;\n", replace: "  post true;\n\n  cancel : OrderId ==> Reply\n  cancel(-) == return <Rejected>;\n" },
+    ],
+    regen: false,
+  },
+  {
+    id: "gen-names-quint",
+    expect: "gen.names",
+    description: "导出类型名与 Quint 内建名冲突（生成的 Quint 被 Quint 拒绝）",
+    edits: [
+      { file: API, find: "  types struct Reply", replace: "  types struct Reply; struct Rec" },
+      { file: API, find: "  Reply = <Accepted> | <Rejected>;", replace: "  Reply = <Accepted> | <Rejected>;\n  Rec :: n : nat;" },
+    ],
+    regen: false,
+  },
+  {
+    id: "gen-fresh",
+    expect: "gen.fresh",
+    description: ".gen/contract.qnt 被手改",
+    edits: [{ file: ".gen/contract.qnt", find: "module contract {", replace: "// 手改\nmodule contract {" }],
+    regen: false,
+  },
+  {
+    id: "gen-fresh-upstream",
+    expect: "gen.fresh",
+    description: "VDM 改名后没有重新生成：.gen 落后",
+    edits: [{ file: LEDGER, find: "  Closed = <Closed>;", replace: "  Closed = <Closed> | <AlreadyClosed>;" }],
+    regen: false,
+  },
+  {
+    id: "behavior-names",
+    expect: "behavior.names",
+    description: "Quint 自定义了与 VDM 操作同名的 action",
+    edits: [{ file: FLOW, find: "  action doClose(o: str): bool = all {", replace: "  action close(o: str): bool = doClose(o)\n\n  action doClose(o: str): bool = all {" }],
+    regen: false,
+  },
+  {
+    id: "behavior-call",
+    expect: "behavior.call",
+    description: "可运行模块没有 Call 类型的状态变量",
+    edits: [
+      { file: FLOW, find: "  var lastCall: Call\n", replace: "  var lastCall: str\n" },
+      { file: FLOW, find: "    lastCall' = NoCall,", replace: "    lastCall' = \"none\"," },
+      { file: FLOW, find: "    lastCall' = shop_api(A::place({ o: o, amount: amt, result: A::Reply_Accepted })),", replace: "    lastCall' = \"place\"," },
+      { file: FLOW, find: "    lastCall' = shop_ledger(L::record({ o: o, amount: amt })),", replace: "    lastCall' = \"record\"," },
+      { file: FLOW, find: "    lastCall' = shop_ledger(L::close({ o: o, result: L::Closed_Closed })),", replace: "    lastCall' = \"close\"," },
+    ],
+    regen: false,
+  },
+  {
+    id: "behavior-run",
+    expect: "behavior.run",
+    description: "关账不再要求已记账，safety 被违反",
+    edits: [{ file: FLOW, find: "    o.in(ledger.entries.keys()),\n    not(o.in(ledger.closed)),", replace: "    not(o.in(ledger.closed))," }],
+    regen: false,
+  },
+  {
+    id: "compile-quint-rename",
+    expect: "compile.quint",
+    description: "VDM 把 close 改名为 seal；Quint 未跟上，按新生成的 contract 编译失败",
+    edits: [
+      { file: LEDGER, find: "    close : OrderId ==> Closed", replace: "    seal : OrderId ==> Closed" },
+      { file: LEDGER, find: "  close(o : OrderId) r : Closed", replace: "  seal(o : OrderId) r : Closed" },
+    ],
+    regen: true,
+  },
+  {
+    id: "replay-pre",
+    expect: "replay.pre",
+    description: "Quint 允许同一订单记账两次；违反 VDM record 的 pre（Quint 自己的 safety 不管这件事）",
+    edits: [{ file: FLOW, find: "    o.in(placed),\n    not(o.in(ledger.entries.keys())),", replace: "    o.in(placed)," }],
+    regen: false,
+  },
+  {
+    id: "replay-post",
+    expect: "replay.post",
+    description: "Quint 的关账不更新账本状态；违反 VDM close 的 post",
+    edits: [{ file: FLOW, find: "    ledger' = { ...ledger, closed: ledger.closed.union(Set(o)) },", replace: "    ledger' = ledger," }],
+    regen: false,
+  },
+  {
+    id: "replay-inv",
+    expect: "replay.inv",
+    description: "VDM 给金额加了类型不变式（≤ 2），Quint 仍下 3 元的单",
+    edits: [
+      { file: API, find: "  Reply = <Accepted> | <Rejected>;", replace: "  Reply = <Accepted> | <Rejected>;\n  Amount = nat\n  inv a == a <= 2;" },
+      { file: API, find: "    place : OrderId * nat ==> Reply", replace: "    place : OrderId * Amount ==> Reply" },
+      { file: API, find: "  place(o : OrderId, amount : nat) r : Reply", replace: "  place(o : OrderId, amount : Amount) r : Reply" },
+    ],
+    regen: true,
+  },
+  {
+    id: "replay-eval",
+    expect: "replay.eval",
+    description: "VDM post 调用了未给出定义的函数，回放求值失败",
+    edits: [
+      { file: API, find: "operations\n  place", replace: "functions\n  audited : nat -> bool\n  audited(-) == is not yet specified;\n\noperations\n  place" },
+      { file: API, find: "  post true;", replace: "  post audited(amount);" },
+    ],
+    regen: true,
+  },
+  {
+    id: "replay-incomplete-witness",
+    expect: "replay.incomplete",
+    description: "覆盖目标不可达（只有两张订单，却要求三张都关账）：验证不完整，check 失败",
+    edits: [{ file: FLOW, find: "  val witnessBothClosed = ledger.closed.size() == 2", replace: "  val witnessBothClosed = ledger.closed.size() == 2\n  val witnessThreeClosed = ledger.closed.size() == 3" }],
+    regen: false,
+  },
+  {
+    id: "opaque-structure",
+    expect: "-",
+    description: "OrderId 改为不透明导出且没有构造入口：按 §7.2 第 2 条在 shop 里构造再绑定，回放照常通过",
+    edits: [{ file: "contract/shop.vdmsl", find: "  types struct OrderId", replace: "  types OrderId" }],
+    regen: true,
+    expectPass: true,
+  },
+  {
+    id: "opaque-constructor",
+    expect: "-",
+    description: "OrderId 不透明，且 shop 导出构造入口 order(s)：Quint 存入参 {s}，回放在 shop 里求 order(s)",
+    edits: [
+      { file: "contract/shop.vdmsl", find: "  types struct OrderId", replace: "  types OrderId\n  functions order : seq1 of char -> OrderId" },
+      { file: "contract/shop.vdmsl", find: "  OrderId = token;", replace: "  OrderId = token;\nfunctions\n  order : seq1 of char -> OrderId\n  order(s) == mk_token(s);" },
+      { file: FLOW, find: "  pure val ORDERS = Set(\"o1\", \"o2\")", replace: "  import shop as S from \"../.gen/contract\"\n  pure val ORDERS: Set[S::OrderId] = Set({ s: \"o1\" }, { s: \"o2\" })" },
+      { file: FLOW, find: "  var placed: Set[str]", replace: "  var placed: Set[S::OrderId]" },
+      { file: FLOW, find: "  action doPlace(o: str, amt: int): bool = all {", replace: "  action doPlace(o: S::OrderId, amt: int): bool = all {" },
+      { file: FLOW, find: "  action doRecord(o: str, amt: int): bool = all {", replace: "  action doRecord(o: S::OrderId, amt: int): bool = all {" },
+      { file: FLOW, find: "  action doClose(o: str): bool = all {", replace: "  action doClose(o: S::OrderId): bool = all {" },
+    ],
+    regen: true,
+    expectPass: true,
+  },
+  {
+    id: "opaque-constructor-pre",
+    expect: "replay.pre",
+    description: "构造入口有 pre（id 只能以 o 开头），Quint 给了不合法的代表值 x9：在构造入口处被拒绝",
+    edits: [
+      { file: "contract/shop.vdmsl", find: "  types struct OrderId", replace: "  types OrderId\n  functions order : seq1 of char -> OrderId" },
+      { file: "contract/shop.vdmsl", find: "  OrderId = token;", replace: "  OrderId = token;\nfunctions\n  order : seq1 of char -> OrderId\n  order(s) == mk_token(s)\n  pre hd s = 'o';" },
+      { file: FLOW, find: "  pure val ORDERS = Set(\"o1\", \"o2\")", replace: "  import shop as S from \"../.gen/contract\"\n  pure val ORDERS: Set[S::OrderId] = Set({ s: \"o1\" }, { s: \"x9\" })" },
+      { file: FLOW, find: "  var placed: Set[str]", replace: "  var placed: Set[S::OrderId]" },
+      { file: FLOW, find: "  action doPlace(o: str, amt: int): bool = all {", replace: "  action doPlace(o: S::OrderId, amt: int): bool = all {" },
+      { file: FLOW, find: "  action doRecord(o: str, amt: int): bool = all {", replace: "  action doRecord(o: S::OrderId, amt: int): bool = all {" },
+      { file: FLOW, find: "  action doClose(o: str): bool = all {", replace: "  action doClose(o: S::OrderId): bool = all {" },
+    ],
+    regen: true,
+  },
+  {
+    id: "scope-outside",
+    expect: "vocab.slots",
+    description: "违反在 shop.api→shop.ledger 关系上（shop 内部一层）；顶层视图 index 只含 user 与 shop，不报告",
+    edits: [{ file: C4, find: "    api -[calls]-> ledger '记下订单金额'", replace: "    api -[calls]-> ledger '记下订单金额' {\n      metadata {\n        op 'record'\n      }\n    }" }],
+    regen: true,
+    args: ["--scope", "index"],
+    expectPass: true,
+  },
+  {
+    id: "scope-inside",
+    expect: "vocab.slots",
+    description: "同一违反在 shop 的逐层视图 shopLayer 的作用域内，报告",
+    edits: [{ file: C4, find: "    api -[calls]-> ledger '记下订单金额'", replace: "    api -[calls]-> ledger '记下订单金额' {\n      metadata {\n        op 'record'\n      }\n    }" }],
+    regen: true,
+    args: ["--scope", "shopLayer"],
+  },
+  {
+    id: "contract-po-failed",
+    expect: "contract.po",
+    description: "total function 返回 int 入参而声称 nat：QuickCheck 以负数反驳结果类型 PO",
+    edits: [{ file: "contract/shop.vdmsl", find: "end shop", replace: "functions\n  nonnegative : int -> nat\n  nonnegative(x) == x;\nend shop" }],
+    regen: true,
+  },
+  {
+    id: "witness-step-bound-missing",
+    expect: "replay.incomplete",
+    description: "两张订单各需 place/record/close，三步界限无法到达覆盖目标",
+    edits: [],
+    regen: false,
+    args: ["--steps", "3"],
+    outputIncludes: ["1000 次 × 3 步内没有到达"],
+  },
+  {
+    id: "witness-step-bound",
+    expect: "-",
+    description: "同一六步目标以 compiler JSON 中的 pure val maxSteps 字面量覆盖，覆盖界限不再取 --steps 3",
+    edits: [{ file: FLOW, find: "  val witnessBothClosed = ledger.closed.size() == 2", replace: "  val witnessBothClosed = ledger.closed.size() == 2\n  pure val maxSteps_witnessBothClosed = 12" }],
+    regen: false,
+    args: ["--steps", "3"],
+    expectPass: true,
+    outputIncludes: ["witnessBothClosed（定向模拟", "shop_ledger`close×"],
+  },
+  {
+    id: "witness-step-bound-expression",
+    expect: "behavior.call",
+    description: "maxSteps 不能是待求值表达式，必须直接是正整数字面量",
+    edits: [{ file: FLOW, find: "  val witnessBothClosed = ledger.closed.size() == 2", replace: "  val witnessBothClosed = ledger.closed.size() == 2\n  pure val maxSteps_witnessBothClosed = 6 + 6" }],
+    regen: false,
+  },
+  {
+    id: "scope-no-call-runtime",
+    expect: "-",
+    description: "index 中没有生成 Call 的模块，即使目标不可达也完全跳过行为运行",
+    edits: [{ file: FLOW, find: "  val witnessBothClosed = ledger.closed.size() == 2", replace: "  val witnessBothClosed = ledger.closed.size() == 3" }],
+    regen: false,
+    args: ["--scope", "index"],
+    expectPass: true,
+    outputIncludes: ["跳过模拟、覆盖目标与回放"],
+    outputExcludes: ["行为 flow：模拟", "行为 flow：覆盖目标", "行为 flow：回放"],
+  },
+  {
+    id: "scope-witness-transitive",
+    expect: "replay.incomplete",
+    description: "同模块两层 val 引用最终到达 ledger 状态变量，不可达目标在 shopLayer 仍必须搜索",
+    edits: [{ file: FLOW, find: "  val witnessBothClosed = ledger.closed.size() == 2", replace: "  val observedClosed = ledger.closed\n  val observedCount = observedClosed.size()\n  val witnessBothClosed = observedCount == 3" }],
+    regen: false,
+    args: ["--scope", "shopLayer"],
+    outputIncludes: ["覆盖目标 witnessBothClosed"],
+  },
+  {
+    id: "scope-witness-unrelated",
+    expect: "-",
+    description: "非空 S 保留 safety 模拟与相关目标，但跳过没有状态或 Call 依赖的不可达目标",
+    edits: [{ file: FLOW, find: "  val witnessBothClosed = ledger.closed.size() == 2", replace: "  val witnessBothClosed = ledger.closed.size() == 2\n  val witnessUnrelated = false" }],
+    regen: false,
+    args: ["--scope", "shopLayer"],
+    expectPass: true,
+    outputIncludes: ["行为 flow：模拟", "witnessBothClosed（定向模拟", "shop_ledger`record×"],
+    outputExcludes: ["覆盖目标 witnessUnrelated"],
+  },
+  {
+    id: "scope-replay-module",
+    expect: "-",
+    description: "index 的 S 只含新增的 shop Call；完整模拟后仅回放 shop，构造子依赖的目标被搜索",
+    edits: [
+      { file: "contract/shop.vdmsl", find: "  types struct OrderId", replace: "  types struct OrderId\n  operations probe : () ==> ()" },
+      { file: "contract/shop.vdmsl", find: "end shop", replace: "operations\n  probe : () ==> ()\n  probe() == skip;\nend shop" },
+      { file: FLOW, find: "  import shop_api as A", replace: "  import shop as S from \"../.gen/contract\"\n  import shop_api as A" },
+      { file: FLOW, find: "  action step = {", replace: "  action doProbe = all {\n    lastCall' = shop(S::probe),\n    ledger' = ledger,\n    placed' = placed,\n  }\n\n  action step = {" },
+      { file: FLOW, find: "any { doPlace(o, amt), doRecord(o, amt), doClose(o) }", replace: "any { doPlace(o, amt), doRecord(o, amt), doClose(o), doProbe }" },
+      { file: FLOW, find: "  val witnessBothClosed = ledger.closed.size() == 2", replace: "  val witnessBothClosed = ledger.closed.size() == 2\n  val calledProbe = lastCall == shop(S::probe)\n  val witnessProbe = calledProbe" },
+    ],
+    regen: true,
+    args: ["--scope", "index"],
+    expectPass: true,
+    outputIncludes: ["行为 flow：模拟", "witnessProbe（定向模拟", "shop`probe×"],
+    outputExcludes: ["witnessBothClosed（定向模拟", "shop_api`place×", "shop_ledger`record×"],
+  },
+  {
+    id: "replay-nested-record",
+    expect: "-",
+    description: "回放值里嵌着一个求值模块没有 import 的记录类型（只 import 了外层类型），仍能求 pre/post",
+    edits: [
+      { file: "contract/shop.vdmsl", find: "  types struct OrderId", replace: "  types struct OrderId; struct Money; struct Price" },
+      { file: "contract/shop.vdmsl", find: "  OrderId = token;", replace: "  OrderId = token;\n  Money :: cents : nat;\n  Price :: money : Money;" },
+      { file: API, find: "  from shop types OrderId renamed OrderId", replace: "  from shop types OrderId renamed OrderId; Price renamed Price" },
+      { file: API, find: "place : OrderId * nat ==> Reply", replace: "place : OrderId * Price ==> Reply" },
+      { file: API, find: "place(o : OrderId, amount : nat) r : Reply\n  pre amount > 0", replace: "place(o : OrderId, p : Price) r : Reply\n  pre p.money.cents > 0" },
+      { file: FLOW, find: "A::place({ o: o, amount: amt, result: A::Reply_Accepted })", replace: "A::place({ o: o, p: { money: { cents: amt } }, result: A::Reply_Accepted })" },
+    ],
+    regen: true,
+    expectPass: true,
+    outputIncludes: ["shop_api`place×"],
+    outputExcludes: ["VDMJ 3126"],
+  },
+  {
+    id: "po-after-sampling",
+    expect: "-",
+    description: "inv 采样在递归 measure 函数里中途出错后，后续 QuickCheck 不把它当成反例",
+    edits: [
+      { file: "contract/shop.vdmsl", find: "  types struct OrderId", replace: "  types struct OrderId; struct Name; struct Item; struct Names\n  functions less : Name * Name -> bool" },
+      {
+        file: "contract/shop.vdmsl",
+        find: "  OrderId = token;",
+        replace: "  OrderId = token;\n  Name = seq of nat\n  inv n == n <> [];\n  Item :: name : Name\n          value : nat;\n  Names :: items : seq of Item\n  inv o == forall i, j in set inds o.items & i < j => less(o.items(i).name, o.items(j).name);\nfunctions\n  less : Name * Name -> bool\n  less(a, b) ==\n    if len a = 1 or len b = 1 then (hd a < hd b) or (hd a = hd b and len a < len b)\n    else if hd a = hd b then less(tl a, tl b)\n    else hd a < hd b\n  measure len a;",
+      },
+    ],
+    regen: true,
+    expectPass: true,
+    outputExcludes: ["FAILED"],
+  },
+];

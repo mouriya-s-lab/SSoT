@@ -1,0 +1,43 @@
+specification {
+  element actor
+  element system
+  element container
+  element component
+  relationship calls
+  relationship uses
+  relationship callback
+  tag contract
+  tag shared
+  tag business
+  tag leaf
+}
+
+model {
+  user = actor 'User'
+
+  shop = system 'Shop' {
+    #contract #shared
+    description '下单与记账'
+
+    api = container 'API' {
+      #business #contract #leaf
+      description '受理订单'
+    }
+    ledger = container 'Ledger' {
+      #contract #leaf
+      description '订单的记账事实'
+    }
+    api -[calls]-> ledger '记下订单金额'
+  }
+
+  user -[calls]-> shop.api '下单'
+}
+
+views {
+  view index {
+    include *
+  }
+  view shopLayer of shop {
+    include *
+  }
+}

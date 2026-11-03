@@ -1,0 +1,43 @@
+---
+name: ssot-write-deploy
+description: SSoT 写一个部署节点（LikeC4 部署模型）：节点里运行哪些逻辑元素的实例、信任边界在哪里、依据是什么；末尾按 ssot-verify-structure 的清单评审。由 ssot status 派出，scope 是部署节点 fqn。先读 ssot。
+---
+
+# ssot-write-deploy：写一个部署节点
+
+`scope` 是 LikeC4 `deployment` 块里一个部署节点 N 的 fqn；`scope` 是 `deployment` 时，N 指整个部署块的顶层（下文“N 的定义块”即整个 `deployment` 块）。部署模型回答“逻辑元素运行在哪里、随谁部署、信任边界在哪里”，与元素树是两种不同的投影：它不改变元素的嵌套与依赖。写法见 `../ssot-write/references/structure.md` 的「七、部署与信任边界」。
+
+## 五项
+
+| 项 | 内容 |
+|---|---|
+| 可读 | `structure/*.c4` 的 `deployment` 块（找出 N、N 的祖先节点与 N 的现有内容）；逻辑模型里全部元素的 fqn、种类与标题（选择要部署的元素），以及 N 中实例所对应的逻辑元素的描述与关系；`ssot check` 的输出 |
+| 可改 | `structure/*.c4` 里 N 的定义块及其中嵌套的全部内容：N 的标题、描述、标签（含信任边界标签）、N 之下的子节点与实例（`instanceOf`）；部署视图里只为显示 N 而加的 include。不改别的节点、逻辑模型（元素与关系）、`contract/`、`behavior/`、`.gen/` |
+| 工具工作集 | `ssot gen <design>`；`ssot check <design> --scope index`（部署模型不在任何逻辑视图里，它的诊断按全局报告） |
+| 末尾评审 | 派 `ssot:reviewer` 执行 `ssot-verify-structure`，`scope` 为 N 的 fqn |
+| 向上修正 | 第三步列出的情形 |
+
+## 一、写节点
+
+1. **实例。** N 里运行的每个逻辑元素写一个实例。只部署已经存在的逻辑元素；需要的元素不存在，属于第三步。
+2. **子节点。** 只有运行位置确实不同（不同进程、不同主机、不同信任域）时才拆子节点。
+3. **信任边界。** 信任边界画在真实的信任差异上（谁能触达谁、谁持有哪些凭据），用标签标出，描述里写依据与来源。
+4. **描述。** 写 N 是什么、为什么这样部署（依据与来源），不写操作、类型、字段或时序。
+
+## 二、检查
+
+运行 `ssot gen <design>`，再运行 `ssot check <design> --scope index`。本节点的 `compile.c4`、`struct.*`、`vocab.slots` 诊断在本切片内修。
+
+## 三、向上修正
+
+遇到下面任何一种，立即停止：
+
+- 要部署的逻辑元素不存在，或部署揭示某个逻辑元素混着两个必须分开运行的职责：写明 `{skill: ssot-write-level, scope: <该元素的父元素的视图 id>, reason: …}`；
+- N 本身放错了位置（应属于另一个父节点 Q）：搬动它要同时改原父节点与 Q 的定义块，写明 `{skill: ssot-write-deploy, scope: <原父节点与 Q 最近的共同祖先节点的 fqn>, reason: …}`；两者没有共同祖先时，`scope` 写 `deployment`，表示整个部署块的顶层。
+
+## 四、末尾评审与交付
+
+1. 运行 `ssot check <design> --scope index --base <开始时的提交>`（开始时的提交见 `ssot` 第四节），撤回 N 的定义块之外的改动。
+2. 按 `ssot` 第七节派 `ssot:reviewer`：交给它 `ssot-verify-structure`、N 的 fqn、设计目录路径、N 的定义块所在的文件与行，以及 `check` 的诊断。
+3. 评审的发现在可改范围内修，修完重跑第二步；指向逻辑模型的，按第三步处理。
+4. 交付：改了哪些节点与实例、`check` 的结果、评审的发现与处理、下一项前沿（如有）。

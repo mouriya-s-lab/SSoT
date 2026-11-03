@@ -1,7 +1,7 @@
 // 行为层：跨连接的次序、交错、停机与崩溃收束。
 // 类型、操作与两个契约状态（事实源头的 Records、执行边界的 Closures）都来自 .gen/contract.qnt（由 design/contract 生成）。
 // 代表契约调用的步骤经 commit 把 Call 写进 lastCall，并按该操作的 VDM post 更新 store/ws；
-// 检查器把每次调用连同前后状态回放进 VDMJ，比对 pre/post（CONVENTIONS §7 方案 a）。
+// 检查器把每次调用连同前后状态回放进 VDMJ，比对 pre/post。
 // 其余变量只持有过程、请求与调度状态，不复制契约状态。
 module engine {
   import contract.* from "../.gen/contract"
@@ -1042,7 +1042,7 @@ module engine {
   val witnessDerived = "r2".in(sched.handedOver)
   val witnessDaemonLostHalt = RUNS.exists(r => haltTag(r) == "DaemonLost")
   val witnessUncaughtHalt = RUNS.exists(r => haltTag(r) == "Uncaught")
-  // 路径要走完一个运行项的整个闭包（含 inject）再停机，约 30 步，放宽定向模拟的步数（CONVENTIONS §7.3）。
+  // 路径要走完一个运行项的整个闭包（含 inject）再停机，约 30 步，放宽定向模拟的步数。
   pure val maxSteps_witnessUncaughtHalt = 45
   val witnessReattached = ghost.reattached
   val witnessToolReplied = ALL_RTS.exists(rt => dmn.replied.get(rt) > 0)
@@ -1056,7 +1056,7 @@ module engine {
   // REQ-43：并入的介入在停机过程停在 engine defect 上时得到 engine defect。
   val witnessDeriveDefectReplied = ghost.deriveDefectReplied
   // REQ-49：派生运行至少为一个旧记录追加了 Ref（让 appendRef 的 pre 被回放）。路径要先走完一个运行项
-  // 的自然结束再派生，约 25 步，单独放宽定向模拟的步数（CONVENTIONS §7.3）。
+  // 的自然结束再派生，约 25 步，单独放宽定向模拟的步数。
   val witnessRefAppended = referenceSources != Set()
   pure val maxSteps_witnessRefAppended = 70
 }

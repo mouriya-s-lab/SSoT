@@ -19,7 +19,7 @@
 | 操作名、类型名、状态字段、数据内容、取值 | 契约（VDM，见 [`contract.md`](contract.md)） |
 | 先后、交错、窗口、超时、重试、崩溃后的接管次序 | 行为（Quint，见 [`behavior.md`](behavior.md)） |
 
-关系标题只写依赖的职责，不写操作清单：`caller -[calls]-> soroi.store '取得运行事实'`，不写 `'replay、timeline、compare'`。描述写元素负责什么，不写它怎样一步步做：`'负责运行的停机：收束准入与全部未结束的运行项，写下运行的结束锚点'` 说的是职责；“先停准入、再逐个关闭闭包、最后写锚点”是次序，归行为。
+关系标题只写依赖的职责，不写操作清单：`caller -[calls]-> soroi.store '取得运行事实'`，不写 `'replay、timeline、compare'`。描述写元素负责什么与结构上的依据和理由，不写它怎样一步步做：`'负责运行的停机：收束准入与全部未结束的运行项，写下运行的结束锚点（REQ-52、REQ-58）。…'` 开头这句说的是职责，后面接着写它为什么依赖推进、闭包过程与事实源头；“先停准入、再逐个关闭闭包、最后写锚点”是次序，归行为。
 
 ## 二、元素种类与嵌套
 
@@ -87,7 +87,7 @@ caller -[calls]-> soroi.store '取得运行事实'
 caller -[calls]-> soroi.engine.control '管理运行的生命周期'
 ```
 
-跨两个展开元素的依赖，两边各落实一次：soroi 一层声明 `engine → workspace`；engine 一层由 `closure → workspace` 落实它；workspace 一层再由 `closure → workspace.executor` 落实 `closure → workspace`。
+跨两个展开元素的依赖，两边各落实一次：soroi 一层声明 `workspace → preset`；workspace 一层由 `executor → preset` 落实它；preset 一层再由 `executor → preset.programs` 落实 `executor → preset`。
 
 **落实不了时。** 上一层的某条关系在本层找不到落实者，只有两种情况：本层漏了一条子元素关系，补上；或者上一层的划分本身不对（这条依赖不该存在，或者该指向别的元素），这时停下本层，回去重开父元素的那一层，不在本层另造一个子元素去凑落实。
 
@@ -147,14 +147,14 @@ deployment view deployed {
 ```text
 control = component 'Control' {
   #contract #leaf
-  description '使用方与引擎之间唯一的操作面：受理对运行生命周期的请求并分派'
+  description '使用方与引擎之间唯一的操作面：受理对运行生命周期的请求并分派（REQ-8）。每种请求由承担它的兄弟处理，所以它依赖推进、停机与派生；新运行的记录由它发布（REQ-1、REQ-3），所以它依赖事实源头；请求与回复对使用方是接口（REQ-2、REQ-42、REQ-57），所以它带契约'
   metadata {
-    req 'REQ-8'
+    req ['REQ-1', 'REQ-2', 'REQ-3', 'REQ-8', 'REQ-42', 'REQ-57']
   }
 }
 ```
 
-一个元素承接多条需求时写成列表 `req ['REQ-8', 'REQ-40']`。`ssot status` 只报告哪些需求 id 没有落点；有落点不等于已兑现，兑现与否由评审判断。需求本身的论证、领域性质和拆分由 `ssot-draft-requirement` 写，结构只记落点。`req` 指向的每条需求都要有真实来源，并写成问题域里可以被观察到的结果（使用方或外部系统看到什么），不是机器的功能清单；结构不为一条功能清单式的“需求”造元素。
+一个元素承接多条需求时写成列表，如上；只承接一条时写成单个值 `req 'REQ-51'`（示例里的 `soroi.engine`）。`ssot status` 只报告哪些需求 id 没有落点；有落点不等于已兑现，兑现与否由评审判断。需求本身的论证、领域性质和拆分由 `ssot-draft-requirement` 写，结构只记落点。`req` 指向的每条需求都要有真实来源，并写成问题域里可以被观察到的结果（使用方或外部系统看到什么），不是机器的功能清单；结构不为一条功能清单式的“需求”造元素。
 
 两条不能用结构去补的情形：
 

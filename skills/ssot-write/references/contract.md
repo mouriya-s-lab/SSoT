@@ -1,6 +1,6 @@
 # 契约的写法（VDM-SL）
 
-`ssot-write-contract` 照这里为一个 `#contract` 元素写它的模块，`ssot-verify-contract` 照这里判断。例子取自 soroi 示例设计（[`../../ssot/references/example/design/`](../../ssot/references/example/design/)）的 `soroi`、`soroi_store`、`soroi_workspace` 模块；VDM 语法查 [`../../ssot/references/vdm/`](../../ssot/references/vdm/README.md)。
+`ssot-write-contract` 照这里为一个 `#contract` 元素写它的模块，`ssot-verify-contract` 照这里判断。例子取自 soroi 示例设计（[`../../ssot/references/example/design/`](../../ssot/references/example/design/)）的 `soroi`、`soroi_store`、`soroi_engine_control` 模块；VDM 语法查 [`../../ssot/references/vdm/`](../../ssot/references/vdm/README.md)。
 
 ## 一、契约只写数据上的承诺
 
@@ -50,10 +50,17 @@ exports
   types
     struct RunId;
     struct RuntimeId;
+    struct Path;
+    struct Digest;
+    struct Snapshot;
+    struct Raw;
+    struct Shape;
     Parsed;
+    struct ParseError;
     struct ParseResult;
   functions
     parse : Shape * Raw -> ParseResult;
+    parsed : ParseResult -> bool;
     valueOf : ParseResult -> Parsed
 ```
 
@@ -66,18 +73,28 @@ imports
 
 `Parsed` 只导出名字：其他模块拿不到 `mk_Parsed`，业务值唯一的来路是 `parse`。
 
-**类型。** `token` 是没有结构的值；`inv` 给类型加不变式；`::` 定义记录，字段之间不加分号；`|` 组成并类型，`<Halted>` 是 quote 值：
+**类型。** `token` 是没有结构的值；`inv` 给类型加不变式；`::` 定义记录，字段之间不加分号；`|` 组成并类型，`<Manual>` 是 quote 值。`soroi` 里的身份与路径：
 
 ```vdm
   RunId = token;
+  RuntimeId = token;
+
   Path = seq of char
   inv p == p <> [];
-  -- 运行的结束锚点由哪种触发写下
-  Trigger = <Manual> | <DaemonLost> | <Uncaught>;
+```
+
+`soroi_store` 里的运行项与停机触发：
+
+```vdm
   Own ::
     start   : Start
     buckets : seq of Fact
     fin     : [End];
+  RefEntry ::
+    source : soroi`RuntimeId;
+  Entry = Own | RefEntry;
+  …
+  Trigger = <Manual> | <DaemonLost> | <Uncaught>;
 ```
 
 **值。** 有名字的常量写在 `values`；数值写出单位与来源，不为它建计时或计数的状态。
@@ -94,6 +111,8 @@ state Records of
 inv mk_Records(-, rs, rts, os, hs) ==
   dom os = dom rs and
   dom hs subset dom rs and
+  (forall r in set dom os & elems os(r) subset dom rts and len os(r) = card elems os(r)) and
+  (forall r1, r2 in set dom os & r1 <> r2 => elems os(r1) inter elems os(r2) = {}) and
   (forall rt in set dom rts & exists r in set dom os & rt in set elems os(r))
 init s == s = mk_Records({}, {|->}, {|->}, {|->}, {|->})
 end
@@ -102,7 +121,7 @@ end
 **隐式操作。** 只写 `ext`、`pre` 与 `post`。`ext rd` 列只读的分量，`ext wr` 列要写的分量；没列进 `ext wr` 的分量调用前后不变。`post` 里 `x~` 是调用前的值。`ext wr` 里的分量，每个 `or` 分支都要写出它这一支怎样变，没变就写 `x = x~`，否则那一支允许它变成任意值。回放只拦得住只读分量与操作不写的分量被改动；`ext wr` 分量在某一支漏写，工具查不出，要逐支核对：
 
 ```vdm
-  -- 只有尚未写下 halt 的运行才可能得到新的运行项；返回 StartFailed 时没有运行项
+  -- REQ-54：只有尚未写下 halt 的运行才可能得到新的运行项；返回 StartFailed 时没有运行项。
   writeStart(r : soroi`RunId, s : Start) res : soroi`RuntimeId | StartFailed
   ext rd runs, halts
       wr runtimes, order
@@ -118,19 +137,21 @@ end
 **显式函数。** 两个独立实现面对同一输入必须得出同一结果、且这个结果本身就是需求的承诺时，才写显式体；允许多个合格结果或不想绑定算法时，只写签名与 `post`。显式体用集合推导式、`inds`、`forall`/`exists` 与递归，递归配 `measure`；不写局部变量（`dcl`）、赋值（`:=`）与循环：
 
 ```vdm
-  -- 产出名按字节序比较
   byteLess : OutputName * OutputName -> bool
   byteLess(a, b) ==
     if len a = 1 or len b = 1 then
       (hd a < hd b) or (hd a = hd b and len a < len b)
     else if hd a = hd b then byteLess(tl a, tl b)
     else hd a < hd b
+  post RESULT <=>
+    ((len a < len b and forall i in set inds a & a(i) = b(i)) or
+     (exists k in set inds a inter inds b & a(k) < b(k) and forall i in set inds a & i < k => a(i) = b(i)))
   measure len a;
 ```
 
-承载需求的纯函数写上 `post`，说出它必须满足的性质：行为从不调用纯函数，回放也不求值它们，只有 `post` 生成的证明义务会让 QuickCheck 去检查函数体。
+承载需求的纯函数写上 `post`，说出它必须满足的性质（上例的 `post RESULT <=> …` 写出严格字节序的含义）：行为从不调用纯函数，回放也不求值它们，只有 `post` 生成的证明义务会让 QuickCheck 去检查函数体。
 
-**显式操作。** 契约里的显式操作只用于效果还没有约束的连接，体写 `is not yet specified`：
+**显式操作。** 契约里的显式操作只用于效果还没有约束的连接，体写 `is not yet specified`（`soroi_engine_control`）：
 
 ```vdm
   Stop : soroi`RunId ==> StopReply

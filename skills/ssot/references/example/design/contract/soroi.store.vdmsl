@@ -260,7 +260,7 @@ operations
   pre r not in set dom runs and rec.bundle in set bundles
   post runs = runs~ munion {r |-> rec} and order = order~ munion {r |-> []};
 
-  -- REQ-54：只有尚未写下 halt 的运行才可能得到新的运行项；返回 Failure 时没有运行项。
+  -- REQ-54：只有尚未写下 halt 的运行才可能得到新的运行项；返回 StartFailed 时没有运行项。
   writeStart(r : soroi`RunId, s : Start) res : soroi`RuntimeId | StartFailed
   ext rd runs, halts
       wr runtimes, order

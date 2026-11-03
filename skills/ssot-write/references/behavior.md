@@ -22,6 +22,7 @@ module engine {
   import Vdm.* from "../.gen/contract"
   import soroi_store as Store from "../.gen/contract"
   import soroi_workspace as Ws from "../.gen/contract"
+  …
 ```
 
 `.gen/contract.qnt` 由 `ssot gen` 写出，不手改。行为里不声明与契约的类型、操作或函数同名的东西；行为自己的概念（进程的阶段、请求的进度）在本模块定义一次，别处只引用。
@@ -39,8 +40,8 @@ module engine {
     ws' = workspaceAfter(ws, call),
   }
 
-  // 闭包过程取得本运行项的开始事实
-  commit(soroi_store(Store::readStart({ rt: rt, result: startFact })))
+  // REQ-60：闭包过程按自己的运行项直接从事实源头取得输入，不经推进转交。
+  commit(soroi_store(Store::readStart({ rt: rt, result: startOf(rt) })))
   // 不调用契约的步骤
   commit(NoCall)
 ```
@@ -62,9 +63,10 @@ module engine {
   action init = all {
     store' = Store::initial,
     ws' = Ws::initial,
+    sched' = { handedOver: Set(), caught: Set() },
+    bnd' = { inflight: Set(), injecting: Set() },
+    …
     lastCall' = NoCall,
-    // 其余变量只持有过程、请求与调度状态
-    ...
   }
 ```
 
@@ -87,9 +89,9 @@ module engine {
 ## 六、次序怎样写
 
 - **参与者只用自己知道的值。** 每一步的守卫与载荷只用这个参与者本来就知道的值：它自己的过程状态，或前一个连接交给它的值（闭包过程用 `writeStart` 返回的 `rt`）。不读另一个参与者的内部变量。
-- **每个结局都有去处。** 被调连接的结果是并类型时，每个变体都有产生它的步骤，也有接住它之后的路：`Launch_Result_ExecRef`、`Launch_Result_Rejected`、`Launch_Result_Failure` 各有一步，失败一支走到停机或拒绝。
-- **集合用有界常量完整表达。** `pure val RUNS = Set("r1", "r2")` 这类常量给出候选集合，`nondet r = RUNS.oneOf()` 让每个元素都可能被选到，不变式对集合里的每个元素都成立。
-- **时钟与崩溃是行为里的事件。** 崩溃写成一步：进程内的变量（`dmn`）丢失，跨崩溃保留的事实（契约状态、执行边界里的进度）留下；重启后的接管次序写成后续的步骤。
+- **每个结局都有去处。** 被调连接的结果是并类型时，每个变体都有产生它的步骤，也有接住它之后的路。body 的 launch：`Launch_Result_ExecRef` 让执行被接纳，之后由 `collectBody` 取回；`Launch_Result_Rejected`（闭包已关闭时的回复）与 `Launch_Result_Failure` 都经 `launchRefused` 关闭受理窗口，让闭包过程转入出口处理。
+- **集合用有界常量完整表达。** `pure val RUNS = Set("r1", "r2")` 这类常量给出候选集合，`nondet r = (if (store.runs.keys() == Set()) RUNS else store.runs.keys()).oneOf()` 让每个元素都可能被选到：还没有发布的运行时从整个 `RUNS` 取，之后只从已发布的运行里取（以运行为参数的动作只对已发布的运行才可能启用，可达状态不变）。不变式对集合里的每个元素都成立。
+- **时钟与崩溃是行为里的事件。** 崩溃写成一步：进程内的闭包过程、停机过程、受理窗口与在途请求随进程消失（`crash` 把 `dmn` 里的这些字段清除或转为 `"Lost"`），跨崩溃保留的事实（契约状态、执行边界里已发出的在途 launch 与 inject `bnd`、调度事实 `sched`）原样留下；重启后的接管次序写成后续的步骤。
 - **只用于不变式的变量（ghost）不进守卫。** 它们记“被排除的事件是否发生过”，只给 `safety` 用。
 
 ## 七、safety 与覆盖目标
@@ -99,11 +101,13 @@ module engine {
 随机模拟不保证走到少见的交错。每个名字以 `witness` 开头的 `val` 都是必须覆盖的情形，工具对它做一次以它为终点的定向模拟，走不到时检查失败：
 
 ```quint
-  // 已退出进程发出的在途 launch，在它的闭包已关闭之后才得到回复
+  // REQ-24：已退出进程发出的在途 launch，在它的闭包已关闭（VDM closed）之后才得到回复。
   val witnessLateLaunchAnswered = ghost.lateLaunchAnswered
-  // 派生运行至少为一个旧记录追加了 Ref：路径约 25 步，单独放宽步数
+  …
+  // REQ-49：派生运行至少为一个旧记录追加了 Ref（让 appendRef 的 pre 被回放）。路径要先走完一个运行项
+  // 的自然结束再派生，约 25 步，单独放宽定向模拟的步数。
   val witnessRefAppended = referenceSources != Set()
-  pure val maxSteps_witnessRefAppended = 60
+  pure val maxSteps_witnessRefAppended = 70
 ```
 
 - 为每条需要证明“确实走到过”的路径写一个覆盖目标：每种停机触发、自然完成、派生、崩溃后的重新附着，以及没被普通模拟稳定走到的结局变体。

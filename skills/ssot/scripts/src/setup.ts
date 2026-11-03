@@ -1,5 +1,5 @@
 // `ssot setup`：检查 java，取最新的 VDMJ 与 QuickCheck、LikeC4、Quint、TypeScript，装进 DATA；把 `ssot` 装进 BIN。
-import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BIN, DATA, JARS, SETUP_GUIDE } from "./install";
 
@@ -61,6 +61,8 @@ async function installPackages(): Promise<void> {
 function installLauncher(): void {
   mkdirSync(BIN, { recursive: true });
   const launcher = join(BIN, "ssot");
+  // 先前安装留下的 ssot 可能是符号链接（含指向已不存在文件的）；写文件会跟随链接，所以先移除这一项本身。
+  rmSync(launcher, { force: true });
   const quote = (s: string): string => `'${s.replaceAll("'", `'\\''`)}'`;
   writeFileSync(
     launcher,

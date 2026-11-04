@@ -1,12 +1,11 @@
 // `ssot status`：从三种载体与 check 的诊断派生一项前沿。不保存任何过程状态。
-// 先后：error 的切片（LikeC4 → VDM → Quint）→ 没有声明附着的需求 → 缺少模块的 #contract 元素。
+// 先后：error 的切片（LikeC4 → VDM → Quint）→ 缺少模块的 #contract 元素。
 // info 与 MAYBE 不进前沿。
 import { basename, dirname, relative } from "node:path";
 import type { C4Element, Structure } from "./compile/likec4";
 import { type Diagnostic, assertNever, carrierOf } from "./diag";
 import { contractElements, contractFileOf } from "./model";
 import { type Slice, behaviorSlice, contractSlice, elementSlice, levelScope, relationSlice, viewSlice } from "./slices";
-import type { RequirementAttachments } from "./requirements";
 
 
 export interface StatusInput {
@@ -18,9 +17,6 @@ export interface StatusInput {
   readonly behaviorModules: readonly string[];
   /** contract/ 下的文件名。 */
   readonly contractFiles: ReadonlySet<string>;
-  /** requirements.md 里的需求 id，按出现次序。 */
-  readonly requirements: readonly string[];
-  readonly attachments: RequirementAttachments;
   readonly exit: 0 | 1 | 3;
 }
 
@@ -120,8 +116,6 @@ export function deriveStatus(i: StatusInput): Status {
   }
   if (s === null) return { kind: "none" };
 
-  const free = i.requirements.find((id) => !i.attachments.has(id));
-  if (free !== undefined) return { kind: "frontier", skill: "ssot-draft-requirement", scope: free, reason: `requirements.md 的 ${free} 在 contract/ 与 behavior/ 都没有附着于声明或模块的注释` };
 
   const contract = missing[0];
   if (contract) return { kind: "frontier", ...contractSlice(contract.fqn), reason: `元素 ${contract.fqn} 带 #contract，但没有 contract/${contractFileOf(contract.fqn)}` };
@@ -129,12 +123,3 @@ export function deriveStatus(i: StatusInput): Status {
   return { kind: "none" };
 }
 
-/** requirements.md：每条需求一个列表项，以 REQ-<编号> 开头。 */
-export function requirementIds(text: string): string[] {
-  const ids: string[] = [];
-  for (const line of text.split("\n")) {
-    const m = /^\s*(?:[-*+]|\d+[.)])\s+(?:\*\*)?(REQ-\d+)\b/.exec(line);
-    if (m && !ids.includes(m[1]!)) ids.push(m[1]!);
-  }
-  return ids;
-}

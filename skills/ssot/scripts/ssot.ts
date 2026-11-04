@@ -28,8 +28,7 @@ import { evalCommand } from "./src/evalcmd";
 import { hintRules } from "./src/rules/hints";
 import { initialRules } from "./src/rules/init";
 import { setup } from "./src/setup";
-import { deriveStatus, requirementIds } from "./src/status";
-import { requirementAttachments } from "./src/requirements";
+import { deriveStatus } from "./src/status";
 import { render } from "./src/render";
 
 interface Layout {
@@ -348,7 +347,6 @@ async function status(l: Layout, o: CheckOptions): Promise<number> {
   const run = await runCheck(l, o);
   if (run.kind === "unknown") throw new Error("全量检查不应解析出未知视图");
   const exit = exitOf(run.diagnostics);
-  const requirementsFile = join(l.root, "requirements.md");
   const result = deriveStatus({
     root: l.root,
     structure: run.structure,
@@ -356,12 +354,6 @@ async function status(l: Layout, o: CheckOptions): Promise<number> {
     behaviorOf: run.behaviorOf,
     behaviorModules: listFiles(l.behavior, ".qnt").map((f) => basename(f, ".qnt")),
     contractFiles: new Set(listFiles(l.contract, ".vdmsl").map((f) => basename(f))),
-    requirements: existsSync(requirementsFile) ? requirementIds(readFileSync(requirementsFile, "utf8")) : [],
-    attachments: requirementAttachments(
-      new Map([...listFiles(l.contract, ".vdmsl"), ...listFiles(l.behavior, ".qnt")].map((file) => [file, readFileSync(file, "utf8")])),
-      run.project,
-      run.behavior,
-    ),
     exit,
   });
   switch (result.kind) {

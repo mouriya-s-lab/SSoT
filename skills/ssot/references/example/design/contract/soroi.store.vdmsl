@@ -2,10 +2,11 @@
 -- 本模块只写每次读写在数据上的前后条件；这些读写的先后由 design/behavior 持有。
 module soroi_store
 imports
-  from soroi
-    types RunId; RuntimeId; Path; Digest; Snapshot; Parsed
+  from soroi_engine_values
+    types Parsed
 exports
   types
+    struct RunId; struct RuntimeId; struct Path; struct Digest; struct Snapshot;
     struct Position; struct BundleDigest; struct Time;
     struct AttrName; struct OutputName; struct Byte; struct ToolName; struct CallId;
     struct ValueSource; struct BoundKind; struct Bound; struct Sourced;
@@ -22,19 +23,28 @@ exports
     byteLess : OutputName * OutputName -> bool
   operations
     writeBundle : BundleDigest ==> ();
-    writeRun : soroi`RunId * RunRecord ==> ();
-    writeStart : soroi`RunId * Start ==> soroi`RuntimeId | StartFailed;
-    readStart : soroi`RuntimeId ==> Start;
-    appendBucket : soroi`RuntimeId * Fact ==> ();
-    writeEnd : soroi`RuntimeId * End ==> ();
-    writeHalt : soroi`RunId * Trigger ==> ();
-    appendRef : soroi`RunId * soroi`RuntimeId ==> soroi`RuntimeId;
-    readActivation : soroi`RuntimeId * BundleDigest ==> Own;
-    replay : soroi`RuntimeId ==> Published;
-    timeline : soroi`RunId ==> seq of Interval;
-    compare : soroi`RunId * soroi`RunId ==> map Position to Aligned
+    writeRun : RunId * RunRecord ==> ();
+    writeStart : RunId * Start ==> RuntimeId | StartFailed;
+    readStart : RuntimeId ==> Start;
+    appendBucket : RuntimeId * Fact ==> ();
+    writeEnd : RuntimeId * End ==> ();
+    writeHalt : RunId * Trigger ==> ();
+    appendRef : RunId * RuntimeId ==> RuntimeId;
+    readActivation : RuntimeId * BundleDigest ==> Own;
+    replay : RuntimeId ==> Published;
+    timeline : RunId ==> seq of Interval;
+    compare : RunId * RunId ==> map Position to Aligned
 definitions
 types
+  RunId = token;
+  RuntimeId = token;
+
+  Path = seq of char
+  inv p == p <> [];
+  Digest = token;
+  -- REQ-39：闭包关闭后工作根的现场观察；由执行边界给出，由事实源头记录。
+  Snapshot = map Path to Digest;
+
   -- 工作流中的语义位置：同一 run 内一个节点激活的位置。
   Position = token;
   BundleDigest = token;
@@ -59,7 +69,7 @@ types
     kind : BoundKind;
   -- REQ-5：每个输入属性都有一个 Present 的值：值的类型就是解析过的业务值，没有缺席分支。
   Sourced ::
-    value  : soroi`Parsed
+    value  : soroi_engine_values`Parsed
     source : ValueSource;
   -- REQ-48：Judge 与 Continue 传递容器控制，同样带位置。
   ControlKind = <Judge> | <Continue>;
@@ -75,7 +85,7 @@ types
     call  : CallId
     tool  : ToolName
     seqNo : nat1
-    value : soroi`Parsed;
+    value : soroi_engine_values`Parsed;
   -- REQ-15：拒绝带原因的种类与诊断文本。
   RejectKind = <Infra> | <Invalid>;
   RejectReason ::
@@ -86,21 +96,21 @@ types
     call   : [CallId]
     reason : RejectReason;
   SlotWrite ::
-    value : soroi`Parsed;
+    value : soroi_engine_values`Parsed;
   Fact = ToolRecord | CallRejected | SlotWrite;
 
   ListValue ::
-    items : seq1 of soroi`Parsed;
+    items : seq1 of soroi_engine_values`Parsed;
   FileRef ::
-    path   : soroi`Path
-    digest : soroi`Digest;
+    path   : Path
+    digest : Digest;
   -- REQ-30：没有对应工具记录时为 AbsentCapture，不伪造值。
-  CapturedValue = soroi`Parsed | ListValue | FileRef | <AbsentCapture>;
+  CapturedValue = soroi_engine_values`Parsed | ListValue | FileRef | <AbsentCapture>;
   Captured ::
     name  : OutputName
     value : CapturedValue;
 
-  VerifyRule = <Required> | soroi`Path;
+  VerifyRule = <Required> | Path;
   VerifyFault ::
     output : OutputName
     rule   : VerifyRule;
@@ -115,7 +125,7 @@ types
   inv o == forall i, j in set inds o.captured & i < j => byteLess(o.captured(i).name, o.captured(j).name);
   Thrown ::
     label   : seq of char
-    payload : soroi`Parsed;
+    payload : soroi_engine_values`Parsed;
   RuntimeFault ::
     reason : RuntimeReason;
   Outcome = Out | Thrown | RuntimeFault | <Halted>;
@@ -124,7 +134,7 @@ types
   End ::
     at       : Time
     outcome  : Outcome
-    snapshot : soroi`Snapshot;
+    snapshot : Snapshot;
 
   -- REQ-5：开始事实带节点 preset 的 [inputs] 声明；每个声明的输入属性都恰有一个 Present 来源。
   -- REQ-40：开始事实里有开始时刻与渲染文本，回放与时间轴只读它们。
@@ -140,23 +150,23 @@ types
     buckets : seq of Fact
     fin     : [End];
   RefEntry ::
-    source : soroi`RuntimeId;
+    source : RuntimeId;
   Entry = Own | RefEntry;
 
   Edit ::
-    at    : soroi`RuntimeId
+    at    : RuntimeId
     attr  : AttrName
-    value : soroi`Parsed;
+    value : soroi_engine_values`Parsed;
   DerivationId = token;
   Derived ::
     id     : DerivationId
-    source : soroi`RunId
+    source : RunId
     edits  : seq of Edit;
   RunRecord ::
     bundle      : BundleDigest
     task        : token
     workflow    : token
-    inputs      : map AttrName to soroi`Parsed
+    inputs      : map AttrName to soroi_engine_values`Parsed
     workspace   : token
     harness     : token
     startedAt   : Time
@@ -177,20 +187,20 @@ types
   -- REQ-40：时间轴上的一个区间。
   Interval ::
     position : Position
-    runtime  : soroi`RuntimeId
+    runtime  : RuntimeId
     startAt  : Time
     endAt    : [Time];
   -- REQ-40：两个运行在同一语义位置上的运行项。
   Aligned ::
-    left  : [soroi`RuntimeId]
-    right : [soroi`RuntimeId];
+    left  : [RuntimeId]
+    right : [RuntimeId];
 
 state Records of
   bundles  : set of BundleDigest
-  runs     : map soroi`RunId to RunRecord
-  runtimes : map soroi`RuntimeId to Entry
-  order    : map soroi`RunId to seq of soroi`RuntimeId
-  halts    : map soroi`RunId to Trigger
+  runs     : map RunId to RunRecord
+  runtimes : map RuntimeId to Entry
+  order    : map RunId to seq of RuntimeId
+  halts    : map RunId to Trigger
 inv mk_Records(-, rs, rts, os, hs) ==
   dom os = dom rs and
   dom hs subset dom rs and
@@ -212,7 +222,7 @@ functions
      (exists k in set inds a inter inds b & a(k) < b(k) and forall i in set inds a & i < k => a(i) = b(i)))
   measure len a;
 
-  runOf : soroi`RuntimeId * map soroi`RunId to seq of soroi`RuntimeId -> soroi`RunId
+  runOf : RuntimeId * map RunId to seq of RuntimeId -> RunId
   runOf(rt, os) == let r in set dom os be st rt in set elems os(r) in r
   pre exists r in set dom os & rt in set elems os(r);
 
@@ -220,8 +230,8 @@ functions
   ended(e) == is_RefEntry(e) or e.fin <> nil;
 
   -- REQ-37：可引用的源记录：Own、同一 bundle、有非 Halted 的结束记录。
-  referable : soroi`RuntimeId * BundleDigest * map soroi`RunId to RunRecord *
-              map soroi`RuntimeId to Entry * map soroi`RunId to seq of soroi`RuntimeId -> bool
+  referable : RuntimeId * BundleDigest * map RunId to RunRecord *
+              map RuntimeId to Entry * map RunId to seq of RuntimeId -> bool
   referable(src, b, rs, rts, os) ==
     src in set dom rts and is_Own(rts(src)) and
     (exists r in set dom os & src in set elems os(r)) and
@@ -229,18 +239,18 @@ functions
     rts(src).fin <> nil and rts(src).fin.outcome <> <Halted>;
 
   -- 运行项所在的语义位置：Own 取它自己的开始事实，Ref 取它的源记录（源一定是 Own）。
-  positioned : soroi`RuntimeId * map soroi`RuntimeId to Entry -> bool
+  positioned : RuntimeId * map RuntimeId to Entry -> bool
   positioned(rt, rts) ==
     rt in set dom rts and
     (is_Own(rts(rt)) or (rts(rt).source in set dom rts and is_Own(rts(rts(rt).source))));
 
-  positionOf : soroi`RuntimeId * map soroi`RuntimeId to Entry -> Position
+  positionOf : RuntimeId * map RuntimeId to Entry -> Position
   positionOf(rt, rts) ==
     if is_Own(rts(rt)) then rts(rt).start.position else rts(rts(rt).source).start.position
   pre positioned(rt, rts);
 
-  entryAt : soroi`RunId * Position * map soroi`RuntimeId to Entry * map soroi`RunId to seq of soroi`RuntimeId
-       -> [soroi`RuntimeId]
+  entryAt : RunId * Position * map RuntimeId to Entry * map RunId to seq of RuntimeId
+       -> [RuntimeId]
   entryAt(r, p, rts, os) ==
     if exists rt in set elems os(r) & positionOf(rt, rts) = p
     then let rt in set elems os(r) be st positionOf(rt, rts) = p in rt
@@ -254,14 +264,14 @@ operations
   post bundles = bundles~ union {b};
 
   -- REQ-44：起运行与派生都以新的 RunId 发布完整 RunRecord，它的 bundle 已经发布；已有 RunRecord 不变。
-  writeRun(r : soroi`RunId, rec : RunRecord)
+  writeRun(r : RunId, rec : RunRecord)
   ext rd bundles
       wr runs, order
   pre r not in set dom runs and rec.bundle in set bundles
   post runs = runs~ munion {r |-> rec} and order = order~ munion {r |-> []};
 
   -- REQ-54：只有尚未写下 halt 的运行才可能得到新的运行项；返回 StartFailed 时没有运行项。
-  writeStart(r : soroi`RunId, s : Start) res : soroi`RuntimeId | StartFailed
+  writeStart(r : RunId, s : Start) res : RuntimeId | StartFailed
   ext rd runs, halts
       wr runtimes, order
   pre r in set dom runs and r not in set dom halts
@@ -271,25 +281,25 @@ operations
         order = order~ ++ {r |-> order~(r) ^ [res]});
 
   -- REQ-60：闭包过程按自己的运行项直接取得开始事实中的输入，不经调度器转交。
-  readStart(rt : soroi`RuntimeId) s : Start
+  readStart(rt : RuntimeId) s : Start
   ext rd runtimes
   pre rt in set dom runtimes and is_Own(runtimes(rt))
   post s = runtimes(rt).start;
 
   -- REQ-33：只向仍无 end 的 Own 运行项追加一条已观察事实。
-  appendBucket(rt : soroi`RuntimeId, f : Fact)
+  appendBucket(rt : RuntimeId, f : Fact)
   ext wr runtimes
   pre rt in set dom runtimes and is_Own(runtimes(rt)) and runtimes(rt).fin = nil
   post runtimes = runtimes~ ++ {rt |-> mu(runtimes~(rt), buckets |-> runtimes~(rt).buckets ^ [f])};
 
   -- REQ-34：结束时间、Outcome 与 Snapshot 一次发布；一个运行项至多成功一次。
-  writeEnd(rt : soroi`RuntimeId, e : End)
+  writeEnd(rt : RuntimeId, e : End)
   ext wr runtimes
   pre rt in set dom runtimes and is_Own(runtimes(rt)) and runtimes(rt).fin = nil
   post runtimes = runtimes~ ++ {rt |-> mu(runtimes~(rt), fin |-> e)};
 
   -- REQ-55/REQ-57：运行的结束锚点只在它的全部运行项都有 end 之后写下，且只写一次。
-  writeHalt(r : soroi`RunId, t : Trigger)
+  writeHalt(r : RunId, t : Trigger)
   ext rd runs, runtimes, order
       wr halts
   pre r in set dom runs and r not in set dom halts and
@@ -297,7 +307,7 @@ operations
   post halts = halts~ munion {r |-> t};
 
   -- REQ-49：派生运行为每个沿用位置追加 Ref；被引用的源必须可引用。
-  appendRef(r : soroi`RunId, src : soroi`RuntimeId) rt : soroi`RuntimeId
+  appendRef(r : RunId, src : RuntimeId) rt : RuntimeId
   ext rd runs, halts
       wr runtimes, order
   pre r in set dom runs and r not in set dom halts and
@@ -308,20 +318,20 @@ operations
 
   -- REQ-37：读取 source 一次，不执行旧运行项，不修改任何运行；source 必须可引用（校验写在 pre）。
   --        派生只读取沿用分区里的旧记录，它们按定义都可引用（REQ-49），所以没有拒绝的结局。
-  readActivation(src : soroi`RuntimeId, b : BundleDigest) res : Own
+  readActivation(src : RuntimeId, b : BundleDigest) res : Own
   ext rd runs, runtimes, order
   pre referable(src, b, runs, runtimes, order)
   post res = runtimes(src);
 
   -- REQ-40：回放读取已发布的输入、渲染文本、bucket、结果与现场；没有结束记录时为 Open，不作推断。
-  replay(rt : soroi`RuntimeId) p : Published
+  replay(rt : RuntimeId) p : Published
   ext rd runtimes
   pre rt in set dom runtimes and is_Own(runtimes(rt))
   post p = mk_Published(runtimes(rt).start, runtimes(rt).buckets,
                         if runtimes(rt).fin = nil then <Open> else runtimes(rt).fin);
 
   -- REQ-40：时间轴只把运行项的开始、结束和位置投影成区间；没有结束记录的区间没有终点。
-  timeline(r : soroi`RunId) iv : seq of Interval
+  timeline(r : RunId) iv : seq of Interval
   ext rd runtimes, order
   pre r in set dom order
   post iv = [mk_Interval(runtimes(rt).start.position, rt, runtimes(rt).start.at,
@@ -329,7 +339,7 @@ operations
              | rt in seq order(r) & is_Own(runtimes(rt))];
 
   -- REQ-40：对比按语义位置对齐两个运行；Ref 取它的源记录所在的位置。
-  compare(left : soroi`RunId, right : soroi`RunId) al : map Position to Aligned
+  compare(left : RunId, right : RunId) al : map Position to Aligned
   ext rd runtimes, order
   pre left in set dom order and right in set dom order and
       (forall rt in set elems order(left) union elems order(right) & positioned(rt, runtimes))

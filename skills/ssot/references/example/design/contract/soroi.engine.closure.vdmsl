@@ -2,11 +2,11 @@
 -- 受理窗口何时打开和关闭、记录与回复的先后、出口捕获与 verify 的先后由 design/behavior 持有。
 module soroi_engine_closure
 imports
-  from soroi
-    types Raw; Shape; Parsed; Path; Digest
+  from soroi_engine_values
+    types Raw; Shape; Parsed
     functions parse; parsed; valueOf,
   from soroi_store
-    types AttrName; OutputName; ToolName; CallId;
+    types Path; Digest; AttrName; OutputName; ToolName; CallId;
           ToolRecord; RejectReason; CallRejected; SlotWrite; Fact; ListValue; FileRef; CapturedValue; Captured;
           VerifyFault; Out; Thrown; RuntimeFault; Outcome
     functions byteLess,
@@ -15,11 +15,11 @@ imports
 exports all
 definitions
 types
-  Inputs = map soroi_store`AttrName to soroi`Parsed;
+  Inputs = map soroi_store`AttrName to soroi_engine_values`Parsed;
   -- prepare 成功产生的派生值。
-  Prepared = map soroi_store`AttrName to soroi`Parsed;
+  Prepared = map soroi_store`AttrName to soroi_engine_values`Parsed;
   -- REQ-12：body 交出的返回值；槽为空且正常结束时为 Absent。
-  BodyResult = soroi`Parsed | <Absent>;
+  BodyResult = soroi_engine_values`Parsed | <Absent>;
 
   -- REQ-14：闭包参数按角色闭合。
   PrepareArgs ::
@@ -30,7 +30,7 @@ types
   -- Tool = Body 的参数加上解析后的调用输入。
   ToolArgs ::
     base : BodyArgs
-    call : soroi`Parsed;
+    call : soroi_engine_values`Parsed;
   -- REQ-28：capture 只看见 inputs、prepared 与 body 结果，看不到其他出口捕获。
   CaptureArgs ::
     base     : BodyArgs
@@ -46,38 +46,38 @@ types
   Command = ToolCmd | ReturnCmd | ThrowCmd;
   ToolCmd ::
     tool  : soroi_store`ToolName
-    input : soroi`Raw;
+    input : soroi_engine_values`Raw;
   ReturnCmd ::
-    raw : soroi`Raw;
+    raw : soroi_engine_values`Raw;
   ThrowCmd ::
     label : seq of char
-    raw   : soroi`Raw;
+    raw   : soroi_engine_values`Raw;
 
   FoldMode = <Last> | <All>;
   ToolDecl ::
-    inShape  : soroi`Shape
-    outShape : soroi`Shape
+    inShape  : soroi_engine_values`Shape
+    outShape : soroi_engine_values`Shape
     foldMode : FoldMode;
   BodyKind = <Agent> | <Program>;
   VerifyDecl ::
     output   : soroi_store`OutputName
     required : bool
-    script   : [soroi`Path];
+    script   : [soroi_store`Path];
   ClosureDecl ::
     body          : BodyKind
-    returnShape   : soroi`Shape
-    throwShapes   : map seq of char to soroi`Shape
+    returnShape   : soroi_engine_values`Shape
+    throwShapes   : map seq of char to soroi_engine_values`Shape
     tools         : map soroi_store`ToolName to ToolDecl
-    captureShapes : map soroi_store`OutputName to soroi`Shape
-    files         : map soroi_store`OutputName to soroi`Path
+    captureShapes : map soroi_store`OutputName to soroi_engine_values`Shape
+    files         : map soroi_store`OutputName to soroi_store`Path
     toolOutputs   : map soroi_store`OutputName to soroi_store`ToolName
     verifies      : set of VerifyDecl;
 
-  -- REQ-2/REQ-11：命令受理后的解析结果；每个值都由 soroi`parse 产生。
+  -- REQ-2/REQ-11：命令受理后的解析结果；每个值都由 soroi_engine_values`parse 产生。
   Accepted = ToolCall | soroi_store`SlotWrite | soroi_store`Thrown | soroi_store`CallRejected;
   ToolCall ::
     tool : soroi_store`ToolName
-    args : soroi`Parsed;
+    args : soroi_engine_values`Parsed;
 
   -- REQ-13/REQ-15：一次工具调用写进 bucket 的事实与回给调用者的值。
   Reply = soroi_store`ToolRecord | soroi_store`CallRejected;
@@ -96,17 +96,17 @@ functions
     cases true:
       (is_ToolCmd(c)) ->
         if c.tool not in set dom d.tools then mk_soroi_store`CallRejected(nil, mk_soroi_store`RejectReason(<Invalid>, "value does not match the declared structure"))
-        else let p = soroi`parse(d.tools(c.tool).inShape, c.input) in
-          if soroi`parsed(p) then mk_ToolCall(c.tool, soroi`valueOf(p))
+        else let p = soroi_engine_values`parse(d.tools(c.tool).inShape, c.input) in
+          if soroi_engine_values`parsed(p) then mk_ToolCall(c.tool, soroi_engine_values`valueOf(p))
           else mk_soroi_store`CallRejected(nil, mk_soroi_store`RejectReason(<Invalid>, "value does not match the declared structure")),
       (is_ReturnCmd(c)) ->
-        let p = soroi`parse(d.returnShape, c.raw) in
-          if soroi`parsed(p) then mk_soroi_store`SlotWrite(soroi`valueOf(p))
+        let p = soroi_engine_values`parse(d.returnShape, c.raw) in
+          if soroi_engine_values`parsed(p) then mk_soroi_store`SlotWrite(soroi_engine_values`valueOf(p))
           else mk_soroi_store`CallRejected(nil, mk_soroi_store`RejectReason(<Invalid>, "value does not match the declared structure")),
       (is_ThrowCmd(c)) ->
         if c.label not in set dom d.throwShapes then mk_soroi_store`CallRejected(nil, mk_soroi_store`RejectReason(<Invalid>, "value does not match the declared structure"))
-        else let p = soroi`parse(d.throwShapes(c.label), c.raw) in
-          if soroi`parsed(p) then mk_soroi_store`Thrown(c.label, soroi`valueOf(p))
+        else let p = soroi_engine_values`parse(d.throwShapes(c.label), c.raw) in
+          if soroi_engine_values`parsed(p) then mk_soroi_store`Thrown(c.label, soroi_engine_values`valueOf(p))
           else mk_soroi_store`CallRejected(nil, mk_soroi_store`RejectReason(<Invalid>, "value does not match the declared structure"))
     end;
 
@@ -124,34 +124,34 @@ functions
       if is_soroi_workspace`Failure(res) then
         mk_soroi_store`CallRejected(call, mk_soroi_store`RejectReason(<Infra>, res.message))
       else
-        mk_soroi_store`ToolRecord(call, t.tool, n, soroi`valueOf(soroi`parse(d.outShape, res.stdout)))
+        mk_soroi_store`ToolRecord(call, t.tool, n, soroi_engine_values`valueOf(soroi_engine_values`parse(d.outShape, res.stdout)))
     in mk_ToolStep(if ending then nil else reply, reply)
   pre is_soroi_workspace`Failure(res) or
-      res.status = <Success> and soroi`parsed(soroi`parse(d.outShape, res.stdout))
+      res.status = <Success> and soroi_engine_values`parsed(soroi_engine_values`parse(d.outShape, res.stdout))
   post (RESULT.recorded = nil <=> ending) and
        (is_soroi_workspace`Failure(res) =>
           RESULT.reply = mk_soroi_store`CallRejected(call, mk_soroi_store`RejectReason(<Infra>, res.message))) and
        (not is_soroi_workspace`Failure(res) =>
           is_soroi_store`ToolRecord(RESULT.reply) and
           RESULT.reply.call = call and RESULT.reply.tool = t.tool and RESULT.reply.seqNo = n and
-          soroi`parse(d.outShape, res.stdout) = RESULT.reply.value);
+          soroi_engine_values`parse(d.outShape, res.stdout) = RESULT.reply.value);
 
   -- REQ-12：Agent 体的返回值是返回槽里写进的值；Program 体的返回值是 stdout 按声明结构解析的结果。
   bodyResult : ClosureDecl * [soroi_store`SlotWrite] * soroi_workspace`Collected -> BodyResult
   bodyResult(d, slot, c) ==
     cases d.body:
       <Agent> -> if slot = nil then <Absent> else slot.value,
-      <Program> -> soroi`valueOf(soroi`parse(d.returnShape, c.stdout))
+      <Program> -> soroi_engine_values`valueOf(soroi_engine_values`parse(d.returnShape, c.stdout))
     end
-  pre d.body = <Program> => soroi`parsed(soroi`parse(d.returnShape, c.stdout));
+  pre d.body = <Program> => soroi_engine_values`parsed(soroi_engine_values`parse(d.returnShape, c.stdout));
 
   -- REQ-12：capture 程序在出口运行一次，stdout 按该 capture 声明的结构解析。
-  captureValue : soroi`Shape * soroi_workspace`Collected -> soroi_store`CapturedValue
-  captureValue(s, c) == soroi`valueOf(soroi`parse(s, c.stdout))
-  pre c.status = <Success> and soroi`parsed(soroi`parse(s, c.stdout));
+  captureValue : soroi_engine_values`Shape * soroi_workspace`Collected -> soroi_store`CapturedValue
+  captureValue(s, c) == soroi_engine_values`valueOf(soroi_engine_values`parse(s, c.stdout))
+  pre c.status = <Success> and soroi_engine_values`parsed(soroi_engine_values`parse(s, c.stdout));
 
   -- REQ-12：[files] 由闭包在出口按约定路径从工作根带出。
-  fileValue : soroi`Path * map soroi`Path to soroi`Digest -> soroi_store`CapturedValue
+  fileValue : soroi_store`Path * map soroi_store`Path to soroi_store`Digest -> soroi_store`CapturedValue
   fileValue(p, root) == if p in set dom root then mk_soroi_store`FileRef(p, root(p)) else <AbsentCapture>;
 
   -- REQ-30：fold=last 取最高 Seq 的值，fold=all 按 Seq 升序形成 List；没有记录时为 AbsentCapture。

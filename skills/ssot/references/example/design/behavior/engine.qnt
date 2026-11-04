@@ -10,7 +10,7 @@ module engine {
   import soroi_workspace as Ws from "../.gen/contract"
   import soroi_engine_control as Control from "../.gen/contract"
   import soroi_engine_derivation as Derivation from "../.gen/contract"
-  import soroi as Shared from "../.gen/contract"
+  import soroi_engine_values as Values from "../.gen/contract"
 
   // ---------- 有界常量 ----------
   pure val RUNS = Set("r1", "r2")
@@ -27,8 +27,8 @@ module engine {
   pure val NONE = "None"
 
   // ---------- 契约调用的载荷 ----------
-  // 业务值的一个代表；它在行为里只被搬运、不被构造或检查，结构由 soroi`parse 持有。
-  pure val aValue: Shared::Parsed = { shape: "s", raw: "v" }
+  // 业务值的一个代表；它在行为里只被搬运、不被构造或检查，结构由 soroi_engine_values`parse 持有。
+  pure val aValue: Values::Parsed = { shape: "s", raw: "v" }
   // 每个运行项在自己的位置上（位置取运行项 id）。
   pure def startOf(rt: str): Store::Start = { position: rt, declared: Set(), input: { attrs: Map(), controls: Set() }, at: 0, rendered: "" }
   pure def record(derived: Opt[Store::Derived]): Store::RunRecord = {

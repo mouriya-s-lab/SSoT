@@ -1,14 +1,9 @@
--- soroi 各部分共用的材料：运行与运行项的身份、工作根现场，以及唯一的值解析边界（REQ-2）。
+-- 唯一的值解析边界（REQ-2）。
 -- Parsed 只导出名字、不导出结构：其他模块拿不到 mk_Parsed，也读不到字段；
 -- 任务输入、闭包参数、程序 stdout、介入改值要成为业务值，唯一的来路是 parse。
-module soroi
+module soroi_engine_values
 exports
   types
-    struct RunId;
-    struct RuntimeId;
-    struct Path;
-    struct Digest;
-    struct Snapshot;
     struct Raw;
     struct Shape;
     Parsed;
@@ -20,15 +15,6 @@ exports
     valueOf : ParseResult -> Parsed
 definitions
 types
-  RunId = token;
-  RuntimeId = token;
-
-  Path = seq of char
-  inv p == p <> [];
-  Digest = token;
-  -- REQ-39：闭包关闭后工作根的现场观察；由执行边界给出，由事实源头记录。
-  Snapshot = map Path to Digest;
-
   -- 未解析的原始文本：任务输入、soroi-closure 参数、程序 stdout、介入改值。
   Raw = seq of char;
   -- preset 声明的值结构；结构语言不在本设计范围内。
@@ -60,4 +46,4 @@ functions
   valueOf(r) == r
   pre parsed(r);
 
-end soroi
+end soroi_engine_values

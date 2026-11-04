@@ -2,11 +2,11 @@
 -- 先停旧运行、再发布新运行的次序由 design/behavior 持有。
 module soroi_engine_derivation
 imports
-  from soroi
-    types RunId; RuntimeId; Raw; Shape; Parsed; Path
+  from soroi_engine_values
+    types Raw; Shape; Parsed
     functions parse; parsed; valueOf,
   from soroi_store
-    types Position; Time; AttrName; OutputName;
+    types RunId; RuntimeId; Path; Position; Time; AttrName; OutputName;
           Sourced; Bound; InputRecord; CapturedValue;
           RuntimeReason; Out; Thrown; RuntimeFault;
           Own; Edit; DerivationId; Derived; RunRecord
@@ -15,12 +15,12 @@ definitions
 types
   -- REQ-42：一次介入请求中的一个编辑；值仍是原始文本，按属性声明结构交给 parser。
   EditReq ::
-    at   : soroi`RuntimeId
+    at   : soroi_store`RuntimeId
     attr : soroi_store`AttrName
-    raw  : soroi`Raw;
+    raw  : soroi_engine_values`Raw;
 
   -- 旧运行中每个 Own 运行项所在节点 preset 的 [inputs] 声明。
-  InputDecls = map soroi`RuntimeId to map soroi_store`AttrName to soroi`Shape;
+  InputDecls = map soroi_store`RuntimeId to map soroi_store`AttrName to soroi_engine_values`Shape;
 
   Validation = Admitted | Rejected;
   Admitted ::
@@ -30,17 +30,17 @@ types
   RejectedEdit = <ForeignRuntime> | <UnknownAttr> | <DuplicateEdit> | <BadValue>;
 
   -- REQ-47–REQ-49：压平后的旧运行：每个运行项都是 Own 记录（Ref 已解析为它的源记录）。
-  Flat = map soroi`RuntimeId to soroi_store`Own;
+  Flat = map soroi_store`RuntimeId to soroi_store`Own;
 
   Partition ::
-    refs  : set of soroi`RuntimeId
+    refs  : set of soroi_store`RuntimeId
     rerun : set of soroi_store`Position;
 
   -- REQ-38：派生运行的可消费环境。
   CaughtValue = CaughtThrown | CaughtRuntime;
   CaughtThrown ::
     label   : seq of char
-    payload : soroi`Parsed
+    payload : soroi_engine_values`Parsed
     inputs  : map soroi_store`AttrName to soroi_store`Sourced;
   CaughtRuntime ::
     text   : seq of char
@@ -52,37 +52,37 @@ types
 functions
   -- REQ-42：编辑值沿用运行入口的输入文件边界：文件路径以请求携带的命令当前目录为根展开成原始值。
   --      边界规则本身属于运行入口（REQ-1），不在本设计范围内。
-  bounded : soroi`Path * soroi`Raw -> soroi`Raw
+  bounded : soroi_store`Path * soroi_engine_values`Raw -> soroi_engine_values`Raw
   bounded(-, -) == is not yet specified;
 
   -- REQ-42：at 属于旧运行，attr 属于该节点 preset 的 [inputs]，同一 (at, attr) 至多一次，
   --      值经输入文件边界、再按属性结构经同一个 parser 且为 Present；任一不满足则整个介入被拒绝。
-  validateEdits : InputDecls * soroi`Path * seq of EditReq -> Validation
+  validateEdits : InputDecls * soroi_store`Path * seq of EditReq -> Validation
   validateEdits(decls, cwd, rs) ==
     if exists r in set elems rs & r.at not in set dom decls then mk_Rejected(<ForeignRuntime>)
     else if exists r in set elems rs & r.attr not in set dom decls(r.at) then mk_Rejected(<UnknownAttr>)
     else if exists i, j in set inds rs & i < j and rs(i).at = rs(j).at and rs(i).attr = rs(j).attr
       then mk_Rejected(<DuplicateEdit>)
-    else if exists r in set elems rs & not soroi`parsed(soroi`parse(decls(r.at)(r.attr), bounded(cwd, r.raw)))
+    else if exists r in set elems rs & not soroi_engine_values`parsed(soroi_engine_values`parse(decls(r.at)(r.attr), bounded(cwd, r.raw)))
       then mk_Rejected(<BadValue>)
     else mk_Admitted([mk_soroi_store`Edit(rs(i).at, rs(i).attr,
-                        soroi`valueOf(soroi`parse(decls(rs(i).at)(rs(i).attr), bounded(cwd, rs(i).raw))))
+                        soroi_engine_values`valueOf(soroi_engine_values`parse(decls(rs(i).at)(rs(i).attr), bounded(cwd, rs(i).raw))))
                       | i in set inds rs])
   post (is_Admitted(RESULT) <=>
           (forall r in set elems rs &
              r.at in set dom decls and r.attr in set dom decls(r.at) and
-             soroi`parsed(soroi`parse(decls(r.at)(r.attr), bounded(cwd, r.raw)))) and
+             soroi_engine_values`parsed(soroi_engine_values`parse(decls(r.at)(r.attr), bounded(cwd, r.raw)))) and
           (forall i, j in set inds rs & i < j => mk_(rs(i).at, rs(i).attr) <> mk_(rs(j).at, rs(j).attr))) and
        (is_Admitted(RESULT) =>
           let mk_Admitted(es) = RESULT in
             len es = len rs and
             forall i in set inds rs &
               es(i).at = rs(i).at and es(i).attr = rs(i).attr and
-              soroi`parse(decls(rs(i).at)(rs(i).attr), bounded(cwd, rs(i).raw)) = es(i).value);
+              soroi_engine_values`parse(decls(rs(i).at)(rs(i).attr), bounded(cwd, rs(i).raw)) = es(i).value);
 
   -- REQ-44：新运行复制旧运行的定义与环境，startedAt 取新时间，parallel 取请求值否则沿用，
   --      派生关系里保存新的 DerivationId 与本次编辑；编辑值不回写 inputs。
-  deriveRecord : soroi_store`RunRecord * soroi_store`DerivationId * soroi`RunId * seq of soroi_store`Edit * [nat1] * soroi_store`Time
+  deriveRecord : soroi_store`RunRecord * soroi_store`DerivationId * soroi_store`RunId * seq of soroi_store`Edit * [nat1] * soroi_store`Time
                  -> soroi_store`RunRecord
   deriveRecord(old, did, src, es, par, t) ==
     mu(old,
@@ -95,7 +95,7 @@ functions
        RESULT.derivedFrom = mk_soroi_store`Derived(did, src, es);
 
   -- REQ-45：被编辑位置的新激活中，编辑属性取编辑值，来源记为 Edit。
-  editedInput : soroi_store`InputRecord * soroi`RuntimeId * seq of soroi_store`Edit -> soroi_store`InputRecord
+  editedInput : soroi_store`InputRecord * soroi_store`RuntimeId * seq of soroi_store`Edit -> soroi_store`InputRecord
   editedInput(base, old, es) ==
     mu(base, attrs |-> base.attrs ++
          {e.attr |-> mk_soroi_store`Sourced(e.value, <Edit>) | e in set elems es & e.at = old})
@@ -118,7 +118,7 @@ functions
     (not consumed and (is_soroi_store`Thrown(o.fin.outcome) or is_soroi_store`RuntimeFault(o.fin.outcome)));
 
   -- REQ-47：A₀ 是每个编辑 at 的位置与全部不可引用记录的位置的并集。
-  seeds : Flat * set of soroi`RuntimeId * seq of soroi_store`Edit -> set of soroi_store`Position
+  seeds : Flat * set of soroi_store`RuntimeId * seq of soroi_store`Edit -> set of soroi_store`Position
   seeds(f, consumed, es) ==
     {f(e.at).start.position | e in set elems es & e.at in set dom f} union
     {f(r).start.position | r in set dom f & unreferable(f(r), r in set consumed)};
@@ -151,7 +151,7 @@ functions
                               (f(r).start.position in set RESULT.rerun <=> f(r).start.position in set aff);
 
   -- REQ-38：环境只由记录重建，不执行程序。Out 的有值产出进入 outputs，被消费的异常进入 caught。
-  rebuildEnv : Flat * set of soroi`RuntimeId -> Env
+  rebuildEnv : Flat * set of soroi_store`RuntimeId -> Env
   rebuildEnv(f, consumed) ==
     mk_Env(
       {f(r).start.position |-> {c.name |-> c.value | c in set elems f(r).fin.outcome.captured
@@ -175,7 +175,7 @@ functions
 
 operations
   -- REQ-47–REQ-49：按旧运行的记录给出沿用与重跑分区；派生运行为 refs 中的每个旧记录追加一条 Ref。
-  plan(f : Flat, consumed : set of soroi`RuntimeId, es : seq of soroi_store`Edit) p : Partition
+  plan(f : Flat, consumed : set of soroi_store`RuntimeId, es : seq of soroi_store`Edit) p : Partition
   post p = partition(f, affected(f, seeds(f, consumed, es)));
 
 end soroi_engine_derivation

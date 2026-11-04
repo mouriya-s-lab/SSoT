@@ -11,6 +11,6 @@ description: SSoT 迁移阶段说明：把旧设计文档迁进三种载体时�
 |---|---|---|
 | `ssot-migrate-read` | 旧文档的一个区域 | 代读者写的概念备忘与需求摘录，交给 `ssot-draft-requirement` |
 
-一个区域交出之后，代读者交出的需求与概念只交给 `ssot-draft-requirement`：它把摘录里的每条需求原样编号进 `<design>/requirements.md`，为它定落点，需要新元素时派出 `ssot-write-level`。之后按 `ssot status` 的前沿照常写结构、契约与行为。写作叶子不读旧文档，也不读代读者的文件；它们只读设计与需求原文。
+一个区域交出之后，代读者交出的需求与概念只交给 `ssot-draft-requirement`：它把摘录里的每条需求原样编号进 `<design>/requirements.md`，为它定落点，并把落点交给写作叶子（需要新元素时先派 `ssot-write-level`）。之后按 `ssot status` 的前沿照常写结构、契约与行为。写作叶子不读旧文档，也不读代读者的文件；它们只读设计与需求原文。旧文档里的约束、模块划分与做法只是旧设计的样子：它们不搬进结构，不成为任何元素的描述或依据。
 
-`.tmp/ssot-migrate/regions.md` 里每个区域都有输出目录 `.tmp/ssot-migrate/<区域编号>/`，且 `ssot status` 不再报没有落点的 `req`，迁移就结束；旧文档的去留由用户决定。
+`.tmp/ssot-migrate/regions.md` 里每个区域都有输出目录 `.tmp/ssot-migrate/<区域编号>/`，且 `ssot status` 不再报没有落点的需求，迁移就结束；旧文档的去留由用户决定。

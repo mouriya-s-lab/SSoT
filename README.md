@@ -8,23 +8,23 @@
 
 | 载体 | 文件 | 持有的事实 |
 |---|---|---|
-| LikeC4 | `design/structure/*.c4` | 元素与嵌套、依赖方向、部署与信任边界、依据与理由、需求落点（metadata `req`） |
-| VDM-SL | `design/contract/<元素 fqn>.vdmsl` | 连接点（exports）、类型、状态与 `inv`、操作的 `pre`/`post`、不透明身份；一个带 `#contract` 的元素一个模块 |
+| LikeC4 | `design/structure/*.c4` | 按 C4 逐层放大的架构图：人、系统、容器、组件，谁调用谁，部署与信任边界；每层单独可读，只说本层 |
+| VDM-SL | `design/contract/<元素 fqn>.vdmsl` | 底层元素的连接点（exports）、类型、状态与 `inv`、操作的 `pre`/`post`、不透明身份；一个带 `#contract` 的底层元素一个模块 |
 | Quint | `design/behavior/<模块名>.qnt` | 跨连接的先后与交错、窗口、停机与崩溃收束、覆盖目标 |
 
-需求清单 `design/requirements.md` 不是载体：每条需求以 `REQ-<编号>` 开头，原文由用户给出，只编号、不改原文。`design/.gen/` 由 `ssot gen` 生成，只读。
+需求清单 `design/requirements.md` 不是载体：每条需求以 `REQ-<编号>` 开头，原文由用户给出，只编号、不改原文；需求编号附在兑现它的契约定义或行为声明上，不进 LikeC4。`design/.gen/` 由 `ssot gen` 生成，只读。结构只看 `ssot render` 导出的渲染图评审。
 
 ## 权威顺序
 
 ```text
-LikeC4 模型 ──gen──▶ .gen/structure.json（元素树、依赖、每个元素允许 import 的模块）
-VDM 模块（手写，import 只落在 LikeC4 授予的范围里）
+LikeC4 模型 ──gen──▶ .gen/structure.json（元素树、视图、带 #contract 的底层元素与模块名）
+VDM 模块（手写，每个模块对应一个带 #contract 的底层元素；import 由契约自己决定，不成环）
 VDM 投影 ──gen──▶ .gen/contract.qnt（类型、Call 变体、状态类型、initial）
 Quint 行为（手写，契约调用只用生成的 Call，初态只用生成的 initial）
 Quint 轨迹 ──回放──▶ 在定义该操作的 VDM 模块里求 pre/post/inv 与 frame
 ```
 
-只顺着这个方向写：下游缺了什么，回到上游去改，不在下游另写一份上游的事实。
+只顺着这个方向写：下游缺了什么，回到上游去改；不在下游另写一份上游的事实。上游不为下游迁就：LikeC4 不为 VDM 的 import 画关系。
 
 ## skill 树：阶段 × 切片
 
@@ -33,12 +33,12 @@ Quint 轨迹 ──回放──▶ 在定义该操作的 VDM 模块里求 pre/po
 | 阶段 | 叶子 | 切片 |
 |---|---|---|
 | 总纲 [`ssot`](skills/ssot/SKILL.md) | — | 方法、分工、权威顺序、切片模型、命令 |
-| [`ssot-draft`](skills/ssot-draft/SKILL.md) | [`ssot-draft-requirement`](skills/ssot-draft-requirement/SKILL.md) | 一条需求：编号、论证与领域性质、三面落点、写 `req` |
+| [`ssot-draft`](skills/ssot-draft/SKILL.md) | [`ssot-draft-requirement`](skills/ssot-draft-requirement/SKILL.md) | 一条需求：编号、论证与领域性质、契约与次序的落点 |
 | [`ssot-write`](skills/ssot-write/SKILL.md) | [`ssot-write-level`](skills/ssot-write-level/SKILL.md) | 一个元素的一层（LikeC4） |
 | | [`ssot-write-deploy`](skills/ssot-write-deploy/SKILL.md) | 一个部署视图显示的部署节点（LikeC4） |
 | | [`ssot-write-contract`](skills/ssot-write-contract/SKILL.md) | 一个带 `#contract` 的元素的模块（VDM-SL） |
 | | [`ssot-write-behavior`](skills/ssot-write-behavior/SKILL.md) | 一个可运行的 Quint 模块 |
-| [`ssot-verify`](skills/ssot-verify/SKILL.md) | [`ssot-verify-structure`](skills/ssot-verify-structure/SKILL.md)、[`ssot-verify-contract`](skills/ssot-verify-contract/SKILL.md)、[`ssot-verify-behavior`](skills/ssot-verify-behavior/SKILL.md) | 与对应写作叶子相同的切片；由写作叶子在末尾派评审者执行，或由用户直接指定 |
+| [`ssot-verify`](skills/ssot-verify/SKILL.md) | [`ssot-verify-structure`](skills/ssot-verify-structure/SKILL.md)、[`ssot-verify-contract`](skills/ssot-verify-contract/SKILL.md)、[`ssot-verify-behavior`](skills/ssot-verify-behavior/SKILL.md) | 与对应写作叶子相同的切片；结构只看渲染图评审；由写作叶子在末尾派评审者执行，或由用户直接指定 |
 | [`ssot-migration`](skills/ssot-migration/SKILL.md) | [`ssot-migrate-read`](skills/ssot-migrate-read/SKILL.md) | 旧文档的一个区域：由代读者只交出概念与原文明说的需求 |
 
 评审者 `ssot:reviewer` 与代读者 `ssot:reader` 是 omp 的 agent 定义，在 [`skills/ssot/agents/`](skills/ssot/agents/)。
@@ -55,12 +55,12 @@ npx skills add mouriya-s-lab/SSoT --skill ssot ssot-draft ssot-draft-requirement
 
 | 命令 | 作用 |
 |---|---|
-| `ssot setup` | 准备检查所需的工具，把 `ssot` 装进 PATH |
+| `ssot setup` | 准备检查与渲染所需的工具，把 `ssot` 装进 PATH |
 | `ssot gen <design>` | 重新生成 `.gen/` |
 | `ssot check <design>` | 全量检查：编译三种载体、生成链新鲜度、跨载体规则、模拟、覆盖目标、回放、证明义务 |
 | `ssot check <design> --scope <视图 id>` | 仍编译全部内容，模拟、回放、QuickCheck 只在该视图的切片闭包内运行，只报告该切片的诊断 |
 | `ssot check <design> --scope <视图 id> --base <rev>` | 另列出 `<rev>` 之后落在该作用域之外的改动，提示应交给哪个叶子 |
-| `ssot view <design> <视图 id>` | 输出本层评审包 |
+| `ssot render <design> [--out <目录>]` | 用 LikeC4 自己的渲染导出每个视图的图片，按宏观到微观的顺序列出 |
 | `ssot eval <design> <模块> '<表达式>' [--bind …]` | 在原样规格里求一个 VDM 表达式，用来构造违反实例 |
 | `ssot status <design> [--deadline 秒]` | 运行一次全量 `check`，派生一项前沿 `{skill, scope, reason}`；没有前沿时输出“没有前沿” |
 

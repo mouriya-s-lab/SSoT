@@ -14,10 +14,10 @@ description: SSoT 写作阶段说明：按权威顺序 LikeC4→VDM→Quint，�
 | `ssot-write-contract` | 一个带 `#contract` 的元素 | VDM-SL | `ssot-verify-contract` |
 | `ssot-write-behavior` | 一个可运行的 Quint 模块 | Quint | `ssot-verify-behavior` |
 
-写法参考在本 skill 的 `references/` 下：`structure.md`（LikeC4）、`contract.md`（VDM-SL）、`behavior.md`（Quint）。每个叶子只读它那一种载体的参考。
+写法参考在本 skill 的 `references/` 下：`structure.md`（LikeC4）、`contract.md`（VDM-SL）、`behavior.md`（Quint）。每个叶子开始前完整读 `ssot` 总纲第二节，再完整读它那一种载体的参考；参考只补充写法，不放宽总纲。
 
 切片之间只有可派生的先后，没有“必须先通过某次评审”的依赖：
 
-- `ssot-write-contract` 要求元素已在结构里，并带 `#contract`；
+- `ssot-write-contract` 要求元素已在结构里、没有子元素并带 `#contract`；
 - `ssot-write-behavior` 要求它用到的 `Call` 模块在 `check --scope` 下没有错误；
 - 下游写不下去，说明上游缺了或错了：停止，交给上游的叶子（`ssot` 第四节「向上修正」），不在下游补一份上游的事实。

@@ -1,17 +1,17 @@
 ---
 name: ssot-verify
-description: SSoT 独立评审阶段说明：由写作叶子在末尾发起、或由用户直接指定的切片评审（ssot status 不派出评审）；评审者没看过设计，只评一个切片，只报告不修改。先读 ssot；具体工作只在 ssot-verify-* 叶子里做。
+description: SSoT 独立评审阶段说明：由写作叶子在末尾发起、或由用户直接指定的切片评审（ssot status 不派出评审）；评审者没看过设计，只评一个切片，只报告不修改；结构评审只看渲染图。先读 ssot；具体工作只在 ssot-verify-* 叶子里做。
 ---
 
 # ssot-verify：独立评审阶段
 
 本阶段的叶子是评审清单，每个只评一个切片：
 
-| 叶子 | 切片 | 输入 |
+| 叶子 | 切片 | 交给评审者的材料 |
 |---|---|---|
-| `ssot-verify-structure` | 一个视图（一个元素的一层），或一个部署视图 | `ssot view` 的评审包、`check --scope` 的诊断 |
-| `ssot-verify-contract` | 一个带 `#contract` 的元素的 VDM 模块 | 该模块、它 import 的模块的导出签名、`check --scope` 的诊断（含 `hint.*` 与未解决的证明义务） |
-| `ssot-verify-behavior` | 一个可运行的 Quint 模块 | 该模块、`.gen/contract.qnt`、`check --scope` 的诊断（含 `replay.outcome`） |
+| `ssot-verify-structure` | 一个视图（一个元素的一层），或一个部署视图 | 只有 `ssot render` 导出的全部渲染图与它们的顺序 |
+| `ssot-verify-contract` | 一个带 `#contract` 的元素的 VDM 模块 | 设计目录路径与 `check --scope` 的诊断（含 `hint.*` 与未解决的证明义务）；评审者读该模块、它 import 的模块的导出签名与它附着的需求原文 |
+| `ssot-verify-behavior` | 一个可运行的 Quint 模块 | 设计目录路径与 `check --scope` 的诊断（含 `replay.outcome`）；评审者读该模块、`.gen/contract.qnt` 与它附着的需求原文 |
 
 两种用法，评审者都是一个新派的 `ssot:reviewer`（没看过设计），清单相同：
 

@@ -1,11 +1,11 @@
 ---
 name: ssot-verify-behavior
-description: SSoT 行为评审清单（一个可运行的 Quint 模块）：Quint 不重写 VDM 事实、只用生成的状态与初态，集合与时序完整表达，参与者只用自己知道的值，每个结局都有处理；带着 replay.outcome 提示判断。评审者没看过设计，只报告不修改。由 ssot-write-behavior 在末尾发起，或由用户直接指定；ssot status 不派出评审。先读 ssot。
+description: SSoT 行为评审清单（一个可运行的 Quint 模块）：Quint 不重写 VDM 事实、只用生成的状态与初态，集合与时序完整表达，参与者只用自己知道的值，每个结局都有处理，需求编号附在兑现它的声明上；replay.outcome 只是提示。评审者没看过设计，只报告不修改。由 ssot-write-behavior 在末尾发起，或由用户直接指定；ssot status 不派出评审。先读 ssot。
 ---
 
 # ssot-verify-behavior：评审一个行为模块
 
-`scope` 是 Quint 模块名 Q，被评的是 `behavior/<Q>.qnt`。契约模块集 M：Q 调用的每个生成 `Call` 模块（Q 用 `import … from "../.gen/contract"` 引入、并在 `Call` 里用到的模块）。视图集 V：M 中每个模块所属的元素（模块名里的 `_` 换回 `.` 就是元素 fqn），取该元素的父元素的视图（元素在顶层时为 `index`）。判断方法与例子见 `../ssot-write/references/behavior.md` 的「九、评审时怎么判」。
+`scope` 是 Quint 模块名 Q，被评的是 `behavior/<Q>.qnt`。契约模块集 M：Q 调用的每个生成 `Call` 模块（Q 用 `import … from "../.gen/contract"` 引入、并在 `Call` 里用到的模块）。视图集 V：M 中每个模块所属的元素（模块名里的 `_` 换回 `.` 就是元素 fqn），取该元素的父元素的视图（元素在顶层时为 `index`）。判断方法与例子见 `../ssot-write/references/behavior.md` 的「九、评审时怎么判」，评审前完整读它与 `ssot` 总纲第二节。
 
 ## 派发
 
@@ -15,7 +15,7 @@ description: SSoT 行为评审清单（一个可运行的 Quint 模块）：Quin
 
 | 项 | 内容 |
 |---|---|
-| 可读 | `behavior/<Q>.qnt` 与它 import 的非生成行为模块；`.gen/contract.qnt`；M 中每个模块的导出签名与导出操作的 `pre`/`post`；M 所属元素在 `structure/*.c4` 里的描述、关系与 `req`，以及这些 `req` 在 `design/requirements.md` 里的需求原文；派发者交给你的诊断 |
+| 可读 | `behavior/<Q>.qnt` 与它 import 的非生成行为模块；`.gen/contract.qnt`；M 中每个模块的导出签名与导出操作的 `pre`/`post`；M 所属元素在 `structure/*.c4` 里的描述与关系；本模块附着的需求编号在 `design/requirements.md` 里的原文；派发者交给你的诊断 |
 | 可改 | 无。只报告 |
 | 工具工作集 | 对 V 中每个视图的 `ssot check <design> --scope <视图>`（派发者已运行时直接用它的输出） |
 | 末尾评审 | 本叶子就是评审，不再派评审 |
@@ -23,7 +23,7 @@ description: SSoT 行为评审清单（一个可运行的 Quint 模块）：Quin
 
 ## 一、先看整体
 
-不看清单，先回答：落在 M 所属元素上的需求，要求哪些跨连接的先后、窗口、停机与崩溃之后的收束？参与者各是谁、各自知道什么？再对照模块：`step` 里的每个动作对应哪个参与者的哪一步，`safety` 守的是哪条次序需求，`witness…` 覆盖的是哪些必须走到的情形。
+不看清单，先回答：附着在本模块上的需求，要求哪些跨连接的先后、窗口、停机与崩溃之后的收束？参与者各是谁、各自知道什么？再对照模块：`step` 里的每个动作对应哪个参与者的哪一步，`safety` 守的是哪条次序需求，`witness…` 覆盖的是哪些必须走到的情形。
 
 ## 二、清单
 
@@ -36,9 +36,10 @@ description: SSoT 行为评审清单（一个可运行的 Quint 模块）：Quin
 | 参与者只用自己知道的值 | 每个参与者每一步只用它本来知道的值，或它前一步调用的连接交给它的结果；没有直接读系统内部的身份、集合或状态替它做决定 | — |
 | 每个结局都有处理 | 被调连接返回的每个可观察结局，调用方都有后续处理 | `replay.outcome`：计数为 0 的结局变体 |
 | 时钟与崩溃在行为里 | 时钟、崩溃、重启与调度的语义在这里表达了（窗口、停机、崩溃之后的收束），没有被省略，也没有被塞进 VDM 的状态 | — |
+| 需求落点 | 每个附着的需求编号都在确实兑现它的声明上；没有兑现它所标需求的声明，或需求其实由别的声明兑现，都是问题 | `ssot status` 报没有落点的需求 |
 | 每个元素服务需求 | 每个变量、动作、不变式与覆盖目标都服务某条需求；没有为过工具而造的动作或目标，也没有为了让覆盖目标到达而扭曲需求的调度 | — |
 
-`replay.outcome` 的每个计数为 0 的变体，判断它是处理缺了、调度走不到，还是在需求下确实不会发生；最后一种是契约多列了一个结局，应由对应元素的 `ssot-write-contract` 删掉它。这些变体会让 `ssot status` 把本模块列为“仍有未覆盖结局”的前沿，你的判断写明它该交给哪个叶子。`resource.deadline` 说明验证没做完：写进交付，不当作通过。
+`replay.outcome` 的每个计数为 0 的变体，先看调用方对它有没有后续处理：有处理但没走到，是缺覆盖目标或调度走不到，交给 `ssot-write-behavior`；没有处理，是缺路径，同样交给 `ssot-write-behavior`。计数为 0 不证明这个变体不会发生；它只是提示，不进 `ssot status` 的前沿，不据此要求删契约的结局。`resource.deadline` 说明验证没做完：写进交付，不当作通过。
 
 ## 三、交付
 

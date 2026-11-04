@@ -1,6 +1,6 @@
 # 契约的写法（VDM-SL）
 
-`ssot-write-contract` 照这里为一个 `#contract` 元素写它的模块，`ssot-verify-contract` 照这里判断。例子取自 soroi 示例设计（[`../../ssot/references/example/design/`](../../ssot/references/example/design/)）的 `soroi`、`soroi_store`、`soroi_engine_control` 模块；VDM 语法查 [`../../ssot/references/vdm/`](../../ssot/references/vdm/README.md)。
+`ssot-write-contract` 照这里为一个 `#contract` 元素写它的模块，`ssot-verify-contract` 照这里判断。例子取自 soroi 示例设计（[`../../ssot/references/example/design/`](../../ssot/references/example/design/)）的 `soroi_engine_values`、`soroi_store`、`soroi_engine_control` 模块；VDM 语法查 [`../../ssot/references/vdm/`](../../ssot/references/vdm/README.md)。
 
 ## 一、契约只写数据上的承诺
 
@@ -8,7 +8,7 @@
 
 | 不写进契约 | 持有者 |
 |---|---|
-| 模块之间谁在谁里面、谁能引用谁 | 结构（[`structure.md`](structure.md)）：模块由元素决定，import 范围由关系授予 |
+| 元素树、谁调用谁、部署与信任边界 | 结构（`ssot` 总纲第二节）：一个带 `#contract` 的底层元素恰有一个模块 |
 | 跨连接的先后、交错、窗口、时钟、进程、崩溃与重启、调度 | 行为（[`behavior.md`](behavior.md)） |
 | 走通一次调用序列的场景 | 行为：集合与次序由 Quint 完整表达，契约不写代表元场景 |
 
@@ -22,8 +22,10 @@ module soroi_store
 
 ## 二、文件与模块
 
-- 每个 `#contract` 元素恰有一个文件 `design/contract/<fqn>.vdmsl`，文件里恰有一个模块，模块名是 fqn 把 `.` 换成 `_`：`soroi.engine.closure` → `soroi_engine_closure`。
-- `imports` 只能来自结构授予的模块：本元素恰为源、恰好指向某个 `#contract` 元素的 `calls`/`uses` 关系，以及带 `#shared` 的祖先。要用的词汇不在范围内时，先问结构里是不是缺了这条依赖，而不是换个模块去引。
+- 每个 `#contract` 元素恰有一个文件 `design/contract/<fqn>.vdmsl`，文件里恰有一个模块，模块名是 fqn 把 `.` 换成 `_`：`soroi.engine.closure` → `soroi_engine_closure`。`#contract` 只在没有子元素的元素上。
+- `imports` 由契约自己决定：用到哪个模块的定义，就从持有它的模块 import，只列实际用到的名字。结构不为 import 画任何关系。
+- 模块之间的 import 不能成环（生成的 Quint 模块不允许循环引用）；架构元素的模块不得 import 业务元素的模块（架构不引用业务）。两条由 `contract.imports`、`contract.layering` 拒绝。
+- 共用的身份与值定义在维护它的模块：soroi 的运行与运行项身份、工作根现场由事实源头 `soroi_store` 持有，业务值与解析由 `soroi_engine_values` 持有。不为了放共用定义新建元素。
 - 文件是原生 `.vdmsl`，不嵌在 Markdown 里。
 
 为了让 `.gen/contract.qnt` 能生成：
@@ -45,14 +47,9 @@ module soroi_store
 **模块头。** `exports` 列出别的模块能用的东西；`struct` 表示连同结构导出，不带 `struct` 则使用方不能构造它、不能读字段、不能分支匹配。`imports` 逐项列出用到的名字：
 
 ```vdm
-module soroi
+module soroi_engine_values
 exports
   types
-    struct RunId;
-    struct RuntimeId;
-    struct Path;
-    struct Digest;
-    struct Snapshot;
     struct Raw;
     struct Shape;
     Parsed;
@@ -67,13 +64,13 @@ exports
 ```vdm
 module soroi_store
 imports
-  from soroi
-    types RunId; RuntimeId; Path; Digest; Snapshot; Parsed
+  from soroi_engine_values
+    types Parsed
 ```
 
 `Parsed` 只导出名字：其他模块拿不到 `mk_Parsed`，业务值唯一的来路是 `parse`。
 
-**类型。** `token` 是没有结构的值；`inv` 给类型加不变式；`::` 定义记录，字段之间不加分号；`|` 组成并类型，`<Manual>` 是 quote 值。`soroi` 里的身份与路径：
+**类型。** `token` 是没有结构的值；`inv` 给类型加不变式；`::` 定义记录，字段之间不加分号；`|` 组成并类型，`<Manual>` 是 quote 值。`soroi_store` 里的身份与路径：
 
 ```vdm
   RunId = token;
@@ -83,7 +80,7 @@ imports
   inv p == p <> [];
 ```
 
-`soroi_store` 里的运行项与停机触发：
+同一模块里的运行项与停机触发：
 
 ```vdm
   Own ::
@@ -91,7 +88,7 @@ imports
     buckets : seq of Fact
     fin     : [End];
   RefEntry ::
-    source : soroi`RuntimeId;
+    source : RuntimeId;
   Entry = Own | RefEntry;
   …
   Trigger = <Manual> | <DaemonLost> | <Uncaught>;
@@ -104,10 +101,10 @@ imports
 ```vdm
 state Records of
   bundles  : set of BundleDigest
-  runs     : map soroi`RunId to RunRecord
-  runtimes : map soroi`RuntimeId to Entry
-  order    : map soroi`RunId to seq of soroi`RuntimeId
-  halts    : map soroi`RunId to Trigger
+  runs     : map RunId to RunRecord
+  runtimes : map RuntimeId to Entry
+  order    : map RunId to seq of RuntimeId
+  halts    : map RunId to Trigger
 inv mk_Records(-, rs, rts, os, hs) ==
   dom os = dom rs and
   dom hs subset dom rs and
@@ -122,7 +119,7 @@ end
 
 ```vdm
   -- REQ-54：只有尚未写下 halt 的运行才可能得到新的运行项；返回 StartFailed 时没有运行项。
-  writeStart(r : soroi`RunId, s : Start) res : soroi`RuntimeId | StartFailed
+  writeStart(r : RunId, s : Start) res : RuntimeId | StartFailed
   ext rd runs, halts
       wr runtimes, order
   pre r in set dom runs and r not in set dom halts
@@ -154,13 +151,22 @@ end
 **显式操作。** 契约里的显式操作只用于效果还没有约束的连接，体写 `is not yet specified`（`soroi_engine_control`）：
 
 ```vdm
-  Stop : soroi`RunId ==> StopReply
+  Stop : soroi_store`RunId ==> StopReply
   Stop(target) == is not yet specified;
 ```
 
 不写按次序调用别的操作的场景；先后归行为。
 
 **说明注释。** `--` 写在定义前面，记录与状态的字段说明写在同一行末尾。说明写“它是什么”，不复述类型形状；需求要求它承诺某种行为时，才在说明里写这个承诺。说明里提到的每个参数、载荷字段或状态区分，都要在定义中真实存在：不一致时删说明里多说的话，不往签名里加。
+
+**需求落点。** 一条需求由哪个定义兑现，就在紧贴这个定义首行之上的连续 `--` 注释里写出它的编号，中间不留空行；需求由整个模块兑现时，写在紧贴 `module` 行之上的注释里。编号逐个写全，不写范围：
+
+```vdm
+  -- REQ-54：只有尚未写下 halt 的运行才可能得到新的运行项；返回 StartFailed 时没有运行项。
+  writeStart(r : RunId, s : Start) res : RuntimeId | StartFailed
+```
+
+`ssot status` 只认这样附着在定义或模块上的编号；写在记录字段旁、函数体里或与定义隔着空行的编号不算落点。
 
 ## 四、不展开也守住约束
 
@@ -215,7 +221,7 @@ ssot eval <design> soroi_store 'byteLess([1], [1])'
 - **行为归做出行为的一方。** 一条规则由实际做出这个行为的模块持有，不由它所观察的值持有。
 - **契约只承诺结果。** 只写稳定需求的结果与规律；连接不变时可以替换的实现过程、常变的业务内容留在代码里。
 - **持续关系先写在持有事实的地方。** 任何时刻都成立的关系，先写在持有这份事实的状态的 `inv`，或产生它的操作的 `pre`/`post`；只有观察者本来就要按它分支或读字段时，才用类型结构让非法组合构造不出来。
-- **接口自我保护。** 被业务元素或系统外调用方调用的操作是系统接口，谁都能直接调用它，绕开预期次序的调用只能由它自己的 `pre`/`post` 挡住，不能靠行为里的次序或一句“只由谁调用”。只被架构元素导入的操作是内部连接，调用方由结构授予的引用决定。
+- **接口自我保护。** 被业务元素或系统外调用方调用的操作是系统接口，谁都能直接调用它，绕开预期次序的调用只能由它自己的 `pre`/`post` 挡住，不能靠行为里的次序或一句“只由谁调用”。只被架构元素的模块 import 的操作是内部连接。
 - **失败写明恢复连接。** 每个可观察的失败分支，在说明里写明调用方改走哪个连接恢复；恢复的先后由行为写。
 - **名字就是词汇。** 契约里的名字是这些概念唯一的定义；行为经 `.gen/contract.qnt` 引用它们，结构的槽位不得用它们。
 
@@ -227,8 +233,9 @@ ssot eval <design> soroi_store 'byteLess([1], [1])'
 |---|---|
 | `compile.vdm` | VDMJ 的语法与类型错误，包括使用方构造或读取不透明身份 |
 | `contract.body` | 显式体里出现局部可变变量、赋值或循环 |
-| `contract.module` | `#contract` 元素与文件、模块名不一一对应 |
-| `contract.imports` | import 越出结构授予的范围 |
+| `contract.module` | `#contract` 写在有子元素的元素上；`#contract` 元素与文件、模块名不一一对应 |
+| `contract.imports` | 契约模块之间的 import 成环（生成的 Quint 模块不允许循环引用） |
+| `contract.layering` | 架构元素的模块 import 了业务元素的模块 |
 | `contract.po` | QuickCheck 找到反例的证明义务（带反例） |
 | `gen.unmappable` / `gen.names` | 第二节的类型与名字要求；`init` 求不出初态 |
 | `replay.pre` / `replay.post` / `replay.inv` / `replay.eval` | 行为轨迹里的一次调用，在本模块的原样规格下 `pre` 或 `post` 为假、不变式被破坏或求值出错 |
@@ -251,4 +258,5 @@ ssot eval <design> soroi_store 'byteLess([1], [1])'
 9. **每个分支约束全部可写分量。** 对每个隐式操作的 `post`，逐个 `or` 分支核对 `ext wr` 里的每个分量都有约束（第三节「隐式操作」）。`replay.frame` 只拦得住改动了只读分量或不写分量的调用，`ext wr` 分量在某一支漏写，只能靠逐支读出来。
 10. **持有者与写法。** 逐条核对第六节：定义在持有者且只展开一处；行为归行为方；不复制别处的事实；只承诺结果；显式体只用于需求承诺的唯一结果；结局只列调用方要区分的分支；持续关系写在 `inv` 或 `pre`/`post`；系统接口自我保护；失败写明恢复连接；说明没有扩张签名。
 11. **领域性质与隐含前提。** 领域性质是外部世界成立、本系统不保证的事实，各有来源；它不能写成本模块的 `inv` 冒充系统的承诺——`inv` 只写本模块的操作维持得住的关系。约束依赖的每个前提都有定义：在持有它的模块里，或者经 import 来自外部依赖的占位。规格加领域性质推不出需求时，判定是缺约束还是缺领域性质，把后者退回需求论证。
-12. **每个元素都服务需求。** 每个元素、谓词项、参数与调用都能指出它服务的需求或需求所需的连接；只为通过工具而造的元素、守卫或消费者，删掉。
+12. **需求落点。** 每个附着的需求编号都在确实兑现它的那个定义上；一个定义没有兑现它所标的需求，或需求真正由别的定义兑现，都是问题。
+13. **每个元素都服务需求。** 每个元素、谓词项、参数与调用都能指出它服务的需求或需求所需的连接；只为通过工具而造的元素、守卫或消费者，删掉。

@@ -16,6 +16,7 @@
 | VDMJ 与 QuickCheck 的 jar（Maven Central） | `${XDG_DATA_HOME:-~/.local/share}/ssot/` |
 | LikeC4、Quint、TypeScript（npm） | 同一目录下的 `node_modules/` |
 | Quint 模拟用的 rust 求值器（版本由所装的 Quint 决定） | `~/.quint/rust-evaluator-<版本>/`；设了 `QUINT_HOME` 时在它下面 |
+| `ssot render` 导出渲染图用的无头浏览器（版本由所装 LikeC4 带的 Playwright 决定） | Playwright 的浏览器缓存目录（macOS 为 `~/Library/Caches/ms-playwright/`） |
 | `Vdm.java` 编译出的 class（不由 `setup` 装，`check` 第一次需要时编译；`Vdm.java` 或 jar 一变就编译到新的子目录） | 同一目录下的 `vdm-classes/<内容哈希>/` |
 | `ssot` 命令 | `~/.local/bin/ssot`，运行本 skill 的 `scripts/ssot.ts` |
 
@@ -23,4 +24,4 @@
 
 ## 怎么确认
 
-`setup` 最后检查 PATH 上的 `ssot` 是不是 `~/.local/bin/ssot`，不是时打印要加进 shell 启动文件的 `export PATH=…`。照做之后在新 shell 里运行 `command -v ssot`，应当输出 `~/.local/bin/ssot` 的完整路径；再对一个设计目录运行 `ssot check <design>`，能输出诊断与 `PASS`、`FAIL` 或 `INCOMPLETE` 的结论行即装好了。
+`setup` 最后检查 PATH 上的 `ssot` 是不是 `~/.local/bin/ssot`，不是时打印要加进 shell 启动文件的 `export PATH=…`。照做之后在新 shell 里运行 `command -v ssot`，应当输出 `~/.local/bin/ssot` 的完整路径；再对一个设计目录运行 `ssot check <design>`，能输出诊断与 `PASS`、`FAIL` 或 `INCOMPLETE` 的结论行，运行 `ssot render <design>` 能列出每个视图的图片路径，即装好了。

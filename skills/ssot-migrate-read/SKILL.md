@@ -36,6 +36,6 @@ description: SSoT 迁移叶子：派 ssot:reader 代读旧设计文档的一个�
 
 ## 三、交接
 
-交付：区域编号、两个文件的路径、摘录里的需求条数与外部事实条数，以及下一项前沿 `{skill: ssot-draft-requirement, scope: .tmp/ssot-migrate/<区域编号>/requirements.md, reason: 迁移区域 <编号>}`。外部事实在那里写成承担它的元素的依据。
+交付：区域编号、两个文件的路径、摘录里的需求条数与外部事实条数，以及下一项前沿 `{skill: ssot-draft-requirement, scope: .tmp/ssot-migrate/<区域编号>/requirements.md, reason: 迁移区域 <编号>}`。外部事实与约束在那里只用于需求的论证，不写进任何载体的描述。
 
 本次调用结束前，删掉拷入项目的 `.omp/agents/ssot-reader.md`；下次调用需要时再拷。

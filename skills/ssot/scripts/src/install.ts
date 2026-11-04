@@ -28,6 +28,12 @@ export function quintCommand(): readonly string[] {
   return [process.execPath, bin];
 }
 
+export function likec4Command(): readonly string[] {
+  const bin = join(DATA, "node_modules", ".bin", "likec4");
+  if (!existsSync(bin)) throw missing("LikeC4");
+  return [process.execPath, bin];
+}
+
 export async function loadLikeC4(): Promise<{ readonly LikeC4: typeof LikeC4 }> {
   let path: string;
   try {

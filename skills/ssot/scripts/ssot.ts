@@ -3,7 +3,7 @@
 //   ssot setup
 //   ssot gen    <design>
 //   ssot check  <design> [--scope <视图 id> [--base <rev>]] [--samples N] [--steps K] [--seed S] [--deadline 秒]
-//   ssot view   <design> <视图 id>
+//   ssot render <design> [--out <dir>]
 //   ssot eval   <design> <模块> <表达式> [--bind ...]
 //   ssot status <design>
 // check 的退出码：0 通过；1 有 error；3 没有 error 但有 resource.deadline（验证未完成）。
@@ -20,7 +20,7 @@ import { generateStructure } from "./src/gen/structure";
 import { NotInstalled } from "./src/install";
 import { contractElements, contractFileOf, elementOfModule } from "./src/model";
 import { replay } from "./src/replay";
-import { behaviorNameRules, behaviorSubject, callRules, importRules, isRunnable, moduleRules, vocabRules } from "./src/rules/cross";
+import { behaviorNameRules, behaviorSubject, callRules, contractLayeringRules, importCycleRules, isRunnable, moduleRules, vocabRules } from "./src/rules/cross";
 import { structureRules } from "./src/rules/structure";
 import { type Scope, partition, resolveScope } from "./src/scope";
 import { obligationRules } from "./src/obligations";
@@ -28,8 +28,9 @@ import { evalCommand } from "./src/evalcmd";
 import { hintRules } from "./src/rules/hints";
 import { initialRules } from "./src/rules/init";
 import { setup } from "./src/setup";
-import { type BehaviorOutcomes, deriveStatus, requirementIds } from "./src/status";
-import { renderPacket, reviewDiagnostics, reviewPacket } from "./src/view";
+import { deriveStatus, requirementIds } from "./src/status";
+import { requirementAttachments } from "./src/requirements";
+import { render } from "./src/render";
 
 interface Layout {
   readonly root: string;
@@ -75,8 +76,13 @@ async function front(l: Layout, scopeId: string | null | "none") {
   const project: VdmProject | null = vdm?.kind === "ok" ? vdm.project : null;
   let contract: ContractGen | null = null;
   if (project) {
-    contract = generateContract(project, new Set(owner.keys()), (m) => (owner.has(m) ? element(owner.get(m)!) : global));
-    diagnostics.push(...contract.diagnostics);
+    const subjectOf = (m: string) => owner.has(m) ? element(owner.get(m)!) : global;
+    const cycles = importCycleRules(project, subjectOf);
+    diagnostics.push(...cycles);
+    if (cycles.length === 0) {
+      contract = generateContract(project, new Set(owner.keys()), subjectOf);
+      diagnostics.push(...contract.diagnostics);
+    }
   }
   return { diagnostics, structure: s, scope, project, contract, structureJson, vdmFiles, checked };
 }
@@ -119,7 +125,7 @@ interface CheckRun {
   readonly behavior: readonly QuintModule[];
   /** 模拟、覆盖目标与回放产生的诊断 → 产生它的可运行模块。 */
   readonly behaviorOf: ReadonlyMap<Diagnostic, string>;
-  readonly outcomes: readonly BehaviorOutcomes[];
+  readonly project: VdmProject | null;
   readonly info: readonly string[];
   readonly stage: string;
 }
@@ -138,7 +144,7 @@ function unwrap<T>(s: Settled<T>): T {
 
 type ModuleVerification =
   | { readonly kind: "skipped"; readonly info: string }
-  | { readonly kind: "verified"; readonly module: string; readonly diagnostics: readonly Diagnostic[]; readonly outcomes: BehaviorOutcomes; readonly info: readonly string[] };
+  | { readonly kind: "verified"; readonly module: string; readonly diagnostics: readonly Diagnostic[]; readonly info: readonly string[] };
 
 interface BehaviorInput {
   readonly structure: Structure;
@@ -173,7 +179,6 @@ function verifyBehavior(x: BehaviorInput): Promise<readonly ModuleVerification[]
       kind: "verified",
       module: q.name,
       diagnostics: [...run.diagnostics, ...cover.diagnostics, ...r.diagnostics],
-      outcomes: { module: q.name, outcomes: r.outcomes, replayed: r.replayed },
       info: [
         `行为 ${q.name}：模拟 ${run.traces.length} 条轨迹（${run.ms}ms）`,
         `行为 ${q.name}：覆盖目标 ${[...cover.reached].map(([w, c]) => `${w}（定向模拟，${c.states} 个状态，${c.ms}ms）`).join("，") || "（无）"}`,
@@ -191,17 +196,16 @@ async function runCheck(l: Layout, o: CheckOptions): Promise<CheckRun | { readon
   const ds: Diagnostic[] = [...f.diagnostics];
   const info: string[] = [];
   const s: Structure | null = f.structure;
-  // 证明义务与 QuickCheck 单独一个进程，与下面的 Quint 编译、模拟与回放并行；它的诊断插回 importRules 之后的原位置。
+  // 证明义务与 QuickCheck 单独一个进程，与下面的 Quint 编译、模拟与回放并行；诊断插回模块检查之后。
   const obligations = s && f.project ? settle(checkObligations(f.vdmFiles, f.checked)) : null;
   let obligationsAt = ds.length;
   if (s) {
     ds.push(...structureRules(s));
     ds.push(...freshness(l, "structure.json", f.structureJson!));
     ds.push(...moduleRules(s, f.vdmFiles, f.project));
-    if (f.project) ds.push(...importRules(s, f.project));
+    if (f.project) ds.push(...contractLayeringRules(s, f.project));
     obligationsAt = ds.length;
     if (f.project) ds.push(...hintRules(s, f.project));
-    ds.push(...reviewDiagnostics(s));
   }
 
   // Quint：在临时目录里对“新生成的” contract.qnt 编译行为文件，使 VDM 的改动立刻体现为 Quint 的编译错误。
@@ -288,7 +292,6 @@ async function runCheck(l: Layout, o: CheckOptions): Promise<CheckRun | { readon
     }
   }
   const behaviorOf = new Map<Diagnostic, string>();
-  const outcomes: BehaviorOutcomes[] = [];
   if (verification) {
     const modules = unwrap(await verification);
     if (!ds.some((d) => d.severity === "error")) {
@@ -300,7 +303,6 @@ async function runCheck(l: Layout, o: CheckOptions): Promise<CheckRun | { readon
           case "verified":
             for (const d of m.diagnostics) behaviorOf.set(d, m.module);
             ds.push(...m.diagnostics);
-            outcomes.push(m.outcomes);
             info.push(...m.info);
             break;
           default:
@@ -309,7 +311,7 @@ async function runCheck(l: Layout, o: CheckOptions): Promise<CheckRun | { readon
       }
     }
   }
-  return { kind: "ran", structure: s, scope, diagnostics: ds, behavior, behaviorOf, outcomes, info, stage };
+  return { kind: "ran", structure: s, scope, diagnostics: ds, behavior, behaviorOf, project: f.project, info, stage };
 }
 
 function exitOf(ds: readonly Diagnostic[]): 0 | 1 | 3 {
@@ -355,7 +357,11 @@ async function status(l: Layout, o: CheckOptions): Promise<number> {
     behaviorModules: listFiles(l.behavior, ".qnt").map((f) => basename(f, ".qnt")),
     contractFiles: new Set(listFiles(l.contract, ".vdmsl").map((f) => basename(f))),
     requirements: existsSync(requirementsFile) ? requirementIds(readFileSync(requirementsFile, "utf8")) : [],
-    outcomes: run.outcomes,
+    attachments: requirementAttachments(
+      new Map([...listFiles(l.contract, ".vdmsl"), ...listFiles(l.behavior, ".qnt")].map((file) => [file, readFileSync(file, "utf8")])),
+      run.project,
+      run.behavior,
+    ),
     exit,
   });
   switch (result.kind) {
@@ -363,7 +369,7 @@ async function status(l: Layout, o: CheckOptions): Promise<number> {
       console.log(JSON.stringify({ skill: result.skill, scope: result.scope, reason: result.reason }));
       return 0;
     case "none":
-      console.log("没有前沿：可派生的事实里没有待办（不说明需求已经兑现）");
+      console.log("没有前沿：可派生的事实里没有待办（不说明需求已经兑现，也不说明结构已经展开到足够深）");
       return 0;
     case "incomplete":
       console.log(`验证没有做完，不派生前沿：${result.reason}`);
@@ -371,18 +377,6 @@ async function status(l: Layout, o: CheckOptions): Promise<number> {
   }
 }
 
-async function view(l: Layout, id: string): Promise<number> {
-  const c4 = await compileLikeC4(l.structure);
-  for (const d of c4.diagnostics) console.log(format(d));
-  if (c4.kind === "failed") return 1;
-  const p = reviewPacket(c4.structure, id);
-  if (p === null) {
-    console.log(`没有 id 为 ${id} 的元素视图`);
-    return 2;
-  }
-  console.log(renderPacket(p));
-  return 0;
-}
 
 function option(args: string[], name: string): string | null {
   const i = args.indexOf(name);
@@ -390,12 +384,12 @@ function option(args: string[], name: string): string | null {
 }
 
 const USAGE =
-  "用法：ssot setup | gen <design> | check <design> [--scope <视图 id> [--base <rev>]] [--samples N] [--steps K] [--seed S] [--deadline 秒] | view <design> <视图 id> | eval <design> <module> <expression> [--bind name=<module>:<expr>:<typeModule>:<typeName>]... | status <design>";
+  "用法：ssot setup | gen <design> | check <design> [--scope <视图 id> [--base <rev>]] [--samples N] [--steps K] [--seed S] [--deadline 秒] | render <design> [--out <dir>] | eval <design> <module> <expression> [--bind name=<module>:<expr>:<typeModule>:<typeName>]... | status <design>";
 
 async function main(argv: string[]): Promise<number> {
   const [cmd, dir, ...rest] = argv;
   if (cmd === "setup" && dir === undefined) return setup();
-  if ((cmd !== "gen" && cmd !== "check" && cmd !== "eval" && cmd !== "view" && cmd !== "status") || !dir) {
+  if ((cmd !== "gen" && cmd !== "check" && cmd !== "eval" && cmd !== "render" && cmd !== "status") || !dir) {
     console.log(USAGE);
     return 2;
   }
@@ -410,8 +404,8 @@ async function main(argv: string[]): Promise<number> {
   switch (cmd) {
     case "gen":
       return gen(l);
-    case "view":
-      return view(l, rest[0] ?? "");
+    case "render":
+      return render(l.structure, option(rest, "--out"));
     case "eval":
       return evalCommand(await front(l, "none"), rest);
     case "status":

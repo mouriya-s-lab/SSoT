@@ -3,37 +3,16 @@ import type { C4Element, Structure } from "../compile/likec4";
 import { type Diagnostic, assertNever, diag, element, relation, view } from "../diag";
 import {
   ELEMENT_KINDS,
-  type ElementKind,
-  RELATION_KINDS,
   TAG_BUSINESS,
-  TAG_CONTRACT,
-  TAG_SHARED,
   ancestors,
   hasTag,
-  isBusiness,
   isContract,
-  isDependency,
   parseElementKind,
-  parseRelationKind,
   within,
 } from "../model";
 
 const ID = /^[A-Za-z][A-Za-z0-9]*$/;
 
-function rank(k: ElementKind): number {
-  switch (k) {
-    case "actor":
-      return 0;
-    case "system":
-      return 1;
-    case "container":
-      return 2;
-    case "component":
-      return 3;
-    default:
-      return assertNever(k);
-  }
-}
 
 function kinds(s: Structure): Diagnostic[] {
   const out: Diagnostic[] = [];
@@ -41,13 +20,12 @@ function kinds(s: Structure): Diagnostic[] {
     if (parseElementKind(k) === null)
       out.push(diag("struct.kinds", { kind: "global" }, null, `specification 声明了约定之外的元素种类 '${k}'；只允许 ${ELEMENT_KINDS.join("/")}`));
   for (const k of s.spec.relationKinds)
-    if (parseRelationKind(k) === null)
-      out.push(diag("struct.kinds", { kind: "global" }, null, `specification 声明了约定之外的关系种类 '${k}'；只允许 ${RELATION_KINDS.join("/")}`));
+    out.push(diag("struct.kinds", { kind: "global" }, null, `specification 不得声明关系种类 '${k}'；关系只使用无种类的 ->`));
   for (const e of s.elements.values())
     if (parseElementKind(e.kind) === null) out.push(diag("struct.kinds", element(e.fqn), e.at, `元素种类 '${e.kind}' 不在约定内`));
   for (const r of s.relations)
-    if (parseRelationKind(r.kind) === null)
-      out.push(diag("struct.kinds", relation(r.source, r.target), r.at, r.kind === null ? "关系没有写种类" : `关系种类 '${r.kind}' 不在约定内`));
+    if (r.kind !== null)
+      out.push(diag("struct.kinds", relation(r.source, r.target), r.at, `关系不得带种类 '${r.kind}'；只使用 ->`));
   return out;
 }
 
@@ -56,16 +34,25 @@ function nesting(s: Structure): Diagnostic[] {
   for (const e of s.elements.values()) {
     const k = parseElementKind(e.kind);
     if (k === null) continue;
-    if (k === "actor") {
-      if (e.parent !== null) out.push(diag("struct.nesting", element(e.fqn), e.at, "actor 只能在顶层"));
-      if (e.children.length > 0) out.push(diag("struct.nesting", element(e.fqn), e.at, "actor 不能有子元素"));
-      continue;
+    switch (k) {
+      case "actor":
+        if (e.parent !== null) out.push(diag("struct.nesting", element(e.fqn), e.at, "actor 只能在顶层"));
+        if (e.children.length > 0) out.push(diag("struct.nesting", element(e.fqn), e.at, "actor 不能有子元素"));
+        break;
+      case "system":
+        if (e.parent !== null) out.push(diag("struct.nesting", element(e.fqn), e.at, "system 只能在顶层"));
+        break;
+      case "container":
+      case "component": {
+        const required = k === "container" ? "system" : "container";
+        const parent = e.parent === null ? null : s.elements.get(e.parent);
+        if (parent?.kind !== required)
+          out.push(diag("struct.nesting", element(e.fqn), e.at, `${k} 的父元素必须是 ${required}`));
+        break;
+      }
+      default:
+        assertNever(k);
     }
-    if (e.parent === null) continue;
-    const pk = parseElementKind(s.elements.get(e.parent)!.kind);
-    if (pk === null || pk === "actor") continue;
-    const finer = rank(k) > rank(pk) || (k === "component" && pk === "component");
-    if (!finer) out.push(diag("struct.nesting", element(e.fqn), e.at, `${k} 嵌套在 ${pk} ${e.parent} 之下：子元素必须比父元素细`));
   }
   return out;
 }
@@ -81,16 +68,6 @@ function ids(s: Structure): Diagnostic[] {
   return out;
 }
 
-function tags(s: Structure): Diagnostic[] {
-  const out: Diagnostic[] = [];
-  for (const e of s.elements.values()) {
-    if (hasTag(e, TAG_SHARED)) {
-      if (!isContract(e)) out.push(diag("contract.module", element(e.fqn), e.at, `#${TAG_SHARED} 必须同时带 #${TAG_CONTRACT}`));
-      if (e.children.length === 0) out.push(diag("contract.module", element(e.fqn), e.at, `#${TAG_SHARED} 只能放在有子元素的元素上`));
-    }
-  }
-  return out;
-}
 
 function layering(s: Structure): Diagnostic[] {
   const out: Diagnostic[] = [];
@@ -100,94 +77,15 @@ function layering(s: Structure): Diagnostic[] {
     const dup = ancestors(s, e.fqn).find((a) => hasTag(s.elements.get(a)!, TAG_BUSINESS));
     if (dup) out.push(diag("struct.layering", element(e.fqn), e.at, `祖先 ${dup} 已是业务元素，#business 重复标记`));
   }
-  for (const r of s.relations) {
-    const k = parseRelationKind(r.kind);
-    if (k === null || !isDependency(k)) continue;
-    const src = s.elements.get(r.source)!;
-    if (parseElementKind(src.kind) === "actor") continue;
-    if (!isBusiness(s, r.source) && isBusiness(s, r.target))
-      out.push(diag("struct.layering", relation(r.source, r.target), r.at, `架构元素 ${r.source} 以 ${k} 依赖业务元素 ${r.target}`));
-  }
   return out;
 }
 
-/** 两端提升到最近公共祖先之下的兄弟；一端是另一端的祖先时返回 null。 */
-function lift(a: string, b: string): { parent: string | null; from: string; to: string } | null {
-  if (within(a, b) || within(b, a)) return null;
-  const as = a.split(".");
-  const bs = b.split(".");
-  let i = 0;
-  while (as[i] === bs[i]) i++;
-  return {
-    parent: i === 0 ? null : as.slice(0, i).join("."),
-    from: as.slice(0, i + 1).join("."),
-    to: bs.slice(0, i + 1).join("."),
-  };
-}
-
-function acyclic(s: Structure): Diagnostic[] {
-  const graphs = new Map<string, Map<string, Set<string>>>();
-  for (const r of s.relations) {
-    const k = parseRelationKind(r.kind);
-    if (k === null || !isDependency(k)) continue;
-    const l = lift(r.source, r.target);
-    if (l === null) continue;
-    const key = l.parent ?? "";
-    const g = graphs.get(key) ?? new Map<string, Set<string>>();
-    graphs.set(key, g);
-    const succ = g.get(l.from) ?? new Set<string>();
-    g.set(l.from, succ);
-    succ.add(l.to);
-  }
-  const out: Diagnostic[] = [];
-  for (const [parent, g] of [...graphs].sort(([a], [b]) => a.localeCompare(b))) {
-    for (const scc of stronglyConnected(g)) {
-      if (scc.length < 2) continue;
-      const subject = parent === "" ? { kind: "global" as const } : element(parent);
-      const at = parent === "" ? null : s.elements.get(parent)!.at;
-      out.push(diag("struct.acyclic", subject, at, `${parent === "" ? "顶层" : parent} 之下的兄弟依赖成环：${scc.sort().join(", ")}`));
-    }
-  }
-  return out;
-}
-
-function stronglyConnected(g: Map<string, Set<string>>): string[][] {
-  const nodes = new Set<string>([...g.keys(), ...[...g.values()].flatMap((x) => [...x])]);
-  let index = 0;
-  const idx = new Map<string, number>();
-  const low = new Map<string, number>();
-  const stack: string[] = [];
-  const on = new Set<string>();
-  const out: string[][] = [];
-  const visit = (v: string): void => {
-    idx.set(v, index);
-    low.set(v, index);
-    index++;
-    stack.push(v);
-    on.add(v);
-    for (const w of g.get(v) ?? []) {
-      if (!idx.has(w)) {
-        visit(w);
-        low.set(v, Math.min(low.get(v)!, low.get(w)!));
-      } else if (on.has(w)) low.set(v, Math.min(low.get(v)!, idx.get(w)!));
-    }
-    if (low.get(v) === idx.get(v)) {
-      const comp: string[] = [];
-      let w: string;
-      do {
-        w = stack.pop()!;
-        on.delete(w);
-        comp.push(w);
-      } while (w !== v);
-      out.push(comp);
-    }
-  };
-  for (const v of [...nodes].sort()) if (!idx.has(v)) visit(v);
-  return out;
-}
 
 function views(s: Structure): Diagnostic[] {
   const out: Diagnostic[] = [];
+  const indexes = s.views.filter((v) => v.declared && v.id === "index" && v.type === "element" && v.viewOf === null);
+  if (indexes.length !== 1)
+    out.push(diag("struct.views", { kind: "global" }, null, `必须恰有一个顶层 index 视图，实际 ${indexes.length} 个`));
   const nonLeaf = [...s.elements.values()].filter((e) => e.children.length > 0);
   const scoped = new Map<string, string[]>();
   for (const v of s.views) {
@@ -251,5 +149,5 @@ function scopedViewContents(s: Structure, of: C4Element, id: string, nodes: read
 }
 
 export function structureRules(s: Structure): Diagnostic[] {
-  return [...kinds(s), ...nesting(s), ...ids(s), ...tags(s), ...layering(s), ...acyclic(s), ...views(s)];
+  return [...kinds(s), ...nesting(s), ...ids(s), ...layering(s), ...views(s)];
 }

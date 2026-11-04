@@ -356,7 +356,7 @@ export function generateContract(project: VdmProject, contractModules: ReadonlyS
     }
   }
 
-  // 模块按 import 依赖排序；VDM 侧的依赖已由 LikeC4 的无环规则约束。
+  // 模块按 import 依赖排序；VDM import 环由 contract.imports 拒绝，投影另外检查生成类型引用是否成环。
   const order: string[] = [];
   const seen = new Set<string>();
   const visit = (n: string, path: Set<string>): void => {

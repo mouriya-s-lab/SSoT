@@ -24,7 +24,7 @@ export interface C4Relation {
   /** null：关系没有写种类。 */
   readonly kind: string | null;
   readonly title: string | null;
-  /** 关系自己的 description：这条依赖的依据与理由；没写时为空串。 */
+  /** 关系自己的 description；没写时为空串。 */
   readonly description: string;
   readonly tags: readonly string[];
   readonly metadata: Metadata;
@@ -33,12 +33,6 @@ export interface C4Relation {
 
 export type ViewType = "element" | "dynamic" | "deployment";
 
-export interface C4ViewEdge {
-  readonly from: string;
-  readonly to: string;
-  /** 计算后的边所代表的模型声明关系 id，不是根据端点推测。 */
-  readonly relations: readonly string[];
-}
 
 export interface C4View {
   readonly id: string;
@@ -46,7 +40,6 @@ export interface C4View {
   readonly viewOf: string | null;
   /** 计算后（展开 include 规则）的元素节点。 */
   readonly nodes: readonly string[];
-  readonly edges: readonly C4ViewEdge[];
   /** false：LikeC4 自动生成的视图（没有源位置）。 */
   readonly declared: boolean;
   readonly at: Position | null;
@@ -131,11 +124,6 @@ export async function compileLikeC4(dir: string): Promise<C4Result> {
         type: viewType(v._type),
         viewOf: v.viewOf?.id ?? null,
         nodes: [...v.nodes()].flatMap((n) => (n.element ? [n.element.id] : [])),
-        edges: [...v.edges()].flatMap((edge) => {
-          const from = edge.source.element?.id;
-          const to = edge.target.element?.id;
-          return from && to ? [{ from, to, relations: [...edge.relationships("model")].map((r) => r.id) }] : [];
-        }),
         declared: at !== null,
         at,
       };

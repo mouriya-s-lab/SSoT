@@ -1,19 +1,21 @@
-// 跨载体规则：LikeC4 × VDM（模块对应、import 允许集合）、结构化槽位词汇、VDM × Quint（重名、Call 变量）。
+// 跨载体规则：LikeC4 × VDM（模块对应）、结构化槽位词汇、VDM × Quint（重名、Call 变量）。
 import { basename } from "node:path";
 import type { Structure } from "../compile/likec4";
 import type { QuintModule } from "../compile/quint";
 import type { VdmProject } from "../compile/vdm";
 import { vdmPosition } from "../compile/vdm";
 import { type Diagnostic, type Subject, assertNever, diag, element, global, relation } from "../diag";
-import { allowedImports, contractElements, contractFileOf, elementOfModule, moduleNameOf } from "../model";
+import { contractElements, contractFileOf, elementOfModule, isBusiness, moduleNameOf } from "../model";
 
 /** #contract ⇔ contract/<fqn>.vdmsl ⇔ 文件里恰好一个模块，模块名 = 映射名。 */
 export function moduleRules(s: Structure, files: readonly string[], project: VdmProject | null): Diagnostic[] {
   const out: Diagnostic[] = [];
   const byFile = new Map(contractElements(s).map((e) => [contractFileOf(e.fqn), e]));
   const present = new Set(files.map((f) => basename(f)));
-  for (const [file, e] of byFile)
+  for (const [file, e] of byFile) {
+    if (e.children.length > 0) out.push(diag("contract.module", element(e.fqn), e.at, `${e.fqn} 带 #contract，不能有子元素`));
     if (!present.has(file)) out.push(diag("contract.module", element(e.fqn), e.at, `${e.fqn} 带 #contract，但没有 contract/${file}`));
+  }
   for (const f of files) {
     const e = byFile.get(basename(f));
     if (!e) {
@@ -31,29 +33,60 @@ export function moduleRules(s: Structure, files: readonly string[], project: Vdm
   return out;
 }
 
-export function importRules(s: Structure, project: VdmProject): Diagnostic[] {
+/** VDMJ 允许循环 import，但生成的 Quint 模块不能循环引用。每个环上模块各报一条。 */
+export function importCycleRules(project: VdmProject, subjectOf: (module: string) => Subject): Diagnostic[] {
+  const modules = new Map(project.modules.map((m) => [m.name, m]));
+  const indices = new Map<string, number>();
+  const low = new Map<string, number>();
+  const stack: string[] = [];
+  const active = new Set<string>();
   const out: Diagnostic[] = [];
+  let index = 0;
+  const visit = (name: string): void => {
+    indices.set(name, index);
+    low.set(name, index++);
+    stack.push(name);
+    active.add(name);
+    const module = modules.get(name)!;
+    for (const imported of module.imports) {
+      if (!modules.has(imported.module)) continue;
+      if (!indices.has(imported.module)) {
+        visit(imported.module);
+        low.set(name, Math.min(low.get(name)!, low.get(imported.module)!));
+      } else if (active.has(imported.module)) low.set(name, Math.min(low.get(name)!, indices.get(imported.module)!));
+    }
+    if (low.get(name) !== indices.get(name)) return;
+    const cycle: string[] = [];
+    let member: string;
+    do {
+      member = stack.pop()!;
+      active.delete(member);
+      cycle.push(member);
+    } while (member !== name);
+    if (cycle.length === 1 && !module.imports.some((i) => i.module === name)) return;
+    cycle.sort();
+    for (const n of cycle)
+      out.push(diag("contract.imports", subjectOf(n), vdmPosition(modules.get(n)!.location), `契约模块的 import 成环，无法生成 contract.qnt：{${cycle.join(", ")}}`));
+  };
+  for (const name of [...modules.keys()].sort()) if (!indices.has(name)) visit(name);
+  return out;
+}
+
+export function contractLayeringRules(s: Structure, project: VdmProject): Diagnostic[] {
   const owner = elementOfModule(s);
+  const out: Diagnostic[] = [];
   for (const m of project.modules) {
-    const fqn = owner.get(m.name);
-    if (!fqn) continue;
-    const allowed = new Set(allowedImports(s, fqn));
-    for (const i of m.imports) {
-      if (allowed.has(i.module)) continue;
-      const target = owner.get(i.module);
-      const subject: Subject = target ? relation(fqn, target) : element(fqn);
-      out.push(
-        diag(
-          "contract.imports",
-          subject,
-          vdmPosition(m.location),
-          `${m.name} import 了 ${i.module}，不在 ${fqn} 的允许集合 {${[...allowed].join(", ")}} 内：需要一条 ${fqn} -[calls|uses]-> ${target ?? i.module} 的关系，或该模块是 #shared 祖先`,
-        ),
-      );
+    const source = owner.get(m.name);
+    if (source === undefined || s.elements.get(source)!.kind === "actor" || isBusiness(s, source)) continue;
+    for (const imported of m.imports) {
+      const target = owner.get(imported.module);
+      if (target !== undefined && isBusiness(s, target))
+        out.push(diag("contract.layering", element(source), vdmPosition(m.location), `架构元素 ${source} 的契约 ${m.name} 不得 import 业务元素 ${target} 的契约 ${imported.module}`));
     }
   }
   return out;
 }
+
 
 /** VDM 定义名与 Quint 声明名，用于结构化槽位检查。 */
 function contractNames(project: VdmProject | null, behavior: readonly QuintModule[]): Map<string, string> {

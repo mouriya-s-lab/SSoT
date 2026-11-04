@@ -7,12 +7,12 @@ export const RULES = {
   "struct.kinds": "likec4",
   "struct.nesting": "likec4",
   "struct.layering": "likec4",
-  "struct.acyclic": "likec4",
   "struct.views": "likec4",
   "struct.ids": "likec4",
   "vocab.slots": "likec4",
   "contract.module": "vdm",
-  "contract.imports": "vdm",
+  "contract.imports": "vdm", // 契约模块 import 成环，无法生成 Quint 模块。
+  "contract.layering": "vdm", // 架构契约不得 import 业务契约。
   "contract.po": "vdm",
   "gen.unmappable": "vdm",
   "gen.names": "vdm",
@@ -38,7 +38,6 @@ export const RULES = {
   "hint.sampled": "vdm", // pre 或 inv 在采样中全真或全假（info）
   "hint.state-unused": "vdm", // 状态分量从未被写或从未被读（info）
   "hint.no-ext": "vdm", // 没有 ext 子句的操作（info）
-  "view.unrealized": "likec4", // 上一层的对外关系在本层没有任何子元素落实（info）
 } as const;
 
 export type RuleId = keyof typeof RULES;

@@ -2,23 +2,19 @@ import type { QuintModule } from "../compile/quint";
 import type { VdmProject } from "../compile/vdm";
 import { assertNever } from "../diag";
 
-export type CompositionBox =
-  | { readonly kind: "behavior"; readonly id: string; readonly type: string }
+/** Steps are boxes, behavior variables are wires between them, contract modules are the boxes the steps call. */
+export type CompositionNode =
+  | { readonly kind: "step"; readonly id: string }
+  | { readonly kind: "wire"; readonly id: string; readonly type: string }
   | { readonly kind: "contract"; readonly id: string };
-export interface CompositionAction {
-  readonly name: string;
-  readonly owners: readonly string[];
-}
-export interface CompositionEdge {
-  readonly kind: "read" | "call" | "sync";
-  readonly source: string;
-  readonly target: string;
-  readonly labels: readonly string[];
-}
+export type CompositionEdge =
+  | { readonly kind: "put"; readonly step: string; readonly wire: string }
+  | { readonly kind: "take"; readonly wire: string; readonly step: string }
+  | { readonly kind: "update"; readonly wire: string; readonly step: string }
+  | { readonly kind: "call"; readonly step: string; readonly contract: string; readonly operations: readonly string[] };
 export interface CompositionDiagram {
   readonly module: string;
-  readonly boxes: readonly CompositionBox[];
-  readonly actions: readonly CompositionAction[];
+  readonly nodes: readonly CompositionNode[];
   readonly edges: readonly CompositionEdge[];
 }
 
@@ -54,12 +50,12 @@ function number(value: unknown): number {
   if (typeof value !== "number" || !Number.isSafeInteger(value)) throw new Error("Quint 图投影需要 IR 整数 id");
   return value;
 }
-function rowName(value: unknown): string {
+function rowName(value: unknown, positional = false): string {
   const row = record(value);
   switch (row.kind) {
     case "empty": return "";
     case "var": return `...${text(row.name)}`;
-    case "row": return [...array(row.fields).map((value) => { const field = record(value); return `${text(field.fieldName)}: ${typeName(field.fieldType)}`; }), rowName(row.other)].filter(Boolean).join(", ");
+    case "row": return [...array(row.fields).map((value) => { const field = record(value); return positional ? typeName(field.fieldType) : `${text(field.fieldName)}: ${typeName(field.fieldType)}`; }), rowName(row.other, positional)].filter(Boolean).join(", ");
     default: throw new Error(`不支持的 Quint row: ${String(row.kind)}`);
   }
 }
@@ -73,7 +69,7 @@ function typeName(value: unknown): string {
     case "fun": return `(${typeName(type.arg)} -> ${typeName(type.res)})`;
     case "oper": return `(${array(type.args).map(typeName).join(", ")}) => ${typeName(type.res)}`;
     case "rec": return `{ ${rowName(type.fields)} }`;
-    case "tup": return `(${rowName(type.fields)})`;
+    case "tup": return `(${rowName(type.fields, true)})`;
     case "sum": return rowName(type.fields);
     case "app": return `${typeName(type.ctor)}[${array(type.args).map(typeName).join(", ")}]`;
     default: throw new Error(`不支持的 Quint type: ${String(type.kind)}`);
@@ -182,16 +178,13 @@ export function projectComposition(input: unknown, module: QuintModule, project:
   const actions = new Map<number, Extract<Definition, { kind: "def" }>>();
   walk({ expr: step.expr, bindings: new Map() }, new Set([step.id]), (expr) => {
     const def = resolve(expr);
-    if (def?.kind === "def" && def.qualifier === "action" && declaredIn.get(def.id) === module.name && def.id !== step.id) actions.set(def.id, def);
+    if (def?.kind === "def" && def.qualifier === "action" && declaredIn.get(def.id) === module.name && def.id !== step.id) {
+      actions.set(def.id, def);
+      return "stop";
+    }
     return "descend";
   });
-  const edges = new Map<string, { readonly kind: CompositionEdge["kind"]; readonly source: string; readonly target: string; readonly labels: Set<string> }>();
-  const add = (kind: CompositionEdge["kind"], source: string, target: string, label: string): void => {
-    const key = `${kind}\0${source}\0${target}`;
-    const edge = edges.get(key);
-    if (edge) edge.labels.add(label);
-    else edges.set(key, { kind, source, target, labels: new Set([label]) });
-  };
+  const edges: CompositionEdge[] = [];
   const contracts = new Set<string>();
   for (const def of self.declarations) if (def.kind === "def") {
     walk({ expr: def.expr, bindings: new Map() }, new Set([def.id]), (expr) => {
@@ -201,10 +194,11 @@ export function projectComposition(input: unknown, module: QuintModule, project:
       return "descend";
     });
   }
-  const ownership: CompositionAction[] = [];
   for (const action of [...actions.values()].sort((a, b) => a.name.localeCompare(b.name))) {
     const changed = new Set<string>(), reads = new Set<string>();
     const calls = new Map<string, Set<string>>();
+    // Inside `v' = e`, reading v carries the wire's remaining value forward; only reads elsewhere take from the wire.
+    let carried: number | null = null;
     const visit: Visit = (expr, bindings, active) => {
       if (expr.kind === "app" && expr.opcode === "assign") {
         const [lhs, rhs] = expr.args;
@@ -213,11 +207,13 @@ export function projectComposition(input: unknown, module: QuintModule, project:
         const value = dereference({ expr: rhs, bindings });
         if (target?.kind === "var" && value.expr.kind === "name" && resolve(value.expr)?.id === target.id) return "stop";
         if (target?.kind === "var" && vars.has(target.id)) changed.add(target.name);
+        carried = target?.kind === "var" ? target.id : null;
         walk(value, active, visit);
+        carried = null;
         return "stop";
       }
       const def = resolve(expr);
-      if (expr.kind === "name" && def?.kind === "var" && vars.has(def.id)) reads.add(def.name);
+      if (expr.kind === "name" && def?.kind === "var" && vars.has(def.id) && def.id !== carried) reads.add(def.name);
       const contract = def ? constructors.get(def.id) : undefined;
       if (contract && expr.kind === "app") {
         const arg = expr.args[0];
@@ -233,18 +229,20 @@ export function projectComposition(input: unknown, module: QuintModule, project:
       return "descend";
     };
     walk({ expr: action.expr, bindings: new Map() }, new Set([action.id]), visit);
-    const owners = [...changed].sort();
-    ownership.push({ name: action.name, owners });
-    for (const owner of owners) {
-      for (const read of reads) if (read !== owner) add("read", read, owner, read);
-      for (const [contract, operations] of calls) for (const operation of operations) add("call", owner, contract, operation);
+    for (const wire of [...new Set([...reads, ...changed])].sort()) {
+      if (!changed.has(wire)) edges.push({ kind: "take", wire, step: action.name });
+      else if (!reads.has(wire)) edges.push({ kind: "put", step: action.name, wire });
+      else edges.push({ kind: "update", wire, step: action.name });
     }
-    for (let i = 0; i < owners.length; i++) for (let j = i + 1; j < owners.length; j++) add("sync", owners[i]!, owners[j]!, action.name);
+    for (const [contract, operations] of [...calls].sort(([a], [b]) => a.localeCompare(b))) edges.push({ kind: "call", step: action.name, contract, operations: [...operations].sort() });
   }
   return {
     module: module.name,
-    boxes: [...[...vars.values()].sort((a, b) => a.name.localeCompare(b.name)).map((def): CompositionBox => ({ kind: "behavior", id: def.name, type: def.type })), ...[...contracts].sort().map((id): CompositionBox => ({ kind: "contract", id }))],
-    actions: ownership,
-    edges: [...edges.values()].map((edge) => ({ ...edge, labels: [...edge.labels].sort() })).sort((a, b) => a.kind.localeCompare(b.kind) || a.source.localeCompare(b.source) || a.target.localeCompare(b.target)),
+    nodes: [
+      ...[...actions.values()].map((def) => def.name).sort().map((id): CompositionNode => ({ kind: "step", id })),
+      ...[...vars.values()].sort((a, b) => a.name.localeCompare(b.name)).map((def): CompositionNode => ({ kind: "wire", id: def.name, type: def.type })),
+      ...[...contracts].sort().map((id): CompositionNode => ({ kind: "contract", id })),
+    ],
+    edges,
   };
 }

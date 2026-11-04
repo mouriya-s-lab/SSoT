@@ -21,9 +21,9 @@ module wiring {
     left' = from(left), right' = right, observer' = observer, payload' = payload,
     store' = store, last' = shop_worker(Api::increment({ n: 1, result: 1 })),
   }
+  action hold = all { observer' = observer, payload' = payload, store' = store }
   action local = all {
-    left' = bump(3), right' = right, observer' = observer, payload' = payload,
-    store' = store, last' = NoCall,
+    left' = bump(3), right' = right, hold, last' = NoCall,
   }
   action sync = all {
     left' = right, right' = left, observer' = observer, payload' = payload,

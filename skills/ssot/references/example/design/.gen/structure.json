@@ -55,39 +55,27 @@
       "kind": "component",
       "parent": "soroi.engine",
       "children": [],
-      "tags": [
-        "contract"
-      ],
+      "tags": [],
       "business": false,
-      "contract": {
-        "module": "soroi_engine_closure"
-      }
+      "contract": null
     },
     {
       "fqn": "soroi.engine.control",
       "kind": "component",
       "parent": "soroi.engine",
       "children": [],
-      "tags": [
-        "contract"
-      ],
+      "tags": [],
       "business": false,
-      "contract": {
-        "module": "soroi_engine_control"
-      }
+      "contract": null
     },
     {
       "fqn": "soroi.engine.derivation",
       "kind": "component",
       "parent": "soroi.engine",
       "children": [],
-      "tags": [
-        "contract"
-      ],
+      "tags": [],
       "business": false,
-      "contract": {
-        "module": "soroi_engine_derivation"
-      }
+      "contract": null
     },
     {
       "fqn": "soroi.engine.halting",
@@ -112,13 +100,9 @@
       "kind": "component",
       "parent": "soroi.engine",
       "children": [],
-      "tags": [
-        "contract"
-      ],
+      "tags": [],
       "business": false,
-      "contract": {
-        "module": "soroi_engine_values"
-      }
+      "contract": null
     },
     {
       "fqn": "soroi.store",

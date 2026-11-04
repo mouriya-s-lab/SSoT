@@ -44,21 +44,21 @@ export async function verifyRenderProjections(): Promise<number> {
     const composition = projectComposition(input, quint.module, vdm.project);
     assert.deepEqual(composition, {
       module: "wiring",
-      boxes: [
-        { kind: "behavior", id: "left", type: "int" },
-        { kind: "behavior", id: "observer", type: "int" },
-        { kind: "behavior", id: "payload", type: "Api::Input" },
-        { kind: "behavior", id: "right", type: "int" },
+      nodes: [
+        { kind: "step", id: "idle" }, { kind: "step", id: "local" }, { kind: "step", id: "move" }, { kind: "step", id: "sync" },
+        { kind: "wire", id: "left", type: "int" },
+        { kind: "wire", id: "observer", type: "int" },
+        { kind: "wire", id: "payload", type: "Api::Input" },
+        { kind: "wire", id: "right", type: "int" },
         { kind: "contract", id: "shop_worker" },
       ],
-      actions: [
-        { name: "idle", owners: [] }, { name: "local", owners: ["left"] }, { name: "move", owners: ["left"] }, { name: "sync", owners: ["left", "right"] },
-      ],
       edges: [
-        { kind: "call", source: "left", target: "shop_worker", labels: ["increment"] },
-        { kind: "read", source: "left", target: "right", labels: ["left"] },
-        { kind: "read", source: "right", target: "left", labels: ["right"] },
-        { kind: "sync", source: "left", target: "right", labels: ["sync"] },
+        { kind: "put", step: "local", wire: "left" },
+        { kind: "put", step: "move", wire: "left" },
+        { kind: "take", wire: "right", step: "move" },
+        { kind: "call", step: "move", contract: "shop_worker", operations: ["increment"] },
+        { kind: "update", wire: "left", step: "sync" },
+        { kind: "update", wire: "right", step: "sync" },
       ],
     });
     return 10;

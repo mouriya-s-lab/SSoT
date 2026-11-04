@@ -3,7 +3,7 @@ import type { Browser } from "playwright-core";
 import { assertNever } from "../diag";
 import { loadDiagramTools } from "../install";
 import type { BoxDiagram } from "./box";
-import type { CompositionDiagram, CompositionEdge } from "./composition";
+import type { CompositionDiagram, CompositionEdge, CompositionNode } from "./composition";
 
 export interface DiagramSvg { readonly width: number; readonly height: number; readonly svg: string }
 const INK = "#20252b", MUTED = "#59636e", BEHAVIOR = "#2a78d6", CONTRACT = "#eb6834";
@@ -34,9 +34,9 @@ function frame(title: string, subtitle: string, width: number, height: number, b
 function edgePath(edge: ElkExtendedEdge, kind: CompositionEdge["kind"] | "port"): string {
   let style: string;
   switch (kind) {
-    case "read": case "port": style = `stroke="${MUTED}" marker-end="url(#arrow)"`; break;
+    case "take": case "put": case "port": style = `stroke="${MUTED}" marker-end="url(#arrow)"`; break;
+    case "update": style = `stroke="${MUTED}" marker-start="url(#arrow)" marker-end="url(#arrow)"`; break;
     case "call": style = `stroke="${MUTED}" stroke-dasharray="8 4" marker-end="url(#arrow)"`; break;
-    case "sync": style = `stroke="${MUTED}" stroke-dasharray="2 4" marker-start="url(#arrow)" marker-end="url(#arrow)"`; break;
     default: return assertNever(kind);
   }
   if (!edge.sections?.length) throw new Error(`ELK 没有布置连线 ${edge.id}`);
@@ -95,19 +95,32 @@ export async function boxSvg(diagram: BoxDiagram): Promise<DiagramSvg> {
 
 export async function compositionSvg(diagram: CompositionDiagram): Promise<DiagramSvg> {
   const { ELK } = await loadDiagramTools();
-  const labelLines = diagram.edges.map((edge) => wrap(edge.labels.slice(0, 4).join(", ") + (edge.labels.length > 4 ? ` … (+${edge.labels.length - 4})` : ""), 280));
+  const key = (kind: CompositionNode["kind"], id: string): string => `${kind}:${id}`;
+  const typeLines = (node: CompositionNode): string[] => node.kind === "wire" ? wrap(node.type, 260) : [];
+  const size = (node: CompositionNode): { width: number; height: number } => {
+    switch (node.kind) {
+      case "step": return { width: Math.max(150, widthOf(node.id) + 40), height: 52 };
+      case "wire": return { width: Math.max(widthOf(node.id) + 32, ...typeLines(node).map((line) => widthOf(line) * 0.9 + 32)), height: 30 + typeLines(node).length * 17 };
+      case "contract": return { width: Math.max(170, widthOf(node.id) + 40), height: 60 };
+      default: return assertNever(node);
+    }
+  };
+  const ends = (edge: CompositionEdge): [string, string] => {
+    switch (edge.kind) {
+      case "take": case "update": return [key("wire", edge.wire), key("step", edge.step)];
+      case "put": return [key("step", edge.step), key("wire", edge.wire)];
+      case "call": return [key("step", edge.step), key("contract", edge.contract)];
+      default: return assertNever(edge);
+    }
+  };
+  const labelLines = diagram.edges.map((edge) => edge.kind === "call" ? wrap(edge.operations.join(", "), 240) : []);
   const graph: ElkNode = {
-    id: "root", layoutOptions: { "elk.algorithm": "layered", "elk.direction": "RIGHT", "elk.edgeRouting": "ORTHOGONAL", "elk.spacing.nodeNode": "50", "elk.layered.spacing.nodeNodeBetweenLayers": "130", "elk.spacing.edgeNode": "25", "elk.spacing.edgeEdge": "20", "elk.edgeLabels.inline": "false", "elk.padding": "[top=20,left=20,bottom=20,right=20]" },
-    children: diagram.boxes.map((box) => {
-      const width = Math.max(200, Math.min(350, widthOf(box.id) + 40));
-      const feedback = box.kind === "behavior" ? Math.max(80, wrap(box.type, width - 64).length * 19 + 40) : 80;
-      const body = Math.max(60, wrap(box.id, width - 24).length * 19 + 30);
-      return { id: box.id, width, height: feedback + body + 10, layoutOptions: { "elk.portConstraints": "FIXED_POS" }, ports: [
-        { id: `${box.id}:in`, x: 0, y: feedback + body / 2, width: 0, height: 0, layoutOptions: { "elk.port.side": "WEST" } },
-        { id: `${box.id}:out`, x: width, y: feedback + body / 2, width: 0, height: 0, layoutOptions: { "elk.port.side": "EAST" } },
-      ] };
+    id: "root", layoutOptions: { "elk.algorithm": "layered", "elk.direction": "RIGHT", "elk.edgeRouting": "ORTHOGONAL", "elk.spacing.nodeNode": "28", "elk.layered.spacing.nodeNodeBetweenLayers": "60", "elk.spacing.edgeNode": "18", "elk.spacing.edgeEdge": "12", "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX", "elk.padding": "[top=20,left=20,bottom=20,right=20]" },
+    children: diagram.nodes.map((node) => ({ id: key(node.kind, node.id), ...size(node) })),
+    edges: diagram.edges.map((edge, index) => {
+      const [source, target] = ends(edge), lines = labelLines[index]!;
+      return { id: `edge${index}`, sources: [source], targets: [target], labels: lines.length ? [{ text: lines.join("\n"), width: Math.max(...lines.map(widthOf)) * 0.9, height: lines.length * 17 + 6 }] : [] };
     }),
-    edges: diagram.edges.map((edge, index) => ({ id: `edge${index}`, sources: [`${edge.source}:out`], targets: [`${edge.target}:in`], labels: [{ text: labelLines[index]!.join("\n"), width: Math.max(...labelLines[index]!.map(widthOf)), height: labelLines[index]!.length * 19 + 8 }] })),
   };
   const laid = await new ELK().layout(graph);
   if (laid.width === undefined || laid.height === undefined) throw new Error(`ELK 没有布置组合图 ${diagram.module}`);
@@ -116,28 +129,33 @@ export async function compositionSvg(diagram: CompositionDiagram): Promise<Diagr
     body += edgePath(edge, diagram.edges[index]!.kind);
     for (const label of edge.labels ?? []) {
       body += `<rect x="${label.x! - 4}" y="${label.y! - 2}" width="${label.width! + 8}" height="${label.height! + 4}" rx="3" fill="#fff"/>`;
-      body += text(label.x!, label.y! + 14, labelLines[index]!, "start", 13);
+      body += text(label.x!, label.y! + 13, labelLines[index]!, "start", 12);
     }
   }
-  for (const node of laid.children ?? []) {
-    const box = diagram.boxes.find((box) => box.id === node.id)!;
-    const x = node.x!, y = node.y!, width = node.width!;
-    const behavior = box.kind === "behavior";
-    const feedback = box.kind === "behavior" ? Math.max(80, wrap(box.type, width - 64).length * 19 + 40) : 80;
-    const bodyHeight = Math.max(60, wrap(box.id, width - 24).length * 19 + 30);
-    body += `<rect x="${x}" y="${y + feedback}" width="${width}" height="${bodyHeight}" rx="${behavior ? 9 : 0}" fill="${behavior ? "#eef4fa" : "#f2eff8"}" stroke="${behavior ? BEHAVIOR : CONTRACT}" stroke-width="2" ${behavior ? "" : 'stroke-dasharray="7 3"'}/>`;
-    body += text(x + width / 2, y + feedback + 28, wrap(box.id, width - 24), "middle", 14, "bold");
-    if (box.kind === "behavior") {
-      body += `<path d="M${x + width - 22},${y + feedback} V${y + 30} H${x + 22} V${y + feedback}" fill="none" stroke="${MUTED}" stroke-width="1.7" marker-end="url(#arrow)"/>`;
-      const lines = wrap(box.type, width - 64);
-      body += `<rect x="${x + 30}" y="${y + 14}" width="${width - 60}" height="${lines.length * 19 + 4}" fill="#fff"/>${text(x + width / 2, y + 29, lines, "middle", 13)}`;
+  const placed = new Map((laid.children ?? []).map((child) => [child.id, child]));
+  for (const node of diagram.nodes) {
+    const at = placed.get(key(node.kind, node.id));
+    if (!at || at.x === undefined || at.y === undefined || at.width === undefined || at.height === undefined) throw new Error(`ELK 没有布置 ${node.kind} ${node.id}`);
+    const { x, y, width, height } = at;
+    switch (node.kind) {
+      case "step":
+        body += `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="8" fill="#eef4fa" stroke="${BEHAVIOR}" stroke-width="2"/>${text(x + width / 2, y + height / 2 + 5, [node.id], "middle", 14, "bold")}`;
+        break;
+      case "wire":
+        body += `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${Math.min(15, height / 2)}" fill="#fff" stroke="${MUTED}" stroke-width="1.4"/>${text(x + width / 2, y + 19, [node.id], "middle", 13, "bold")}`;
+        body += `<text x="${x + width / 2}" y="${y + 36}" text-anchor="middle" font-size="11" fill="${MUTED}">${typeLines(node).map((line, i) => `<tspan x="${x + width / 2}" dy="${i === 0 ? 0 : 17}">${esc(line)}</tspan>`).join("")}</text>`;
+        break;
+      case "contract":
+        body += `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="#f2eff8" stroke="${CONTRACT}" stroke-width="2" stroke-dasharray="7 3"/>${text(x + width / 2, y + height / 2 + 5, [node.id], "middle", 14, "bold")}`;
+        break;
+      default: assertNever(node);
     }
   }
-  if (diagram.boxes.length === 0) body += text(20, 30, ["No behavior variables or contract calls"]);
+  if (diagram.nodes.length === 0) body += text(20, 30, ["No steps, wires or contract calls"]);
   body += "</g>";
   const height = Math.max(laid.height + 210, 330);
-  const legend = `<rect x="28" y="${height - 48}" width="20" height="16" rx="4" fill="#eef4fa" stroke="${BEHAVIOR}"/>${text(58, height - 34, ["Behavior · feedback = type"], "start", 12)}<rect x="280" y="${height - 48}" width="20" height="16" fill="#f2eff8" stroke="${CONTRACT}" stroke-dasharray="4 2"/>${text(310, height - 34, ["Contract"], "start", 12)}<path d="M410,${height - 40} h35" stroke="${MUTED}" marker-end="url(#arrow)"/>${text(455, height - 34, ["Read"], "start", 12)}<path d="M525,${height - 40} h35" stroke="${MUTED}" stroke-dasharray="8 4" marker-end="url(#arrow)"/>${text(570, height - 34, ["Call"], "start", 12)}<path d="M635,${height - 40} h35" stroke="${MUTED}" stroke-dasharray="2 4" marker-start="url(#arrow)" marker-end="url(#arrow)"/>${text(680, height - 34, ["Sync · action"], "start", 12)}`;
-  return frame(`Composition · ${diagram.module}`, "Behavior variables, generated contract calls and shared actions", laid.width + 56, height, body, legend);
+  const legend = `<rect x="28" y="${height - 48}" width="20" height="16" rx="4" fill="#eef4fa" stroke="${BEHAVIOR}"/>${text(58, height - 34, ["Step · action in step"], "start", 12)}<rect x="230" y="${height - 48}" width="26" height="16" rx="8" fill="#fff" stroke="${MUTED}"/>${text(266, height - 34, ["Wire · var : type"], "start", 12)}<rect x="420" y="${height - 48}" width="20" height="16" fill="#f2eff8" stroke="${CONTRACT}" stroke-dasharray="4 2"/>${text(450, height - 34, ["Contract box"], "start", 12)}<path d="M560,${height - 40} h35" stroke="${MUTED}" marker-end="url(#arrow)"/>${text(605, height - 34, ["Take / Put"], "start", 12)}<path d="M690,${height - 40} h35" stroke="${MUTED}" marker-start="url(#arrow)" marker-end="url(#arrow)"/>${text(735, height - 34, ["Update · reads and writes"], "start", 12)}<path d="M930,${height - 40} h35" stroke="${MUTED}" stroke-dasharray="8 4" marker-end="url(#arrow)"/>${text(975, height - 34, ["Call · operations"], "start", 12)}`;
+  return frame(`Composition · ${diagram.module}`, "Steps as boxes, behavior variables as wires, generated contract calls", Math.max(laid.width + 56, 1220), height, body, legend);
 }
 
 export async function screenshotSvg(browser: Browser, image: DiagramSvg, path: string): Promise<void> {

@@ -406,6 +406,15 @@ export const mutations: readonly Mutation[] = [
     outputIncludes: ["覆盖目标 witnessBothClosed"],
   },
   {
+    id: "scope-witness-match-variant",
+    expect: "replay.incomplete",
+    description: "只经 match lastCall 的 Call 变体引用 ledger 的不可达目标，在 shopLayer 仍必须搜索",
+    edits: [{ file: FLOW, find: "  val witnessBothClosed = ledger.closed.size() == 2", replace: "  val witnessBothClosed = ledger.closed.size() == 2\n  val witnessLedgerCallNever = match lastCall { | shop_ledger(_) => false | _ => false }" }],
+    regen: false,
+    args: ["--scope", "shopLayer"],
+    outputIncludes: ["覆盖目标 witnessLedgerCallNever"],
+  },
+  {
     id: "scope-witness-unrelated",
     expect: "-",
     description: "非空 S 保留 safety 模拟与相关目标，但跳过没有状态或 Call 依赖的不可达目标",

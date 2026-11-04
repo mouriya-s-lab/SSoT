@@ -1,134 +1,59 @@
--- 执行边界（REQ-19）：核心唯一的执行契约，由实现者注入；harness 插槽属于它。
--- 本模块写每个调用在数据上的前后条件；关闭与在途 launch 的先后、关闭等待执行终止
--- 这类次序由 design/behavior 持有。
+-- 执行边界这个盒子（REQ-19）：由实现者注入，为每个运行项维持一个闭包，接纳并终止闭包里的执行。
+-- 只写每个端口在数据上的前后条件；关闭与在途 launch 的先后由 design/behavior 持有。
+-- 精度停在“关闭与接纳互斥”：注入、取回的内容、现场、配置与执行边界自身的失败不在这里展开。
 module soroi_workspace
 imports
   from soroi_store
-    types RuntimeId; Snapshot; Path; Digest
+    types RuntimeId
 exports
   types
-    struct Config; struct ClosureId; struct Handle; struct ExecRef; struct Exec;
-    struct Exit; struct Collected; struct Failure; struct Rejected; struct Closed; struct Injected;
-    struct ConfigTables; struct ConfigRejected;
-  functions
-    parseConfig : ConfigTables * ConfigTables -> Config | ConfigRejected
+    ExecRef; struct Rejected
   operations
-    open : Config * soroi_store`RuntimeId ==> Handle | Failure;
-    inject : Handle * map soroi_store`Path to soroi_store`Digest ==> Injected | Rejected | Failure;
-    launch : Handle * Exec ==> ExecRef | Rejected | Failure;
-    collect : Handle * ExecRef ==> Collected | Failure;
-    close : Handle ==> Closed | Failure;
-    list : Handle ==> soroi_store`Snapshot | Failure
+    open : soroi_store`RuntimeId ==> ();
+    launch : soroi_store`RuntimeId * ExecRef ==> ExecRef | Rejected;
+    collect : soroi_store`RuntimeId * ExecRef ==> ();
+    close : soroi_store`RuntimeId ==> ()
 definitions
 types
-  -- 打开闭包所用的配置，只由 parseConfig 构造。
-  Config = token;
-  -- REQ-22：一方的 [workspace] 与 [harness] 原始表（preset 一方或配置表中的同名全局一方）；内容只由实现者读。
-  ConfigTables = token;
-  -- REQ-22：配置被诊断拒绝（PresetError.ConfigRejected）；运行前检查据此拒绝，重新附着时是 engine defect（REQ-59）。
-  ConfigRejected = <ConfigRejected>;
-  ClosureId = token;
-  Handle ::
-    runtime : soroi_store`RuntimeId
-    closure : ClosureId;
   ExecRef = token;
-  -- REQ-14：一次执行的闭包参数；参数内容（以及它属于哪种角色）由闭包过程的契约给出，这里不透明。
-  Exec ::
-    program : token
-    args    : token;
-  Exit = <Success> | <NonSuccess>;
-  -- REQ-12/REQ-26：一次取回执行的结束事实与 stdout。
-  Collected ::
-    status : Exit
-    stdout : seq of char;
-  -- REQ-15：失败带诊断文本，闭包过程把它放进 Infra 拒绝。
-  Failure ::
-    message : seq of char;
   Rejected = <Rejected>;
-  Closed = <Closed>;
-  Injected = <Injected>;
 
--- closures：每个运行项的闭包；configs：打开它时的 Config；closed：已记下关闭的运行项；
--- running：被接纳、尚未终止的执行及其所属运行项；routing：soroi-closure 调用仍会连同运行项身份送回核心的运行项（REQ-19/REQ-24）；
--- roots：每个闭包唯一的工作根（REQ-20/REQ-39）：注入的文件、执行的读写、[files] 与 list 都指向它，执行对它的改动在 collect 中可见。
+-- 一个运行项的闭包是否打开、是否已记下关闭，以及被接纳、尚未终止的执行属于哪个运行项。
 state Closures of
-  closures : map soroi_store`RuntimeId to ClosureId
-  configs  : map soroi_store`RuntimeId to Config
-  closed   : set of soroi_store`RuntimeId
-  running  : map ExecRef to soroi_store`RuntimeId
-  routing  : set of soroi_store`RuntimeId
-  roots    : map soroi_store`RuntimeId to soroi_store`Snapshot
-inv mk_Closures(cs, cf, cl, rn, ro, rs) ==
-  dom cf = dom cs and cl subset dom cs and rng rn subset dom cs and
-  ro subset dom cs \ cl and dom rs = dom cs
-init s == s = mk_Closures({|->}, {|->}, {}, {|->}, {}, {|->})
+  opened  : set of soroi_store`RuntimeId
+  closed  : set of soroi_store`RuntimeId
+  running : map ExecRef to soroi_store`RuntimeId
+inv mk_Closures(os, cs, rn) ==
+  cs subset os and rng rn subset os \ cs
+init s == s = mk_Closures({}, {}, {|->})
 end
 
-functions
-  -- REQ-22：运行前检查以节点与全局两方的原始表构造 Config 或给出诊断；未知键与合并策略由实现者决定。
-  --        它是函数：不读写任何状态，所以不创建运行时资源，也不探测外部。
-  parseConfig : ConfigTables * ConfigTables -> Config | ConfigRejected
-  parseConfig(-, -) == is not yet specified;
-
 operations
-  -- REQ-23：同一 RuntimeId 的 open 幂等：任一 daemon 进程以同一 Config 重新附着得到同一闭包，
-  --      闭包已关闭时也一样；重新附着不恢复已关闭闭包的路由。
-  open(c : Config, rt : soroi_store`RuntimeId) r : Handle | Failure
-  ext rd closed
-      wr closures, configs, routing, roots
-  pre rt in set dom configs => configs(rt) = c
-  post is_Failure(r) and closures = closures~ and configs = configs~ and routing = routing~ and roots = roots~ or
-       is_Handle(r) and r.runtime = rt and
-       (rt in set dom closures~ =>
-          closures = closures~ and r.closure = closures~(rt) and configs = configs~ and
-          routing = routing~ and roots = roots~) and
-       (rt not in set dom closures~ =>
-          r.closure not in set rng closures~ and closures = closures~ munion {rt |-> r.closure} and
-          configs = configs~ munion {rt |-> c} and
-          routing = routing~ union {rt} and roots = roots~ munion {rt |-> {|->}});
+  -- REQ-23：同一运行项的 open 幂等，闭包已关闭时也一样。
+  open(rt : soroi_store`RuntimeId)
+  ext wr opened
+  post opened = opened~ union {rt};
 
-  -- REQ-24：关闭记下之后拒绝该 RuntimeId 的 inject；接纳的文件进入工作根。
-  inject(h : Handle, files : map soroi_store`Path to soroi_store`Digest) r : Injected | Rejected | Failure
-  ext rd closures, closed
-      wr roots
-  pre h.runtime in set dom closures and closures(h.runtime) = h.closure
-  post (h.runtime in set closed => r = <Rejected> and roots = roots~) and
-       (r = <Injected> => roots = roots~ ++ {h.runtime |-> roots~(h.runtime) ++ files}) and
-       (r <> <Injected> => roots = roots~);
-
-  -- REQ-24：关闭记下之后拒绝该 RuntimeId 的 launch；被接纳的执行连同它所属的运行项记入 running。
-  launch(h : Handle, x : Exec) r : ExecRef | Rejected | Failure
-  ext rd closures, closed
+  -- REQ-24：关闭记下之后拒绝该运行项的 launch；被接纳的执行记入 running。
+  launch(rt : soroi_store`RuntimeId, x : ExecRef) r : ExecRef | Rejected
+  ext rd opened, closed
       wr running
-  pre h.runtime in set dom closures and closures(h.runtime) = h.closure
-  post (h.runtime in set closed => r = <Rejected>) and
-       (is_token(r) and r not in set dom running~ and running = running~ munion {r |-> h.runtime} or
-        not is_token(r) and running = running~);
+  pre rt in set opened and x not in set dom running
+  post (rt in set closed => r = <Rejected>) and
+       ((r = x and running = running~ munion {x |-> rt}) or
+        (r = <Rejected> and running = running~));
 
-  -- REQ-12/REQ-13/REQ-26：一次性取回执行的结束事实与 stdout；执行对工作根的改动此时可见。
-  --      取回的内容是执行自己的输出（对端副本），本契约不约束它。
-  collect(h : Handle, x : ExecRef) r : Collected | Failure
-  ext rd closures
-      wr running, roots
-  pre h.runtime in set dom closures and (x not in set dom running or running(x) = h.runtime)
-  post x not in set dom running and dom roots = dom roots~;
+  -- 一次性取回执行的结束；取回后它不再在 running 里。结束的内容在这一精度下不展开。
+  collect(rt : soroi_store`RuntimeId, x : ExecRef)
+  ext wr running
+  pre x in set dom running and running(x) = rt
+  post running = {x} <-: running~;
 
-  -- REQ-24：close 返回即该 RuntimeId 下被接纳的全部执行都已终止，soroi-closure 的调用也不再路由到核心；
-  --      再次 close 照样成功。
-  close(h : Handle) r : Closed | Failure
-  ext rd closures
-      wr closed, running, routing
-  pre h.runtime in set dom closures and closures(h.runtime) = h.closure
-  post is_Failure(r) or
-       r = <Closed> and closed = closed~ union {h.runtime} and
-       running = running~ :-> {h.runtime} and
-       routing = routing~ \ {h.runtime};
-
-  -- REQ-39：现场是闭包关闭后的工作根观察。
-  --      post 自带定义域守卫：pre 与状态不变式下它恒成立（dom roots = dom closures），不改变含义。
-  list(h : Handle) r : soroi_store`Snapshot | Failure
-  ext rd closures, closed, roots
-  pre h.runtime in set dom closures and h.runtime in set closed
-  post is_Failure(r) or (h.runtime in set dom roots and r = roots(h.runtime));
+  -- REQ-24：close 返回即该运行项下被接纳的全部执行都已终止；再次 close 照样成功。
+  close(rt : soroi_store`RuntimeId)
+  ext rd opened
+      wr closed, running
+  pre rt in set opened
+  post closed = closed~ union {rt} and running = running~ :-> {rt};
 
 end soroi_workspace

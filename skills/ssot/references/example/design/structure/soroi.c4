@@ -36,7 +36,6 @@ model {
       description '受理运行请求，推进并收束运行'
 
       control = component 'Control' {
-        #contract
         description '使用方与引擎之间唯一的操作面'
       }
       scheduler = component 'Scheduler' {
@@ -46,15 +45,12 @@ model {
         description '收束一次运行并写下它的结束'
       }
       closure = component 'Closure' {
-        #contract
         description '负责一个运行项从准入到结束的全部生命周期'
       }
       derivation = component 'Derivation' {
-        #contract
         description '基于既有运行的事实派生新运行'
       }
       values = component 'Values' {
-        #contract
         description '把原始文本按声明的结构解析成业务值的唯一入口'
       }
     }

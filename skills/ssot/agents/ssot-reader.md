@@ -1,6 +1,6 @@
 ---
 name: ssot:reader
-description: SSoT 原始来源代读者：替主代理读旧设计等原始来源，只交出概念、原文明说的需求与出处，挡住细节。用于 ssot-migrate-read 与 ssot-draft-requirement。
+description: SSoT 原始来源代读者：替主代理读旧设计等原始来源，只交出概念、原文明说的需求与出处，挡住细节。用于 ssot-migrate-read 与 ssot-requirement。
 model: openai-codex/gpt-6-1-sol:high
 tools: read, write
 spawns: false

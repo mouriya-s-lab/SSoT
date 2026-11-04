@@ -1,4 +1,4 @@
-// 跨载体之前的结构规则：只看 LikeC4 模型（CONVENTIONS §2）。
+// 跨载体之前的结构规则：只看 LikeC4 模型。
 import type { C4Element, Structure } from "../compile/likec4";
 import { type Diagnostic, assertNever, diag, element, relation, view } from "../diag";
 import {

@@ -9,7 +9,7 @@ const payloadError = {
 
 export const mutations: readonly Mutation[] = [
   {
-    id: "W4a-call-payload-outside",
+    id: "attribution-call-payload-outside",
     expect: "compile.quint",
     description: "Call 载荷类型错误归 shop.api，顶层 index 不显示",
     edits: [payloadError],
@@ -19,7 +19,7 @@ export const mutations: readonly Mutation[] = [
     outputExcludes: ["error [quint/compile.quint]"],
   },
   {
-    id: "W4a-call-payload-inside",
+    id: "attribution-call-payload-inside",
     expect: "compile.quint",
     description: "同一 Call 载荷类型错误在 shopLayer 显示所属元素",
     edits: [payloadError],
@@ -29,7 +29,7 @@ export const mutations: readonly Mutation[] = [
     outputExcludes: ["error [quint/compile.quint] global"],
   },
   {
-    id: "W4a-syntax-global",
+    id: "attribution-syntax-global",
     expect: "compile.quint",
     description: "真实语法错误即使位于 Call 表达式内也保持 global",
     edits: [{
@@ -42,7 +42,7 @@ export const mutations: readonly Mutation[] = [
     outputIncludes: ["error [quint/compile.quint] global"],
   },
   {
-    id: "W4a-unrelated-type-global",
+    id: "attribution-unrelated-type-global",
     expect: "compile.quint",
     description: "与 Call 无关的类型错误不因同一行为文件引用了契约而被归属",
     edits: [{ file: FLOW, find: "pure val ORDERS = Set(\"o1\", \"o2\")", replace: "pure val ORDERS: int = Set(\"o1\", \"o2\")" }],

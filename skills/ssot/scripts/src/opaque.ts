@@ -1,4 +1,4 @@
-// 不透明导出的类型（exports 里没有 struct）在 Quint 里怎样表示、回放时怎样重建（CONVENTIONS §7）。
+// 不透明导出的类型（exports 里没有 struct）在 Quint 里怎样表示、回放时怎样重建。
 // 生成与回放共用这一个决定，保证 contract.qnt 的形状与回放的构造一致。
 import type { VdmDefinition, VdmModule, VdmParam, VdmProject, VdmType } from "./compile/vdm";
 import { assertNever } from "./diag";

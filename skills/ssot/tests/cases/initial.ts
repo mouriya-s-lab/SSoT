@@ -14,7 +14,7 @@ const flow = (initial: string, extra = ""): string => `module flow {
 
 export const mutations: readonly Mutation[] = [
   {
-    id: "W3-initial-reference",
+    id: "initial-reference",
     expect: "-",
     description: "生成的初态经 import 别名直接赋值，行为通过",
     edits: [{ file: "behavior/flow.qnt", find: null, replace: flow("L::initial") }],
@@ -22,28 +22,28 @@ export const mutations: readonly Mutation[] = [
     expectPass: true,
   },
   {
-    id: "W3-initial-literal",
+    id: "initial-literal",
     expect: "behavior.init",
     description: "手写相同的初态值仍不符合直接引用 initial 的要求",
     edits: [{ file: "behavior/flow.qnt", find: null, replace: flow("{ entries: Map(), closed: Set() }") }],
     regen: true,
   },
   {
-    id: "W3-initial-local-alias",
+    id: "initial-local-alias",
     expect: "behavior.init",
     description: "init 仅间接引用 initial 仍被拒绝",
     edits: [{ file: "behavior/flow.qnt", find: null, replace: flow("copied", "pure val copied = L::initial") }],
     regen: true,
   },
   {
-    id: "W3-initial-transform",
+    id: "initial-transform",
     expect: "behavior.init",
     description: "表达式中提到 initial 不等于直接使用生成值",
     edits: [{ file: "behavior/flow.qnt", find: null, replace: flow("{ ...L::initial, closed: Set() }") }],
     regen: true,
   },
   {
-    id: "W3-initial-opaque-structure",
+    id: "initial-opaque-structure",
     expect: "-",
     description: "非空不透明值采用结构编码生成初态",
     edits: [
@@ -66,7 +66,7 @@ end shop
     expectPass: true,
   },
   {
-    id: "W3-initial-opaque-constructor",
+    id: "initial-opaque-constructor",
     expect: "gen.unmappable",
     description: "构造入口编码的非空初态不能反推构造入参",
     edits: [

@@ -40,7 +40,7 @@ Quint 只写 VDM 写不了的东西：跨连接的先后与交错、超时窗口
 
 - 本模块的 error（`compile.quint`、`behavior.*`、`replay.*`）在本切片内修。回放报 `replay.pre`/`replay.post`/`replay.frame`/`replay.initial` 时，先当作本模块的状态转移写错了：Quint 的转移是 VDM `post` 的第二份手写，VDM 是权威。
 - `replay.incomplete` 说明有覆盖目标没被走到，或有值回放不了：调整调度频率或该目标的 `maxSteps_`，不删目标来过检查。
-- `replay.outcome` 是 info，但计数为 0 的结局变体会让 `ssot status` 把本模块再派回来（“仍有未覆盖结局”）。是处理缺了，就补上产生与接住它的步骤；是调度走不到，就加覆盖目标或调整调度；是这个结局在需求下确实不会发生，那是契约多列了一个调用方不必处理的结局（S27），按第四步交给 `ssot-write-contract`，不在行为里为它造路径。
+- `replay.outcome` 是 info，但计数为 0 的结局变体会让 `ssot status` 把本模块再派回来（“仍有未覆盖结局”）。是处理缺了，就补上产生与接住它的步骤；是调度走不到，就加覆盖目标或调整调度；是这个结局在需求下确实不会发生，那是契约多列了一个调用方不必处理的结局，按第四步交给 `ssot-write-contract`，不在行为里为它造路径。
 - 其余 info 不进 `status` 的前沿，交给末尾评审。
 - 退出码 `3`（`resource.deadline`）是验证没做完，不是设计被拒绝：如实写进交付，不当作通过。
 

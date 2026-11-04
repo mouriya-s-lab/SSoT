@@ -11,37 +11,37 @@ const FLOW = { file: "behavior/flow.qnt", find: null, replace: "module flow { pu
 
 export const mutations: readonly Mutation[] = [
   {
-    id: "W5-export", expect: "hint.export", description: "无 importer 的导出仅提示", regen: true, expectPass: true,
+    id: "hints-export", expect: "hint.export", description: "无 importer 的导出仅提示", regen: true, expectPass: true,
     edits: [{ file: ROOT, find: "types struct OrderId", replace: "types struct OrderId; struct Spare" }, { file: ROOT, find: "OrderId = token;", replace: "OrderId = token;\n  Spare = nat;" }],
     outputIncludes: ["/hint.export]"],
   },
   {
-    id: "W5-single-business", expect: "hint.single-business", description: "架构定义仅被单一业务模块引用", regen: true, expectPass: true,
+    id: "hints-single-business", expect: "hint.single-business", description: "架构定义仅被单一业务模块引用", regen: true, expectPass: true,
     edits: [{ file: LEDGER, find: "operations\n    record", replace: "values limit : nat\n  operations\n    record" }, { file: LEDGER, find: "definitions\ntypes", replace: "definitions\nvalues\n  limit : nat = 100;\ntypes" }, { file: "contract/shop.api.vdmsl", find: "imports\n", replace: "imports\n  from shop_ledger values limit : nat renamed limit,\n" }, { file: "contract/shop.api.vdmsl", find: "pre amount > 0", replace: "pre amount > 0 and amount <= limit" }],
     outputIncludes: ["/hint.single-business]"],
   },
   {
-    id: "W5-struct-unread", expect: "hint.struct-unread", description: "struct 导出没有读字段者", regen: true, expectPass: true,
+    id: "hints-struct-unread", expect: "hint.struct-unread", description: "struct 导出没有读字段者", regen: true, expectPass: true,
     edits: [], outputIncludes: ["/hint.struct-unread]"],
   },
   {
-    id: "W5-string", expect: "hint.string", description: "导出类型含字符串结构", regen: true, expectPass: true,
+    id: "hints-string", expect: "hint.string", description: "导出类型含字符串结构", regen: true, expectPass: true,
     edits: [{ file: ROOT, find: "OrderId = token;", replace: "OrderId = seq of char;" }], outputIncludes: ["/hint.string]"],
   },
   {
-    id: "W5-sampled", expect: "hint.sampled", description: "恒真 pre 的采样作为提示", regen: true, expectPass: true,
+    id: "hints-sampled", expect: "hint.sampled", description: "恒真 pre 的采样作为提示", regen: true, expectPass: true,
     edits: [{ file: "contract/shop.api.vdmsl", find: "pre amount > 0", replace: "pre amount >= 0" }], outputIncludes: ["/hint.sampled]"],
   },
   {
-    id: "W5-state-unused", expect: "hint.state-unused", description: "没有操作写入也没有读取的状态字段仅提示", regen: true, expectPass: true,
+    id: "hints-state-unused", expect: "hint.state-unused", description: "没有操作写入也没有读取的状态字段仅提示", regen: true, expectPass: true,
     edits: [{ file: LEDGER, find: "  closed  : set of OrderId\n", replace: "  closed  : set of OrderId\n  note    : nat\n" }, { file: LEDGER, find: "inv mk_Ledger(es, cs)", replace: "inv mk_Ledger(es, cs, -)" }, { file: LEDGER, find: "mk_Ledger({|->}, {})", replace: "mk_Ledger({|->}, {}, 0)" }], outputIncludes: ["/hint.state-unused]"],
   },
   {
-    id: "W5-no-ext", expect: "hint.no-ext", description: "隐式操作无 ext 仅提示", regen: true, expectPass: true,
+    id: "hints-no-ext", expect: "hint.no-ext", description: "隐式操作无 ext 仅提示", regen: true, expectPass: true,
     edits: [], outputIncludes: ["/hint.no-ext]"],
   },
   {
-    id: "W5-contract-body", expect: "contract.body", description: "显式操作中的局部可变变量与赋值被拒绝", regen: true,
+    id: "hints-contract-body", expect: "contract.body", description: "显式操作中的局部可变变量与赋值被拒绝", regen: true,
     edits: [FLOW, { file: "contract/shop.api.vdmsl", find: "end shop_api", replace: "  mutate : () ==> ()\n  mutate() == (dcl local : nat := 0; local := 1; return);\nend shop_api" }], outputIncludes: ["/contract.body]"],
   },
 ];
@@ -160,7 +160,7 @@ export function verifyProjections(): number {
   check("body-imperative-once", "contract.body", 1, [module([operation({ imperative: [location, location], kind: "explicit" })])]);
   check("body-declarative", "contract.body", 0, [module([operation()])]);
   check("body-function", "contract.body", 1, [module([{ ...operation({ imperative: [location], kind: "explicit" }), category: "function" }])]);
-  console.log(`${checks}/${checks} W5 projection cases passed`);
+  console.log(`${checks}/${checks} hints projection cases passed`);
   return checks;
 }
 

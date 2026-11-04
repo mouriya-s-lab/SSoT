@@ -1,5 +1,5 @@
 // 由 LikeC4 结构派生的事实：模块名映射、业务归属、契约标记、import 允许集合。
-// 全部是对 Structure 的纯函数；CONVENTIONS.md §2–§4 的语义只在这里定义一次。
+// 全部是对 Structure 的纯函数。
 import { assertNever } from "./diag";
 import type { C4Element, Structure } from "./compile/likec4";
 
@@ -33,7 +33,7 @@ export function isDependency(k: RelationKind): boolean {
   }
 }
 
-/** CONVENTIONS §3：fqn 的 `.` 换成 `_`，大小写不变。 */
+/** fqn 的 `.` 换成 `_`，大小写不变。 */
 export function moduleNameOf(fqn: string): string {
   return fqn.replaceAll(".", "_");
 }
@@ -70,7 +70,7 @@ export function contractElements(s: Structure): C4Element[] {
   return [...s.elements.values()].filter(isContract);
 }
 
-/** CONVENTIONS §4：允许集合（模块名，已排序）。 */
+/** 允许集合（模块名，已排序）。 */
 export function allowedImports(s: Structure, fqn: string): string[] {
   const out = new Set<string>();
   for (const r of s.relations) {

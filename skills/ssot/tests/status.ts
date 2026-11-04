@@ -1,4 +1,4 @@
-// ssot status 的夹具：在 base 的副本上各造出一类前沿（STEP2 §4 的五类），断言 status 只报出期望的那一项。
+// ssot status 的夹具：在 base 的副本上各造出一类前沿，断言 status 只报出期望的那一项。
 import type { Edit } from "./mutations";
 
 export interface StatusCase {

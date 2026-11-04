@@ -37,7 +37,7 @@ export interface VdmParam {
   readonly type: VdmType;
 }
 
-/** A0 冻结：VDMJ 值的结构化投影（由 Vdm.java 输出）。 */
+/** VDMJ 值的结构化投影（由 Vdm.java 输出）。 */
 export type VdmValue =
   | { readonly kind: "bool"; readonly v: boolean }
   | { readonly kind: "int"; readonly v: string }
@@ -49,7 +49,7 @@ export type VdmValue =
   | { readonly kind: "map"; readonly entries: readonly (readonly [VdmValue, VdmValue])[] }
   | { readonly kind: "record"; readonly module: string; readonly name: string; readonly fields: readonly { readonly name: string; readonly value: VdmValue }[] };
 
-/** A0 冻结：一个谓词（pre、post、inv）在 QuickCheck 采样上的取值计数；没有采样时为 null。 */
+/** 一个谓词（pre、post、inv）在 QuickCheck 采样上的取值计数；没有采样时为 null。 */
 export interface VdmSample {
   readonly trueCount: number;
   readonly falseCount: number;
@@ -64,9 +64,9 @@ interface VdmCallable<Category extends "operation" | "function"> {
   readonly result: { readonly name: string | null; readonly type: VdmType };
   readonly hasPre: boolean;
   readonly hasPost: boolean;
-  /** S26：显式体里出现 dcl、赋值或循环时的位置；没有时为空。 */
+  /** 显式体里出现 dcl、赋值或循环时的位置；没有时为空。 */
   readonly imperative: readonly VdmLocation[];
-  /** F8：pre 的采样计数。 */
+  /** pre 的采样计数。 */
   readonly preSample: VdmSample | null;
   /** 只对操作：ext 子句（rd、wr 的状态分量名）；没有 ext 子句时为 null。函数恒为 null。 */
   readonly ext: { readonly rd: readonly string[]; readonly wr: readonly string[] } | null;
@@ -85,7 +85,7 @@ export type VdmDefinition =
       readonly hasInvariant: boolean;
       readonly hasInit: boolean;
       readonly invReads: readonly string[];
-      /** F3：init 执行后的状态值（VDMJ 求得）；求不出时为 null，并由 compile.vdm 报原因。 */
+      /** init 执行后的状态值（VDMJ 求得）；求不出时为 null，并由 compile.vdm 报原因。 */
       readonly initial: VdmValue | null;
     }
   | { readonly category: "value"; readonly name: string | null; readonly names: readonly string[]; readonly location: VdmLocation; readonly type: VdmType }
@@ -108,9 +108,9 @@ export interface VdmModule {
   readonly imports: readonly { readonly module: string; readonly items: readonly VdmImportItem[] }[];
   readonly exports: readonly VdmExport[];
   readonly definitions: readonly VdmDefinition[];
-  /** F8：本模块表达式里读到的记录字段，形如 `模块\`类型.字段`（由 AST 求出）。 */
+  /** 本模块表达式里读到的记录字段，形如 `模块\`类型.字段`（由 AST 求出）。 */
   readonly fieldReads: readonly string[];
-  /** F8：本模块引用到的其他模块定义，形如 `模块\`名字`。 */
+  /** 本模块引用到的其他模块定义，形如 `模块\`名字`。 */
   readonly references: readonly string[];
 }
 

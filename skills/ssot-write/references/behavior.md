@@ -105,7 +105,7 @@ module engine {
   val witnessLateLaunchAnswered = ghost.lateLaunchAnswered
   …
   // REQ-49：派生运行至少为一个旧记录追加了 Ref（让 appendRef 的 pre 被回放）。路径要先走完一个运行项
-  // 的自然结束再派生，约 25 步，单独放宽定向模拟的步数。
+  // 的自然结束再派生，最短也要近 30 步，随机走到时更长，超过默认步数，所以单独放宽定向模拟的步数。
   val witnessRefAppended = referenceSources != Set()
   pure val maxSteps_witnessRefAppended = 70
 ```

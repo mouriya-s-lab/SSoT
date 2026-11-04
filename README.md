@@ -62,6 +62,6 @@ npx skills add mouriya-s-lab/SSoT --skill ssot ssot-draft ssot-draft-requirement
 | `ssot check <design> --scope <视图 id> --base <rev>` | 另列出 `<rev>` 之后落在该作用域之外的改动，提示应交给哪个叶子 |
 | `ssot view <design> <视图 id>` | 输出本层评审包 |
 | `ssot eval <design> <模块> '<表达式>' [--bind …]` | 在原样规格里求一个 VDM 表达式，用来构造违反实例 |
-| `ssot status <design>` | 派生一项前沿 `{skill, scope, reason}` |
+| `ssot status <design> [--deadline 秒]` | 运行一次全量 `check`，派生一项前沿 `{skill, scope, reason}`；没有前沿时输出“没有前沿” |
 
 `check` 的退出码：`0` 通过，`1` 有 error，`3` 验证没有做完（`resource.deadline`），不是设计被拒绝。

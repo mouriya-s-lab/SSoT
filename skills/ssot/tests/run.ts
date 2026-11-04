@@ -10,19 +10,19 @@ import { join } from "node:path";
 import { type Edit, type Mutation, mutations as core } from "./mutations";
 import { type StatusCase, statusCases } from "./status";
 import { vdmjApiChecks } from "./vdmj-api";
-import { cases as w1 } from "./cases/W1";
-import { mutations as w2 } from "./cases/W2";
-import { mutations as w3 } from "./cases/W3";
-import { mutations as w4a } from "./cases/W4a";
-import { mutations as w4b } from "./cases/W4b";
-import { mutations as w5 } from "./cases/W5";
-import { mutations as w6 } from "./cases/W6";
+import { cases as contractBody } from "./cases/contract-body";
+import { mutations as replay } from "./cases/replay";
+import { mutations as initial } from "./cases/initial";
+import { mutations as attribution } from "./cases/attribution";
+import { mutations as deadline } from "./cases/deadline";
+import { mutations as hints } from "./cases/hints";
+import { mutations as view } from "./cases/view";
 
 const HERE = import.meta.dir;
 const SSOT = join(HERE, "..", "scripts", "ssot.ts");
 const RESULTS = mkdtempSync("/tmp/ssot-fixtures-");
 
-const all: readonly Mutation[] = [...core, ...w1, ...w2, ...w3, ...w4a, ...w4b, ...w5, ...w6];
+const all: readonly Mutation[] = [...core, ...contractBody, ...replay, ...initial, ...attribution, ...deadline, ...hints, ...view];
 
 async function run(args: readonly string[]): Promise<{ code: number; out: string }> {
   const p = Bun.spawn(["bun", SSOT, ...args], { stdout: "pipe", stderr: "pipe" });

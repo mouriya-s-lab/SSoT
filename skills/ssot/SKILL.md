@@ -126,11 +126,12 @@ Quint 轨迹 ──回放──▶ 在定义该操作的 VDM 模块里求 pre/po
 
 | 命令 | 作用 |
 |---|---|
+| `ssot setup` | 安装检查所需的工具（VDMJ、QuickCheck、LikeC4、Quint），把 `ssot` 装进 PATH；细节见 [`references/setup.md`](references/setup.md) |
 | `ssot gen <design>` | 重新生成 `.gen/` |
 | `ssot check <design>` | 全量检查：编译三种载体、生成链新鲜度、跨载体规则、模拟、覆盖目标、回放、证明义务 |
 | `ssot check <design> --scope <视图 id>` | 仍编译全部内容，但模拟、回放、QuickCheck 只在该视图的切片闭包内运行，只报告归属于该视图节点的诊断 |
 | `ssot check <design> --scope <视图 id> --base <rev>` | 另列出 `<rev>` 之后落在该作用域之外的改动，提示应交给哪个叶子 |
-| `ssot view <design> <视图 id>` | 输出本层评审包：汇总边代表的真实关系、被展开元素在上一层的对外关系由哪个子元素落实、未落实的关系 |
+| `ssot view <design> <视图 id>` | 输出本层评审包：本层节点；每条显示的边代表的全部声明关系及其层次；被展开元素在上一层的对外关系与本层落实者；没有子元素落实的上一层关系 |
 | `ssot eval <design> <模块> '<表达式>' [--bind …]` | 在原样规格里求一个 VDM 表达式，用来构造违反实例 |
 | `ssot status <design> [--deadline 秒]` | 运行一次全量 `check`，派生一项前沿 `{skill, scope, reason}`；没有前沿时输出“没有前沿” |
 

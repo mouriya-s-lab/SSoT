@@ -1,5 +1,5 @@
 // 切片归属：一个元素、关系、视图或文件由哪个写作叶子、在哪个 scope 下写。status 与 check --base 共用这里的定义。
-// scope 的取值见 STEP2 §4 与 A0 追加裁定：write-level 取视图 id，元素还没有视图时取元素 fqn；write-contract 取元素 fqn；
+// scope 的取值：write-level 取视图 id，元素还没有视图时取元素 fqn；write-contract 取元素 fqn；
 // write-behavior 取 Quint 模块名；write-deploy 取部署视图 id；draft-requirement 取 req id。
 import type { Structure } from "./compile/likec4";
 

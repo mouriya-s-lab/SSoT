@@ -1,4 +1,4 @@
-// 生成阶段：VDM 投影 → .gen/contract.qnt（CONVENTIONS §5、§6）。
+// 生成阶段：VDM 投影 → .gen/contract.qnt。
 // 输出文本、逐行来源（Quint 编译诊断据此映射回 VDM 定义）以及本阶段的诊断。
 import { type Diagnostic, type Position, type Subject, assertNever, diag, global } from "../diag";
 import { type VdmDefinition, type VdmField, type VdmModule, type VdmProject, type VdmType, type VdmValue, vdmPosition } from "../compile/vdm";
@@ -294,7 +294,7 @@ export function generateContract(project: VdmProject, contractModules: ReadonlyS
         report(m.name, currentOrigin.at, "gen.unmappable", `类型 ${t.name}：${e.message}`);
       }
     }
-    // CONVENTIONS §7：VDM 状态也生成为 Quint 类型，Quint 状态直接用它。
+    // VDM 状态也生成为 Quint 类型，Quint 状态直接用它。
     const state = m.definitions.find((d): d is Extract<VdmDefinition, { category: "state" }> => d.category === "state");
     if (state) {
       currentOrigin = { module: m.name, at: vdmPosition(state.location) };

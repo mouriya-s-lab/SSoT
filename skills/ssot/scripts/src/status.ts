@@ -1,4 +1,4 @@
-// `ssot status`：从三种载体与 check 的诊断派生一项前沿（STEP2 §4）。不保存任何过程状态。
+// `ssot status`：从三种载体与 check 的诊断派生一项前沿。不保存任何过程状态。
 // 先后：error 的切片（LikeC4 → VDM → Quint）→ 没有落点的 req → 未展开的非叶元素（浅层先）→ 缺少模块的 #contract 元素
 // → 仍有未覆盖结局的行为模块。info 与 MAYBE 不进前沿。
 import { basename, dirname, relative } from "node:path";

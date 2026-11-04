@@ -1,4 +1,4 @@
-// 回放阶段（CONVENTIONS §7、INTERFACE-A0「回放」）：把 Quint 轨迹里的每次契约调用，交给定义该操作的 VDM 模块，对原样规格求 pre、post 与 frame；
+// 回放阶段：把 Quint 轨迹里的每次契约调用，交给定义该操作的 VDM 模块，对原样规格求 pre、post 与 frame；
 // 轨迹初态与 VDM 的 initial 比较；状态变量在不是本模块调用的一步里变化即报 behavior.call；统计结果并类型各变体在回放中出现的次数。
 // 值的转换只由 VDM 类型树与 contract.qnt 的生成规则决定（render）；不透明类型经 opaque.ts 的同一决定重建。
 import type { Structure } from "./compile/likec4";
@@ -367,7 +367,7 @@ export interface ReplayOutcome {
   readonly diagnostics: readonly Diagnostic[];
   /** `模块\`操作` → 回放的步数。 */
   readonly replayed: ReadonlyMap<string, number>;
-  /** A0 冻结（F7）：`模块\`操作` → 结果并类型的变体名 → 在回放中出现的次数（未出现的变体计 0）。 */
+  /** `模块\`操作` → 结果并类型的变体名 → 在回放中出现的次数（未出现的变体计 0）。 */
   readonly outcomes: ReadonlyMap<string, ReadonlyMap<string, number>>;
 }
 
@@ -398,7 +398,7 @@ export async function replay(input: ReplayInput): Promise<ReplayOutcome> {
     if (vars.length === 1) stateVar.set(m.name, vars[0]!.name);
   }
 
-  // F7：作用域内每个导出操作，结果是并类型时，全部变体先计 0。
+  // 作用域内每个导出操作，结果是并类型时，全部变体先计 0。
   const outcomes = new Map<string, Map<string, number>>();
   const outcomeOps = new Map<string, readonly [string, Op]>();
   for (const m of project.modules) {
@@ -420,7 +420,7 @@ export async function replay(input: ReplayInput): Promise<ReplayOutcome> {
     fail("replay.incomplete", m, at, msg);
   };
 
-  // F3：每条轨迹的第 0 个状态里，生成状态变量 = initial。比较在 VDMJ 里以 = 求值。
+  // 每条轨迹的第 0 个状态里，生成状态变量 = initial。比较在 VDMJ 里以 = 求值。
   const initials: Initial[] = [];
   for (const trace of input.traces) {
     const s0 = trace.states[0];
@@ -441,7 +441,7 @@ export async function replay(input: ReplayInput): Promise<ReplayOutcome> {
     }
   }
 
-  // F4：某一步里生成状态变量 S_m 变了，而 lastCall 不是模块 m 的调用。比较 ITF 值。
+  // 某一步里生成状态变量 S_m 变了，而 lastCall 不是模块 m 的调用。比较 ITF 值。
   const bypass = new Map<string, { module: string; sv: string; call: string; where: string; count: number }>();
   const steps: Step[] = [];
   for (const trace of input.traces) {
@@ -483,7 +483,7 @@ export async function replay(input: ReplayInput): Promise<ReplayOutcome> {
         const stateRef: VdmType | null = state ? { kind: "ref", module: m, name: state.name } : null;
         const before = stateRef ? [render.itf(m, stateRef, prev.vars.get(sv!)!, `${m} 调用前状态`, binds)] : [];
         const after = stateRef ? [render.itf(m, stateRef, st.vars.get(sv!)!, `${m} 调用后状态`, binds)] : [];
-        // F2：ext rd 的分量，以及既不在 ext wr、也不在 writes 里的分量。
+        // ext rd 的分量，以及既不在 ext wr、也不在 writes 里的分量。
         const frameFields = (state?.fields ?? [])
           .map((f) => f.name)
           .filter((f) => op.ext?.rd.includes(f) || !(op.ext?.wr.includes(f) || op.writes.includes(f)));
@@ -581,7 +581,7 @@ export async function replay(input: ReplayInput): Promise<ReplayOutcome> {
     fail(f.rule, f.module, f.at, `${f.label}：${f.why}（${f.count} ${f.unit}）；首例 ${f.where}；表达式 ${text.length > 500 ? `${text.slice(0, 500)}…` : text}`);
   }
 
-  // F7：每个结果为并类型的操作一条 info，列出全部变体的次数与未覆盖的变体。
+  // 每个结果为并类型的操作一条 info，列出全部变体的次数与未覆盖的变体。
   for (const [key, counts] of outcomes) {
     const [m, op] = outcomeOps.get(key)!;
     const unseen = [...counts].filter(([, n]) => n === 0).map(([v]) => v);

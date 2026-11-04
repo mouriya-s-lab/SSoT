@@ -25,21 +25,20 @@ export const RULES = {
   "replay.inv": "quint",
   "replay.eval": "quint",
   "replay.incomplete": "quint",
-  // A0 冻结（STEP2 §3）。F1 不新增规则。
-  "contract.body": "vdm", // S26：显式体出现局部可变变量、赋值或循环（error）
-  "replay.frame": "quint", // F2：ext rd 分量或未写分量在前后状态不相等（error）
-  "replay.initial": "quint", // F3：轨迹初态不满足 VDM init（error）
-  "behavior.init": "quint", // F3：状态变量没有用生成的 <模块>::initial 初始化（error）
-  "resource.deadline": "quint", // F6：资源超时，验证未完成（独立退出码，不是设计拒绝）
-  "replay.outcome": "quint", // F7：每个 Call 结果变体的出现次数与未覆盖变体（info）
-  "hint.export": "vdm", // F8：没有 importer 的导出（info）
-  "hint.single-business": "vdm", // F8：架构定义只被一个业务模块引用（info）
-  "hint.struct-unread": "vdm", // F8：struct 导出没有任何 importer 读字段（info）
-  "hint.string": "vdm", // F8：导出类型里出现 seq of char（info）
-  "hint.sampled": "vdm", // F8：pre 或 inv 在采样中全真或全假（info）
-  "hint.state-unused": "vdm", // F8：状态分量从未被写或从未被读（info）
-  "hint.no-ext": "vdm", // F8：没有 ext 子句的操作（info）
-  "view.unrealized": "likec4", // F9：上一层的对外关系在本层没有任何子元素落实（info）
+  "contract.body": "vdm", // 显式体出现局部可变变量、赋值或循环（error）
+  "replay.frame": "quint", // ext rd 分量或未写分量在前后状态不相等（error）
+  "replay.initial": "quint", // 轨迹初态不满足 VDM init（error）
+  "behavior.init": "quint", // 状态变量没有用生成的 <模块>::initial 初始化（error）
+  "resource.deadline": "quint", // 资源超时，验证未完成（独立退出码，不是设计拒绝）
+  "replay.outcome": "quint", // 每个 Call 结果变体的出现次数与未覆盖变体（info）
+  "hint.export": "vdm", // 没有 importer 的导出（info）
+  "hint.single-business": "vdm", // 架构定义只被一个业务模块引用（info）
+  "hint.struct-unread": "vdm", // struct 导出没有任何 importer 读字段（info）
+  "hint.string": "vdm", // 导出类型里出现 seq of char（info）
+  "hint.sampled": "vdm", // pre 或 inv 在采样中全真或全假（info）
+  "hint.state-unused": "vdm", // 状态分量从未被写或从未被读（info）
+  "hint.no-ext": "vdm", // 没有 ext 子句的操作（info）
+  "view.unrealized": "likec4", // 上一层的对外关系在本层没有任何子元素落实（info）
 } as const;
 
 export type RuleId = keyof typeof RULES;

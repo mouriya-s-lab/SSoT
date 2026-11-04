@@ -5,7 +5,7 @@
 ## 依赖
 
 - **Bun**，`bun` 在 PATH 上：运行 `ssot`，也用来执行 Quint。没有时按 <https://bun.sh> 的说明安装，`bun --version` 能报出版本号即可。
-- **Java 21 或更高版本**，`java` 在 PATH 上：运行 VDMJ。没有时用系统的包管理器安装，例如 `brew install openjdk` 或 `mise use -g java`，按包管理器的提示把 `java` 放进 PATH；`java -version` 报出 21 或更高的版本号即可。装好之后重新运行 `setup`。
+- **Java 21 或更高版本的 JDK**，`java` 与 `javac` 都在 PATH 上：`javac` 把本 skill 的 `scripts/java/Vdm.java` 编译成 class，`java` 用它运行 VDMJ。没有时用系统的包管理器安装，例如 `brew install openjdk` 或 `mise use -g java`，按包管理器的提示把它们放进 PATH；`java -version` 报出 21 或更高的版本号、`javac -version` 能运行即可。装好之后重新运行 `setup`。
 
 ## 装了什么、装在哪
 
@@ -16,6 +16,7 @@
 | VDMJ 与 QuickCheck 的 jar（Maven Central） | `${XDG_DATA_HOME:-~/.local/share}/ssot/` |
 | LikeC4、Quint、TypeScript（npm） | 同一目录下的 `node_modules/` |
 | Quint 模拟用的 rust 求值器（版本由所装的 Quint 决定） | `~/.quint/rust-evaluator-<版本>/`；设了 `QUINT_HOME` 时在它下面 |
+| `Vdm.java` 编译出的 class（不由 `setup` 装，`check` 第一次需要时编译；`Vdm.java` 或 jar 一变就编译到新的子目录） | 同一目录下的 `vdm-classes/<内容哈希>/` |
 | `ssot` 命令 | `~/.local/bin/ssot`，运行本 skill 的 `scripts/ssot.ts` |
 
 想换到更新的版本，再运行一次 `ssot setup`。

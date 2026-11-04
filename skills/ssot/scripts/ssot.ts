@@ -218,36 +218,40 @@ async function runCheck(l: Layout, o: CheckOptions): Promise<CheckRun | { readon
     return n;
   };
   if (s && f.contract) {
-    ds.push(...freshness(l, "contract.qnt", f.contract.text));
+    const contract = f.contract;
+    ds.push(...freshness(l, "contract.qnt", contract.text));
     const staged = join(stage, ".gen", "contract.qnt");
-    writeFileSync(staged, f.contract.text);
+    writeFileSync(staged, contract.text);
     const owner = elementOfModule(s);
-    for (const e of await typecheckFile(staged, work, "contract")) {
+    const generated = new Set(["contract", ...contract.callModules, ...owner.keys()]);
+    const behaviorFiles = listFiles(l.behavior, ".qnt");
+    for (const file of behaviorFiles) copyFileSync(file, join(stage, "behavior", basename(file)));
+    // 生成的 contract.qnt 单独类型检查，与各行为文件的编译互不依赖（各自读暂存文件、写各自的 --out），并发运行；诊断按原次序加入。
+    const [contractErrors, compiled] = await Promise.all([
+      typecheckFile(staged, work, "contract"),
+      Promise.all(behaviorFiles.map((file) =>
+        compileBehavior(join(stage, "behavior", basename(file)), basename(file, ".qnt"), generated, work, mapFile, {
+          origins: contract.origins,
+          subjectOf: (m: string) => (owner.has(m) ? element(owner.get(m)!) : global),
+        }))),
+    ]);
+    for (const e of contractErrors) {
       const line = e.locs[0] ? e.locs[0].start.line + 1 : 0;
-      const origin = f.contract.origins.get(line);
+      const origin = contract.origins.get(line);
       ds.push(
         origin
           ? diag("gen.names", owner.has(origin.module) ? element(owner.get(origin.module)!) : global, origin.at, `生成的 Quint 不被 Quint 接受（多为名字与 Quint 保留字、内建名或其他生成名冲突）：${e.explanation.trim()}`)
           : diag("compile.quint", global, e.locs[0] ? { file: join(l.gen, "contract.qnt"), line, col: e.locs[0].start.col + 1 } : null, e.explanation.trim()),
       );
     }
-    const generated = new Set(["contract", ...f.contract.callModules, ...owner.keys()]);
-    for (const file of listFiles(l.behavior, ".qnt")) {
-      const target = join(stage, "behavior", basename(file));
-      copyFileSync(file, target);
-      const r = await compileBehavior(target, basename(file, ".qnt"), generated, work, mapFile, {
-        origins: f.contract.origins,
-        subjectOf: (m: string) => (owner.has(m) ? element(owner.get(m)!) : global),
-      });
+    for (const r of compiled) {
       ds.push(...r.diagnostics);
       if (r.kind === "ok") behavior.push(r.module);
     }
     if (f.project) {
       ds.push(...behaviorNameRules(s, f.project, behavior));
-      ds.push(...callRules(behavior, f.contract.callModules));
-      // 对暂存的行为文件重新类型检查，使它读到的是本次新生成的 contract.qnt，而不是磁盘上可能过期的 .gen。
-      const staged = behavior.map((q) => ({ ...q, file: join(stage, "behavior", `${q.name}.qnt`) }));
-      ds.push(...(await initialRules(s, f.project, staged)));
+      ds.push(...callRules(behavior, contract.callModules));
+      ds.push(...(await initialRules(s, f.project, behavior)));
     }
   }
   if (s) ds.push(...vocabRules(s, f.project, behavior));

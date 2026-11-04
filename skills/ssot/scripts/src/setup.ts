@@ -12,15 +12,18 @@ const MANIFEST = join(import.meta.dir, "..", "package.json");
 
 type Step = { readonly kind: "ok"; readonly note: string } | { readonly kind: "missing"; readonly note: string };
 
+/** Vdm.java 由 java 运行、由 javac 编译成 class（见 compile/vdm.ts），所以需要带 javac 的 JDK。 */
 function javaStep(): Step {
   const found = Bun.which("java");
-  if (!found) return { kind: "missing", note: `PATH 上没有 java：需要 Java ${JAVA_MAJOR} 或更高版本，安装方法见 ${SETUP_GUIDE}` };
+  if (!found) return { kind: "missing", note: `PATH 上没有 java：需要 Java ${JAVA_MAJOR} 或更高版本的 JDK，安装方法见 ${SETUP_GUIDE}` };
   const run = Bun.spawnSync([found, "-version"]);
   const version = /version "(\d+)(?:\.(\d+))?/.exec(`${run.stderr.toString()}${run.stdout.toString()}`);
   const major = version ? Number(version[1] === "1" ? version[2] : version[1]) : 0;
-  return run.exitCode === 0 && major >= JAVA_MAJOR
-    ? { kind: "ok", note: `java ${major}（${found}）` }
-    : { kind: "missing", note: `PATH 上的 java（${found}）${version ? `是 Java ${major}` : "报不出版本"}：需要 Java ${JAVA_MAJOR} 或更高版本，安装方法见 ${SETUP_GUIDE}` };
+  if (run.exitCode !== 0 || major < JAVA_MAJOR)
+    return { kind: "missing", note: `PATH 上的 java（${found}）${version ? `是 Java ${major}` : "报不出版本"}：需要 Java ${JAVA_MAJOR} 或更高版本的 JDK，安装方法见 ${SETUP_GUIDE}` };
+  const javac = Bun.which("javac");
+  if (!javac) return { kind: "missing", note: `PATH 上有 java ${major}，但没有 javac：需要 JDK 而不只是 JRE，安装方法见 ${SETUP_GUIDE}` };
+  return { kind: "ok", note: `java ${major}（${found}），javac（${javac}）` };
 }
 
 function compareVersions(a: string, b: string): number {

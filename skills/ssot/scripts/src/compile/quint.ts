@@ -71,6 +71,8 @@ export interface QuintModule {
   readonly file: string;
   readonly name: string;
   readonly decls: readonly QuintDecl[];
+  /** 编译时 `quint typecheck --out` 写下的未展平 IR（对暂存文件、读本次新生成的 contract.qnt）；初态检查直接读它。 */
+  readonly typecheckOut: string;
 }
 
 export type QuintCompile =
@@ -279,10 +281,13 @@ export async function compileBehavior(
   const out = join(outDir, `${moduleName}.compile.json`);
   const sm = join(outDir, `${moduleName}.sourcemap.json`);
   // 用 typecheck 的 --out：它带未展平的 modules、table、types。compile 的展平器在合法的嵌套模块 import 上会误报（Quint 0.33.1）。
-  await quint(["typecheck", file, "--out", out]);
+  // typecheck 与 parse 读同一个文件、写各自的输出，并发运行；parse 的源码映射只在 typecheck 走到类型检查阶段时才用到。
+  await Promise.all([
+    quint(["typecheck", file, "--out", out]),
+    quint(["parse", file, "--source-map", sm, "--out", join(outDir, `${moduleName}.parse.json`)]),
+  ]);
   const c = await readJson<CompileOutput>(out);
   if ((c.errors.length > 0 && c.stage !== "typechecking") || !c.modules || !c.table) return { kind: "failed", diagnostics: errorDiagnostics(c.errors, mapFile) };
-  await quint(["parse", file, "--source-map", sm, "--out", join(outDir, `${moduleName}.parse.json`)]);
   const map = await readJson<SourceMap>(sm);
   if (c.errors.length > 0) {
     return { kind: "failed", diagnostics: errorDiagnostics(c.errors, mapFile, "compile.quint", callErrorSubjects(c, map, file, generated, mapFile, attribution)) };
@@ -338,5 +343,5 @@ export async function compileBehavior(
       isCallVar: varType?.module === "contract" && varType.name === "Call",
     });
   }
-  return { kind: "ok", module: { file: mapFile(file), name: moduleName, decls }, diagnostics: [] };
+  return { kind: "ok", module: { file: mapFile(file), name: moduleName, decls, typecheckOut: out }, diagnostics: [] };
 }

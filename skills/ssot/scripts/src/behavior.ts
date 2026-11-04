@@ -47,12 +47,28 @@ function relatedToScope(q: QuintModule, witness: QuintDecl, modules: ReadonlySet
  */
 export async function coverWitnesses(file: string, q: QuintModule, outDir: string, opts: CoverOptions): Promise<Coverage> {
   const witnesses = q.decls.filter((d) => (d.kind === "val" || d.kind === "def") && d.name.startsWith("witness") && relatedToScope(q, d, opts.callModules));
-  // 各目标的搜索互不依赖，并发运行（并发数由 quint 的进程池限定）；结果按声明次序汇总，输出与回放次序不随完成先后变化。
-  const searches = await Promise.all(witnesses.map((witness) => searchWitness(file, q, witness, outDir, opts)));
+  const plans = witnesses.map((witness) => planWitness(q, witness, opts.steps));
+  // 各目标的搜索互不依赖（各自的进程、seed 与输出目录），并发运行，并发数由 quint 的进程池限定。进程池按调用先后放行，
+  // 所以步数上限大的先启动：最慢的搜索不排在短搜索后面。结果仍按声明次序汇总，输出与回放次序不随启动或完成先后变化。
+  const stepsOf = (p: WitnessPlan): number => (p.kind === "search" ? p.steps : 0);
+  const searches = new Array<Promise<Search>>(plans.length);
+  for (const i of plans.keys().toArray().sort((a, b) => stepsOf(plans[b]!) - stepsOf(plans[a]!))) {
+    const plan = plans[i]!;
+    switch (plan.kind) {
+      case "search":
+        searches[i] = searchWitness(file, q, plan, outDir, opts);
+        break;
+      case "invalid":
+        searches[i] = Promise.resolve({ kind: "missed", diagnostic: plan.diagnostic });
+        break;
+      default:
+        assertNever(plan);
+    }
+  }
   const traces: ItfTrace[] = [];
   const diagnostics: Diagnostic[] = [];
   const reached = new Map<string, { states: number; ms: number }>();
-  for (const [i, s] of searches.entries()) {
+  for (const [i, s] of (await Promise.all(searches)).entries()) {
     switch (s.kind) {
       case "reached":
         traces.push(s.trace);
@@ -68,17 +84,26 @@ export async function coverWitnesses(file: string, q: QuintModule, outDir: strin
   return { traces, diagnostics, reached };
 }
 
+type WitnessPlan =
+  | { readonly kind: "search"; readonly witness: QuintDecl; readonly steps: number }
+  | { readonly kind: "invalid"; readonly diagnostic: Diagnostic };
+
+/** 目标的步数上限：`pure val maxSteps_<目标>` 的正整数字面量，没有时用默认步数。 */
+function planWitness(q: QuintModule, witness: QuintDecl, defaultSteps: number): WitnessPlan {
+  const bound = q.decls.find((d) => d.name === `maxSteps_${witness.name}`);
+  if (bound && (bound.kind !== "pureval" || bound.intLiteral === null || !Number.isSafeInteger(bound.intLiteral) || bound.intLiteral <= 0))
+    return { kind: "invalid", diagnostic: diag("behavior.call", global, bound.at, `maxSteps_${witness.name} 必须是 pure val 的正整数字面量`) };
+  return { kind: "search", witness, steps: bound?.intLiteral ?? defaultSteps };
+}
+
 type Search =
   | { readonly kind: "reached"; readonly trace: ItfTrace; readonly ms: number }
   | { readonly kind: "missed"; readonly diagnostic: Diagnostic };
 
-async function searchWitness(file: string, q: QuintModule, witness: QuintDecl, outDir: string, opts: CoverOptions): Promise<Search> {
+async function searchWitness(file: string, q: QuintModule, plan: { readonly witness: QuintDecl; readonly steps: number }, outDir: string, opts: CoverOptions): Promise<Search> {
+  const { witness, steps } = plan;
   const w = witness.name;
   const at = witness.at;
-  const bound = q.decls.find((d) => d.name === `maxSteps_${w}`);
-  if (bound && (bound.kind !== "pureval" || bound.intLiteral === null || !Number.isSafeInteger(bound.intLiteral) || bound.intLiteral <= 0))
-    return { kind: "missed", diagnostic: diag("behavior.call", global, bound.at, `maxSteps_${w} 必须是 pure val 的正整数字面量`) };
-  const steps = bound?.intLiteral ?? opts.steps;
   const dir = join(outDir, `${q.name}.cover.${w}`);
   mkdirSync(dir, { recursive: true });
   const res = join(outDir, `${q.name}.cover.${w}.json`);

@@ -1,7 +1,8 @@
 // 编译阶段：VDM-SL。经 java/Vdm.java 调 VDMJ API，读它输出的结构化投影；不读 VDMJ 的人类可读输出。
-import { join } from "node:path";
+import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "node:fs";
+import { delimiter, join } from "node:path";
 import { type Diagnostic, type Position, diag, global } from "../diag";
-import { vdmClasspath } from "../install";
+import { DATA, vdmClasspath } from "../install";
 
 const HELPER = join(import.meta.dir, "..", "..", "java", "Vdm.java");
 
@@ -180,8 +181,40 @@ export interface EvalResult {
 /** VDMJ 调用的截止：回放求值可能遇到不终止的递归，超时即失败而不是死等。 */
 const DEADLINE_MS = 300_000;
 
+/**
+ * Vdm.java 编译出的 class 目录。它是派生副本：源头是 Vdm.java 与 VDMJ、QuickCheck 两个 jar，目录名是三者内容的 sha256，
+ * 任何一个变了就落到另一个目录，旧目录不再被读，所以不会用到过期的 class。缺了才用 javac 编译到临时目录再整体改名进位；
+ * 并发的 check 同时编译时，改名失败的一方删掉自己的临时目录，用已经进位的那份（内容相同）。
+ * 省掉的是源文件模式每次调用约 0.65s 的编译（soroi：1.2s → 0.6s）。同一进程只算一次。
+ */
+let classes: Promise<string> | null = null;
+
+async function compileHelper(): Promise<string> {
+  const classpath = vdmClasspath();
+  const hasher = new Bun.CryptoHasher("sha256");
+  for (const file of [HELPER, ...classpath.split(delimiter)]) hasher.update(await Bun.file(file).arrayBuffer());
+  const root = join(DATA, "vdm-classes");
+  const dir = join(root, hasher.digest("hex"));
+  if (existsSync(dir)) return dir;
+  mkdirSync(root, { recursive: true });
+  const build = mkdtempSync(join(root, ".build-"));
+  try {
+    const javac = Bun.spawnSync(["javac", "-cp", classpath, "-d", build, HELPER], { stdout: "pipe", stderr: "pipe" });
+    if (javac.exitCode !== 0) throw new Error(`javac 编译 Vdm.java 失败（${javac.exitCode}）：${javac.stderr.toString().trim()}`);
+    try {
+      renameSync(build, dir);
+    } catch (e) {
+      if (!existsSync(dir)) throw e;
+    }
+    return dir;
+  } finally {
+    rmSync(build, { recursive: true, force: true });
+  }
+}
+
 async function helper<T>(args: readonly string[], stdin?: string): Promise<T> {
-  const proc = Bun.spawn(["java", "-cp", vdmClasspath(), HELPER, ...args], {
+  classes ??= compileHelper();
+  const proc = Bun.spawn(["java", "-cp", `${await classes}${delimiter}${vdmClasspath()}`, "Vdm", ...args], {
     stdin: stdin === undefined ? "ignore" : new TextEncoder().encode(stdin),
     stdout: "pipe",
     stderr: "pipe",

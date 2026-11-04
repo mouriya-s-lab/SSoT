@@ -84,7 +84,7 @@ SignalColour = <Red> | <Amber> | <FlashingAmber> | <Green>
 | 连接点（exports）、类型、状态、inv、操作的 pre/post、不透明身份 | VDM-SL | `<design>/contract/<元素 fqn>.vdmsl`，一个元素至多一个模块 | 模块树、时钟、进程、调度、崩溃与重启 |
 | 跨连接的先后、交错、窗口、停机与崩溃收束、覆盖目标 | Quint | `<design>/behavior/<模块名>.qnt` | 与 VDM 重名的类型或操作、手写的 VDM 数据契约、自己的初态 |
 
-需求清单 `<design>/requirements.md` 不是载体：每条需求是一个列表项，以 `REQ-<编号>` 开头，原文由用户给出，模型只给它编号，不改动原文。LikeC4 元素用 metadata `req` 引用这些 id（只标在元素上，不标在关系上）；`ssot status` 只报告哪些 id 没有落点，不宣称需求已经兑现。依据与理由写进元素的 `description`，关系的依据写进它源元素的 `description`；`//` 注释不算依据。
+需求清单 `<design>/requirements.md` 不是载体：每条需求是一个列表项，以 `REQ-<编号>` 开头，原文由用户给出，模型只给它编号，不改动原文。LikeC4 元素用 metadata `req` 引用这些 id（只标在元素上，不标在关系上）；`ssot status` 只报告哪些 id 没有落点，不宣称需求已经兑现。元素的职责、依据与理由写进元素的 `description`；一条关系的依据与理由写进这条关系自己的 `description`；`//` 注释不算依据。
 
 `<design>/.gen/` 下的 `structure.json` 与 `contract.qnt` 由 `ssot gen` 生成，只读，禁止手改。各载体怎样写，见 `ssot-write/references/` 下的 `structure.md`、`contract.md`、`behavior.md`；三种载体合在一起的完整示例是 [`references/example/design/`](references/example/design/)（soroi）；VDM 语法查 [`references/vdm/`](references/vdm/README.md)。
 

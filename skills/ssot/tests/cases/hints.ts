@@ -103,7 +103,7 @@ export function verifyProjections(): number {
   check("export-import-all", "hint.export", 0, [producer, allImporter]);
   check("export-all", "hint.export", 1, [{ ...producer, exports: [{ kind: "all" }] }]);
   for (const [source, count] of [["user", 0], ["outside", 0], ["shop.other", 1]] as const) {
-    const relation: C4Relation = { id: source, source, target: "shop.ledger", kind: "calls", title: null, tags: [], metadata: {}, at: null };
+    const relation: C4Relation = { id: source, source, target: "shop.ledger", kind: "calls", title: null, description: "", tags: [], metadata: {}, at: null };
     check(`export-incoming-${source}`, "hint.export", count, [producer], architecture([relation]));
     check(`export-outgoing-${source}`, "hint.export", 1, [producer], architecture([{ ...relation, source: "shop.ledger", target: source }]));
   }

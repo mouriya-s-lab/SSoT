@@ -8,6 +8,8 @@ interface ReviewRelation {
   readonly target: string;
   readonly kind: string;
   readonly title: string;
+  /** 关系自己的依据与理由；没写时为空串。 */
+  readonly description: string;
 }
 
 /** 汇总边下一条真实关系的端点：它自己的标题与标签，以及它在本层归入的节点。 */
@@ -86,6 +88,7 @@ function reviewRelation(relation: C4Relation): ReviewRelation {
     target: relation.target,
     kind: relation.kind ?? "",
     title: relation.title ?? "",
+    description: relation.description,
   };
 }
 
@@ -195,7 +198,7 @@ export function renderPacket(packet: ReviewPacket): string {
   lines.push(
     "## 本层显示的边与全部真实关系",
     "",
-    "每条边下列出它代表的、模型里声明的全部关系。同一条边下的关系是同一条通路在不同深度的声明：标“细化”的那条把它所细化的那条落到更深的元素上，不是另一条通路。端点不是本层节点时，另列该端点的标题与标签，以及它在本层归入哪个节点。",
+    "每条边下列出它代表的、模型里声明的全部关系，以及每条关系自己的依据（没写的标“依据：无”）。同一条边下的关系是同一条通路在不同深度的声明：标“细化”的那条把它所细化的那条落到更深的元素上，不是另一条通路。端点不是本层节点时，另列该端点的标题与标签，以及它在本层归入哪个节点。",
     "标签：`#contract` 表示该元素有自己的 VDM 契约模块；没有 `#contract` 只说明它没有契约模块，不说明它不能被调用。`#leaf` 只表示作者决定不再拆分它。其余标签按模型原样列出。",
     "关系种类：`calls` 是运行期调用目标，`uses` 只用目标的契约词汇，二者都是源依赖目标；`callback` 是运行期回调一个依赖自己的元素，不形成依赖。",
     "",
@@ -211,7 +214,7 @@ export function renderPacket(packet: ReviewPacket): string {
         case "shown": position = "下层元素之间的声明，在本层显示为这条边"; break;
         default: position = assertNever(layering);
       }
-      lines.push(`- ${markdown(relationText(relation))}（${position}）`);
+      lines.push(`- ${markdown(relationText(relation))}（${position}）`, `  - 依据：${relation.description ? markdown(relation.description) : "无"}`);
       for (const [side, end] of [["源端", source], ["目标端", target]] as const) {
         if (end.fqn === end.shownAs) continue;
         const tags = end.tags.length === 0 ? "无标签" : end.tags.map((tag) => `#${markdown(tag)}`).join("、");
@@ -227,6 +230,7 @@ export function renderPacket(packet: ReviewPacket): string {
     const none = contract === null ? "没有子元素落实" : `没有子元素落实；\`${contract}\` 带 #contract，也可能由它自己的契约模块直接承接`;
     lines.push(
       `- ${markdown(relationText(obligation.relation))}`,
+      `  - 依据：${obligation.relation.description ? markdown(obligation.relation.description) : "无"}`,
       `  - 本层落实者：${obligation.realizedBy.length === 0 ? none : obligation.realizedBy.map((fqn) => `\`${fqn}\``).join("、")}`,
       "",
     );

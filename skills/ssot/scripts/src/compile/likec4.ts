@@ -24,6 +24,8 @@ export interface C4Relation {
   /** null：关系没有写种类。 */
   readonly kind: string | null;
   readonly title: string | null;
+  /** 关系自己的 description：这条依赖的依据与理由；没写时为空串。 */
+  readonly description: string;
   readonly tags: readonly string[];
   readonly metadata: Metadata;
   readonly at: Position | null;
@@ -117,6 +119,7 @@ export async function compileLikeC4(dir: string): Promise<C4Result> {
       target: r.target.id,
       kind: r.kind ?? null,
       title: r.title ?? null,
+      description: r.description.text ?? "",
       tags: [...r.tags],
       metadata: r.metadata ?? {},
       at: position(ls.locate({ relation: r.id })),

@@ -43,7 +43,7 @@ export const statusCases: readonly StatusCase[] = [
     ["vdm-type", LEDGER, "  OrderId = token;", "  -- REQ-1\n  OrderId = token;"],
     ["vdm-state", LEDGER, "state Ledger of", "-- REQ-1\nstate Ledger of"],
     ["vdm-operation", LEDGER, "  record(o : OrderId, amount : nat)", "  -- REQ-1\n  record(o : OrderId, amount : nat)"],
-    ["vdm-function", API, "operations\n", "functions\n  -- REQ-1\n  positive : nat -> bool\n  positive(n) == n > 0;\noperations\n"],
+    ["vdm-function", API, "\noperations\n", "\nfunctions\n  -- REQ-1\n  positive : nat -> bool\n  positive(n) == n > 0;\noperations\n"],
     ["vdm-value", API, "types\n", "values\n  -- REQ-1\n  limit : nat = 1;\ntypes\n"],
     ["vdm-module", API, "module shop_api", "-- REQ-1\nmodule shop_api"],
     ["quint-val", FLOW, "  val safety =", "  // REQ-1\n  val safety ="],

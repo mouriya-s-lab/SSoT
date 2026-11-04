@@ -75,8 +75,8 @@ export const mutations: readonly Mutation[] = [
     edits: [
       {
         file: C4,
-        find: "      technology 'Database'\n",
-        replace: "      technology 'Database'\n      journal = container 'Journal'\n",
+        find: "      style { shape storage }\n",
+        replace: "      style { shape storage }\n      journal = container 'Journal'\n",
       },
       { file: C4, find: "  view shopLayer of shop {\n    include *\n  }", replace: "  view shopLayer of shop {\n    include *\n  }\n  view ledgerLayer of shop.ledger {\n    include *\n  }" },
     ],
@@ -108,7 +108,7 @@ export const mutations: readonly Mutation[] = [
     expect: "struct.views",
     description: "逐层视图展开到孙辈元素",
     edits: [
-      { file: C4, find: "      technology 'Database'\n", replace: "      technology 'Database'\n      journal = component 'Journal'\n" },
+      { file: C4, find: "      style { shape storage }\n", replace: "      style { shape storage }\n      journal = component 'Journal'\n" },
       { file: C4, find: "  view shopLayer of shop {\n    include *\n  }", replace: "  view shopLayer of shop {\n    include *\n    include shop.ledger.*\n  }\n  view ledgerLayer of shop.ledger {\n    include *\n  }" },
     ],
     regen: true,
@@ -456,12 +456,13 @@ export const mutations: readonly Mutation[] = [
     expect: "-",
     description: "inv 采样在递归 measure 函数里中途出错后，后续 QuickCheck 不把它当成反例",
     edits: [
-      { file: LEDGER, find: "  types struct OrderId", replace: "  types struct OrderId; struct Name; struct Item; struct Names\n  functions less : Name * Name -> bool" },
+      { file: LEDGER, find: "  types struct OrderId; struct Closed", replace: "  types struct OrderId; struct Closed; struct Name; struct Item; struct Names\n  functions less : Name * Name -> bool" },
       {
         file: LEDGER,
         find: "  OrderId = token;",
-        replace: "  OrderId = token;\n  Name = seq of nat\n  inv n == n <> [];\n  Item :: name : Name\n          value : nat;\n  Names :: items : seq of Item\n  inv o == forall i, j in set inds o.items & i < j => less(o.items(i).name, o.items(j).name);\nfunctions\n  less : Name * Name -> bool\n  less(a, b) ==\n    if len a = 1 or len b = 1 then (hd a < hd b) or (hd a = hd b and len a < len b)\n    else if hd a = hd b then less(tl a, tl b)\n    else hd a < hd b\n  measure len a;",
+        replace: "  OrderId = token;\n  Name = seq of nat\n  inv n == n <> [];\n  Item :: name : Name\n          value : nat;\n  Names :: items : seq of Item\n  inv o == forall i, j in set inds o.items & i < j => less(o.items(i).name, o.items(j).name);",
       },
+      { file: LEDGER, find: "end shop_ledger", replace: "functions\n  less : Name * Name -> bool\n  less(a, b) ==\n    if len a = 1 or len b = 1 then (hd a < hd b) or (hd a = hd b and len a < len b)\n    else if hd a = hd b then less(tl a, tl b)\n    else hd a < hd b\n  measure len a;\nend shop_ledger" },
     ],
     regen: true,
     expectPass: true,

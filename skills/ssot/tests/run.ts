@@ -17,6 +17,7 @@ import { mutations as attribution } from "./cases/attribution";
 import { mutations as deadline } from "./cases/deadline";
 import { mutations as hints } from "./cases/hints";
 import { mutations as structure, verifyStructureProjections } from "./cases/structure";
+import { verifyRenderProjections } from "./cases/render";
 
 const HERE = import.meta.dir;
 const SSOT = join(HERE, "..", "scripts", "ssot.ts");
@@ -99,6 +100,13 @@ const tasks: { readonly id: string; readonly run: () => Promise<Outcome> }[] = [
     run: async (): Promise<Outcome> => {
       const checks = verifyStructureProjections();
       return { id: "structure-projections", expect: "-", ok: true, line: `${checks} 项结构投影与渲染次序断言通过` };
+    },
+  },
+  {
+    id: "render-projections",
+    run: async (): Promise<Outcome> => {
+      const checks = await verifyRenderProjections();
+      return { id: "render-projections", expect: "-", ok: true, line: `${checks} 项 String Diagram 投影断言通过` };
     },
   },
   {

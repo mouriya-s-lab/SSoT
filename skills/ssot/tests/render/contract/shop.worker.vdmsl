@@ -1,0 +1,24 @@
+module shop_worker
+exports
+  types struct Input
+  functions describe : seq of nat * [bool] -> seq of nat
+  operations increment : nat ==> nat
+definitions
+types
+  Input = nat;
+state Store of
+  count : nat
+init s == s = mk_Store(0)
+end
+functions
+  describe : seq of nat * [bool] -> seq of nat
+  describe(xs, flag) == xs;
+operations
+  increment(n : nat) result : nat
+  ext wr count : nat
+  post count = count~ + n and result = count;
+
+  hidden() result : nat
+  ext rd count : nat
+  post result = count;
+end shop_worker

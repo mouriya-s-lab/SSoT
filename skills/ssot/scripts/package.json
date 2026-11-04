@@ -3,6 +3,7 @@
   "dependencies": {
     "@informalsystems/quint": "latest",
     "likec4": "latest",
+    "elkjs": "latest",
     "typescript": "latest",
     "@types/bun": "latest"
   }

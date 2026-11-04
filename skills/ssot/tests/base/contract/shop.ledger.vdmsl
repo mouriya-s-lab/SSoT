@@ -1,14 +1,13 @@
 -- 记账事实：每个订单至多记一次，关账后不再记账。
 module shop_ledger
-imports
-  from shop types OrderId renamed OrderId
 exports
-  types struct Closed
+  types struct OrderId; struct Closed
   operations
     record : OrderId * nat ==> ();
     close : OrderId ==> Closed
 definitions
 types
+  OrderId = token;
   Closed = <Closed>;
 state Ledger of
   entries : map OrderId to nat

@@ -9,16 +9,9 @@
         "shop.api",
         "shop.ledger"
       ],
-      "tags": [
-        "contract",
-        "shared"
-      ],
+      "tags": [],
       "business": false,
-      "contract": {
-        "module": "shop",
-        "shared": true,
-        "allowedImports": []
-      }
+      "contract": null
     },
     {
       "fqn": "shop.api",
@@ -27,17 +20,11 @@
       "children": [],
       "tags": [
         "business",
-        "contract",
-        "leaf"
+        "contract"
       ],
       "business": true,
       "contract": {
-        "module": "shop_api",
-        "shared": false,
-        "allowedImports": [
-          "shop",
-          "shop_ledger"
-        ]
+        "module": "shop_api"
       }
     },
     {
@@ -46,16 +33,11 @@
       "parent": "shop",
       "children": [],
       "tags": [
-        "contract",
-        "leaf"
+        "contract"
       ],
       "business": false,
       "contract": {
-        "module": "shop_ledger",
-        "shared": false,
-        "allowedImports": [
-          "shop"
-        ]
+        "module": "shop_ledger"
       }
     },
     {
@@ -72,13 +54,11 @@
     {
       "source": "shop.api",
       "target": "shop.ledger",
-      "kind": "calls",
       "title": "记下订单金额"
     },
     {
       "source": "user",
       "target": "shop.api",
-      "kind": "calls",
       "title": "下单"
     }
   ],

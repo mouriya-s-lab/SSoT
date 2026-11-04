@@ -5,19 +5,18 @@ import type { RuleId } from "../../scripts/src/diag";
 import { hintRules } from "../../scripts/src/rules/hints";
 import type { Mutation } from "../mutations";
 
-const ROOT = "contract/shop.vdmsl";
 const LEDGER = "contract/shop.ledger.vdmsl";
 const FLOW = { file: "behavior/flow.qnt", find: null, replace: "module flow { pure val marker = true }\n" } as const;
 
 export const mutations: readonly Mutation[] = [
   {
     id: "hints-export", expect: "hint.export", description: "无 importer 的导出仅提示", regen: true, expectPass: true,
-    edits: [{ file: ROOT, find: "types struct OrderId", replace: "types struct OrderId; struct Spare" }, { file: ROOT, find: "OrderId = token;", replace: "OrderId = token;\n  Spare = nat;" }],
+    edits: [{ file: LEDGER, find: "types struct OrderId", replace: "types struct OrderId; struct Spare" }, { file: LEDGER, find: "OrderId = token;", replace: "OrderId = token;\n  Spare = nat;" }],
     outputIncludes: ["/hint.export]"],
   },
   {
     id: "hints-single-business", expect: "hint.single-business", description: "架构定义仅被单一业务模块引用", regen: true, expectPass: true,
-    edits: [{ file: LEDGER, find: "operations\n    record", replace: "values limit : nat\n  operations\n    record" }, { file: LEDGER, find: "definitions\ntypes", replace: "definitions\nvalues\n  limit : nat = 100;\ntypes" }, { file: "contract/shop.api.vdmsl", find: "imports\n", replace: "imports\n  from shop_ledger values limit : nat renamed limit,\n" }, { file: "contract/shop.api.vdmsl", find: "pre amount > 0", replace: "pre amount > 0 and amount <= limit" }],
+    edits: [{ file: LEDGER, find: "operations\n    record", replace: "values limit : nat\n  operations\n    record" }, { file: LEDGER, find: "definitions\ntypes", replace: "definitions\nvalues\n  limit : nat = 100;\ntypes" }, { file: "contract/shop.api.vdmsl", find: "from shop_ledger types OrderId renamed OrderId", replace: "from shop_ledger types OrderId renamed OrderId values limit : nat renamed limit" }, { file: "contract/shop.api.vdmsl", find: "pre amount > 0", replace: "pre amount > 0 and amount <= limit" }],
     outputIncludes: ["/hint.single-business]"],
   },
   {
@@ -26,7 +25,7 @@ export const mutations: readonly Mutation[] = [
   },
   {
     id: "hints-string", expect: "hint.string", description: "导出类型含字符串结构", regen: true, expectPass: true,
-    edits: [{ file: ROOT, find: "OrderId = token;", replace: "OrderId = seq of char;" }], outputIncludes: ["/hint.string]"],
+    edits: [{ file: LEDGER, find: "OrderId = token;", replace: "OrderId = seq of char;" }], outputIncludes: ["/hint.string]"],
   },
   {
     id: "hints-sampled", expect: "hint.sampled", description: "恒真 pre 的采样作为提示", regen: true, expectPass: true,
@@ -76,7 +75,7 @@ function architecture(relations: readonly C4Relation[] = []): Structure {
     { fqn: "user", kind: "actor", parent: null, children: [], tags: [], metadata: {}, at: null },
     { fqn: "outside", kind: "system", parent: null, children: [], tags: [], metadata: {}, at: null },
   ];
-  return { elements: new Map(elements.map((e) => [e.fqn, { ...e, title: e.fqn, description: "" }])), relations, views: [], spec: { elementKinds: ["actor", "system", "container", "component"], relationKinds: ["calls", "uses"], tags: ["contract", "business"] } };
+  return { elements: new Map(elements.map((e) => [e.fqn, { ...e, title: e.fqn, description: "" }])), relations, views: [], spec: { elementKinds: ["actor", "system", "container", "component"], relationKinds: [], tags: ["contract", "business"] } };
 }
 
 export function verifyProjections(): number {
@@ -103,7 +102,7 @@ export function verifyProjections(): number {
   check("export-import-all", "hint.export", 0, [producer, allImporter]);
   check("export-all", "hint.export", 1, [{ ...producer, exports: [{ kind: "all" }] }]);
   for (const [source, count] of [["user", 0], ["outside", 0], ["shop.other", 1]] as const) {
-    const relation: C4Relation = { id: source, source, target: "shop.ledger", kind: "calls", title: null, description: "", tags: [], metadata: {}, at: null };
+    const relation: C4Relation = { id: source, source, target: "shop.ledger", kind: null, title: null, description: "", tags: [], metadata: {}, at: null };
     check(`export-incoming-${source}`, "hint.export", count, [producer], architecture([relation]));
     check(`export-outgoing-${source}`, "hint.export", 1, [producer], architecture([{ ...relation, source: "shop.ledger", target: source }]));
   }

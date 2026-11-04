@@ -16,13 +16,14 @@ import { mutations as initial } from "./cases/initial";
 import { mutations as attribution } from "./cases/attribution";
 import { mutations as deadline } from "./cases/deadline";
 import { mutations as hints } from "./cases/hints";
-import { mutations as view } from "./cases/view";
+import { mutations as structure, verifyStructureProjections } from "./cases/structure";
+import { verifyRequirementProjections } from "./cases/requirements";
 
 const HERE = import.meta.dir;
 const SSOT = join(HERE, "..", "scripts", "ssot.ts");
 const RESULTS = mkdtempSync("/tmp/ssot-fixtures-");
 
-const all: readonly Mutation[] = [...core, ...contractBody, ...replay, ...initial, ...attribution, ...deadline, ...hints, ...view];
+const all: readonly Mutation[] = [...core, ...contractBody, ...replay, ...initial, ...attribution, ...deadline, ...hints, ...structure];
 
 async function run(args: readonly string[]): Promise<{ code: number; out: string }> {
   const p = Bun.spawn(["bun", SSOT, ...args], { stdout: "pipe", stderr: "pipe" });
@@ -30,7 +31,7 @@ async function run(args: readonly string[]): Promise<{ code: number; out: string
   return { code, out: out + err };
 }
 
-/** 期望规则出现的那一行：error 级规则看 error 行；info/warning 级规则（hint.*、view.unrealized、replay.outcome、resource.deadline）看任一级别。 */
+/** 期望规则出现的那一行：error 级规则看 error 行；info/warning 级规则（hint.*、replay.outcome、resource.deadline）看任一级别。 */
 function hitLine(out: string, rule: string): string | undefined {
   return out.split("\n").find((l) => /^(error|warning|info) \[/.test(l) && l.includes(`/${rule}]`));
 }
@@ -94,6 +95,20 @@ const only = new Set(argv.filter((a, i) => a !== "--jobs" && !(jobsAt >= 0 && i 
 const tasks: { readonly id: string; readonly run: () => Promise<Outcome> }[] = [
   ...all.map((m) => ({ id: m.id, run: () => mutation(m) })),
   ...statusCases.map((c) => ({ id: c.id, run: () => status(c) })),
+  {
+    id: "structure-projections",
+    run: async (): Promise<Outcome> => {
+      const checks = verifyStructureProjections();
+      return { id: "structure-projections", expect: "-", ok: true, line: `${checks} 项结构投影与渲染次序断言通过` };
+    },
+  },
+  {
+    id: "requirements-projections",
+    run: async (): Promise<Outcome> => {
+      const checks = verifyRequirementProjections();
+      return { id: "requirements-projections", expect: "-", ok: true, line: `${checks} 项需求附着投影断言通过` };
+    },
+  },
   {
     id: "vdmj-api",
     run: async (): Promise<Outcome> => {

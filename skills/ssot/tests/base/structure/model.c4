@@ -1,36 +1,33 @@
 specification {
-  element actor
-  element system
-  element container
-  element component
-  relationship calls
-  relationship uses
-  relationship callback
+  element actor { notation 'Person' style { shape person } }
+  element system { notation 'Software System' }
+  element container { notation 'Container' }
+  element component { notation 'Component' }
   tag contract
-  tag shared
   tag business
-  tag leaf
 }
 
 model {
   user = actor 'User'
 
   shop = system 'Shop' {
-    #contract #shared
     description '下单与记账'
 
     api = container 'API' {
-      #business #contract #leaf
+      #business #contract
       description '受理订单'
+      technology 'HTTP'
     }
     ledger = container 'Ledger' {
-      #contract #leaf
+      #contract
       description '订单的记账事实'
+      technology 'Database'
+      style { shape storage }
     }
-    api -[calls]-> ledger '记下订单金额'
+    api -> ledger '记下订单金额'
   }
 
-  user -[calls]-> shop.api '下单'
+  user -> shop.api '下单'
 }
 
 views {

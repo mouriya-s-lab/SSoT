@@ -1,8 +1,0 @@
--- 全店共用的不透明身份。
-module shop
-exports
-  types struct OrderId
-definitions
-types
-  OrderId = token;
-end shop

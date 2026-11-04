@@ -1,7 +1,7 @@
 -- 下单的请求与回复。
 module shop_api
 imports
-  from shop types OrderId renamed OrderId
+  from shop_ledger types OrderId renamed OrderId
 exports
   types struct Reply
   operations

@@ -2,23 +2,20 @@
 module Vdm {
   type Opt[a] = | Nil | Some(a)
 }
-module shop {
-  type OrderId = str
-}
-module shop_api {
-  import shop as shop
-  type Reply = | Reply_Accepted | Reply_Rejected
-  type Call =
-    | place({ o: shop::OrderId, amount: int, result: Reply })
-}
 module shop_ledger {
-  import shop as shop
+  type OrderId = str
   type Closed = | Closed_Closed
-  type Ledger = { entries: shop::OrderId -> int, closed: Set[shop::OrderId] }
+  type Ledger = { entries: OrderId -> int, closed: Set[OrderId] }
   pure val initial: Ledger = { entries: Map(), closed: Set() }
   type Call =
-    | record({ o: shop::OrderId, amount: int })
-    | close({ o: shop::OrderId, result: Closed })
+    | record({ o: OrderId, amount: int })
+    | close({ o: OrderId, result: Closed })
+}
+module shop_api {
+  import shop_ledger as shop_ledger
+  type Reply = | Reply_Accepted | Reply_Rejected
+  type Call =
+    | place({ o: shop_ledger::OrderId, amount: int, result: Reply })
 }
 module contract {
   import shop_api as shop_api

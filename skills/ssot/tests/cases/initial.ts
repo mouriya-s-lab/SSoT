@@ -48,19 +48,10 @@ export const mutations: readonly Mutation[] = [
     description: "非空不透明值采用结构编码生成初态",
     edits: [
       { file: "behavior/flow.qnt", find: null, replace: flow("L::initial") },
-      { file: "contract/shop.vdmsl", find: null, replace: `module shop
-exports
-  types OrderId
-  values Seed : OrderId
-definitions
-types
-  OrderId = token;
-values
-  Seed : OrderId = mk_token("seed");
-end shop
-` },
-      { file: "contract/shop.ledger.vdmsl", find: "from shop types OrderId renamed OrderId", replace: "from shop types OrderId renamed OrderId values Seed" },
-      { file: "contract/shop.ledger.vdmsl", find: "mk_Ledger({|->}, {})", replace: "mk_Ledger({shop`Seed |-> 1}, {})" },
+      { file: "contract/shop.ledger.vdmsl", find: "types struct OrderId", replace: "types OrderId" },
+      { file: "contract/shop.ledger.vdmsl", find: "  operations\n", replace: "  values Seed : OrderId\n  operations\n" },
+      { file: "contract/shop.ledger.vdmsl", find: "state Ledger of", replace: "values\n  Seed : OrderId = mk_token(\"seed\");\nstate Ledger of" },
+      { file: "contract/shop.ledger.vdmsl", find: "mk_Ledger({|->}, {})", replace: "mk_Ledger({Seed |-> 1}, {})" },
     ],
     regen: true,
     expectPass: true,
@@ -71,23 +62,10 @@ end shop
     description: "构造入口编码的非空初态不能反推构造入参",
     edits: [
       { file: "behavior/flow.qnt", find: null, replace: flow("L::initial") },
-      { file: "contract/shop.vdmsl", find: null, replace: `module shop
-exports
-  types OrderId
-  functions makeOrder : seq of char -> OrderId
-  values Seed : OrderId
-definitions
-types
-  OrderId = token;
-functions
-  makeOrder : seq of char -> OrderId
-  makeOrder(s) == mk_token(s);
-values
-  Seed : OrderId = makeOrder("seed");
-end shop
-` },
-      { file: "contract/shop.ledger.vdmsl", find: "from shop types OrderId renamed OrderId", replace: "from shop types OrderId renamed OrderId values Seed" },
-      { file: "contract/shop.ledger.vdmsl", find: "mk_Ledger({|->}, {})", replace: "mk_Ledger({shop`Seed |-> 1}, {})" },
+      { file: "contract/shop.ledger.vdmsl", find: "types struct OrderId", replace: "types OrderId" },
+      { file: "contract/shop.ledger.vdmsl", find: "  operations\n", replace: "  functions makeOrder : seq of char -> OrderId\n  values Seed : OrderId\n  operations\n" },
+      { file: "contract/shop.ledger.vdmsl", find: "state Ledger of", replace: "functions\n  makeOrder : seq of char -> OrderId\n  makeOrder(s) == mk_token(s);\nvalues\n  Seed : OrderId = makeOrder(\"seed\");\nstate Ledger of" },
+      { file: "contract/shop.ledger.vdmsl", find: "mk_Ledger({|->}, {})", replace: "mk_Ledger({Seed |-> 1}, {})" },
     ],
     regen: true,
     outputIncludes: ["初态含经构造入口编码的不透明值，无法反推入参"],

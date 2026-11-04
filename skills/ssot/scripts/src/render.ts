@@ -20,7 +20,7 @@ export async function render(structure: string, output: string | null): Promise<
   if (compiled.kind === "failed") return 1;
   const dir = output === null ? mkdtempSync(join(tmpdir(), "ssot-render-")) : resolve(output);
   mkdirSync(dir, { recursive: true });
-  const run = Bun.spawn([...likec4Command(), "export", "png", "--flat", "--notation", "-o", dir, structure], { stdout: "pipe", stderr: "pipe" });
+  const run = Bun.spawn([...likec4Command(), "export", "png", "--flat", "--notation", "--description", "-o", dir, structure], { stdout: "pipe", stderr: "pipe" });
   const [stdout, stderr, code] = await Promise.all([new Response(run.stdout).text(), new Response(run.stderr).text(), run.exited]);
   if (code !== 0) {
     console.error(stdout + stderr);

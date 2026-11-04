@@ -1,4 +1,7 @@
 -- 事实源头的记录契约：运行、运行项、事实追加、结束发布、停机锚点、引用读取与回放读取。
+-- REQ-35：记录分两种性质：soroi 作为源头判定的事实（运行记录、开始事实、SlotWrite、不带 call 的拒绝、
+--        Outcome、halt），与从执行边界一次取回、不刷新的对端副本（ToolRecord 与带 call 的拒绝所依据的
+--        结束事实与 stdout、Snapshot）。执行的索引与调用意图不表示执行状态，不在这里记录。
 -- 本模块只写每次读写在数据上的前后条件；这些读写的先后由 design/behavior 持有。
 module soroi_store
 imports
@@ -6,7 +9,7 @@ imports
     types Parsed
 exports
   types
-    struct RunId; struct RuntimeId; struct Path; struct Digest; struct Snapshot;
+    struct RunId; struct RuntimeId; struct RequestId; struct Path; struct Digest; struct Snapshot;
     struct Position; struct BundleDigest; struct Time;
     struct AttrName; struct OutputName; struct Byte; struct ToolName; struct CallId;
     struct ValueSource; struct BoundKind; struct Bound; struct Sourced;
@@ -23,7 +26,7 @@ exports
     byteLess : OutputName * OutputName -> bool
   operations
     writeBundle : BundleDigest ==> ();
-    writeRun : RunId * RunRecord ==> ();
+    writeRun : RunId * [RequestId] * RunRecord ==> ();
     writeStart : RunId * Start ==> RuntimeId | StartFailed;
     readStart : RuntimeId ==> Start;
     appendBucket : RuntimeId * Fact ==> ();
@@ -38,6 +41,8 @@ definitions
 types
   RunId = token;
   RuntimeId = token;
+  -- 使用方一次起运行请求的身份。
+  RequestId = token;
 
   Path = seq of char
   inv p == p <> [];
@@ -91,7 +96,7 @@ types
   RejectReason ::
     kind    : RejectKind
     message : seq of char;
-  -- 带 call 的拒绝依据工具的结束事实；不带 call 的拒绝由闭包入口自己判定。
+  -- REQ-35：带 call 的拒绝是对端副本，依据取回的工具结束事实；不带 call 的拒绝是闭包入口自己判定的事实。
   CallRejected ::
     call   : [CallId]
     reason : RejectReason;
@@ -145,10 +150,12 @@ types
     at       : Time
     rendered : seq of char
   inv s == dom s.input.attrs = s.declared;
+  -- REQ-36：fin = nil 只表示这个运行项的 writeEnd 尚未写下，不表示执行边界里的执行是否还在进行。
   Own ::
     start   : Start
     buckets : seq of Fact
     fin     : [End];
+  -- REQ-46：Ref 直接采用源记录已经发布的结果，不重跑；源是同一定义绑定同一组值的同一次调用。
   RefEntry ::
     source : RuntimeId;
   Entry = Own | RefEntry;
@@ -201,13 +208,15 @@ state Records of
   runtimes : map RuntimeId to Entry
   order    : map RunId to seq of RuntimeId
   halts    : map RunId to Trigger
-inv mk_Records(-, rs, rts, os, hs) ==
+  requests : map RequestId to RunId
+inv mk_Records(-, rs, rts, os, hs, qs) ==
   dom os = dom rs and
   dom hs subset dom rs and
+  rng qs subset dom rs and
   (forall r in set dom os & elems os(r) subset dom rts and len os(r) = card elems os(r)) and
   (forall r1, r2 in set dom os & r1 <> r2 => elems os(r1) inter elems os(r2) = {}) and
   (forall rt in set dom rts & exists r in set dom os & rt in set elems os(r))
-init s == s = mk_Records({}, {|->}, {|->}, {|->}, {|->})
+init s == s = mk_Records({}, {|->}, {|->}, {|->}, {|->}, {|->})
 end
 
 functions
@@ -263,12 +272,14 @@ operations
   ext wr bundles
   post bundles = bundles~ union {b};
 
-  -- REQ-44：起运行与派生都以新的 RunId 发布完整 RunRecord，它的 bundle 已经发布；已有 RunRecord 不变。
-  writeRun(r : RunId, rec : RunRecord)
+  -- REQ-3/REQ-44：起运行与派生都以新的 RunId 发布完整 RunRecord，它的 bundle 已经发布；已有 RunRecord 不变。
+  --        起运行的请求身份在同一次发布中记下 RequestId → RunId；发布之前这个 RunId 不出现在任何读取里。
+  writeRun(r : RunId, q : [RequestId], rec : RunRecord)
   ext rd bundles
-      wr runs, order
-  pre r not in set dom runs and rec.bundle in set bundles
-  post runs = runs~ munion {r |-> rec} and order = order~ munion {r |-> []};
+      wr runs, order, requests
+  pre r not in set dom runs and rec.bundle in set bundles and (q <> nil => q not in set dom requests)
+  post runs = runs~ munion {r |-> rec} and order = order~ munion {r |-> []} and
+       requests = (if q = nil then requests~ else requests~ munion {q |-> r});
 
   -- REQ-54：只有尚未写下 halt 的运行才可能得到新的运行项；返回 StartFailed 时没有运行项。
   writeStart(r : RunId, s : Start) res : RuntimeId | StartFailed
@@ -306,7 +317,7 @@ operations
       forall rt in set elems order(r) & ended(runtimes(rt))
   post halts = halts~ munion {r |-> t};
 
-  -- REQ-49：派生运行为每个沿用位置追加 Ref；被引用的源必须可引用。
+  -- REQ-32/REQ-49：派生运行为每个沿用位置追加 Ref，指向源 RuntimeId；被引用的源必须可引用，已有运行项不变。
   appendRef(r : RunId, src : RuntimeId) rt : RuntimeId
   ext rd runs, halts
       wr runtimes, order

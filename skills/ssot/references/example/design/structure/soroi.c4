@@ -1,329 +1,188 @@
-// soroi 结构层：元素、嵌套、依赖方向、部署与信任边界。
-// 关系标题只写依赖的职责；操作、数据与类型由 design/contract 持有，次序由 design/behavior 持有。
-
 specification {
   element actor {
+    notation 'Person'
     style {
       shape person
     }
   }
-  element system
-  element container
-  element component
-
-  // 运行期调用：发起方依赖被调方。
-  relationship calls
-  // 只用对方的契约词汇，没有运行期交互。
-  relationship uses {
-    line dotted
+  element system {
+    notation 'Software System'
   }
-  // 运行期回调一个依赖自己的元素；不形成依赖，不授予契约引用。
-  relationship callback {
-    line dashed
+  element container {
+    notation 'Container'
+  }
+  element component {
+    notation 'Component'
   }
 
-  // 该元素持有一个契约模块。
+  tag external
+  tag datastore
   tag contract
-  // 该元素的契约是全部后代共用的材料。
-  tag shared
-  // 业务元素：架构元素不依赖它。
-  tag business
-  // 由 Workspace 实现者注入，不属于核心。
-  tag implementer
-  // 交出的结果不具有可信来源保证，只按声明结构检查。
   tag untrusted
-  // 故意不再拆分的元素。
-  tag leaf
 
   deploymentNode host
-  deploymentNode process
 }
 
 model {
   caller = actor 'Caller' {
-    description 'soroi 的使用方：依赖它管理运行并取得运行事实'
+    description '启动、停止与派生运行，并读取运行事实的使用方'
   }
 
   soroi = system 'soroi' {
-    #contract #shared
-    description '工作流运行核心：管理运行的生命周期，协调执行，记录运行事实。各部分都要经同一个值解析边界取得业务值（REQ-2），也都要引用同一种工作根现场（REQ-39），所以这份共用材料放在系统这一层，供全部后代引用'
-    metadata {
-      req ['REQ-2', 'REQ-39']
-    }
+    description '管理工作流运行、协调执行并记录运行事实的核心'
 
     engine = container 'Engine' {
-      #business
-      description '核心中协调运行的部分：受理使用方的请求，推进与收束运行，只依据闭包是否结束来协调（REQ-51）。事实源头与执行边界都不依赖引擎（执行边界对它只有回调），所以引擎作为业务元素放在它们之上'
-      metadata {
-        req 'REQ-51'
-      }
+      technology 'Daemon process'
+      description '受理运行请求，推进并收束运行'
 
       control = component 'Control' {
-        #contract #leaf
-        description '使用方与引擎之间唯一的操作面：受理对运行生命周期的请求并分派（REQ-8）。请求与回复是使用方看得见的接口（REQ-1、REQ-2、REQ-42、REQ-57），所以它带契约'
-        metadata {
-          req ['REQ-1', 'REQ-2', 'REQ-3', 'REQ-8', 'REQ-42', 'REQ-57']
-        }
+        #contract
+        description '使用方与引擎之间唯一的操作面'
       }
-
       scheduler = component 'Scheduler' {
-        #leaf
-        description '负责运行的推进：准入工作，判定运行是否自然完成（REQ-6、REQ-7、REQ-53）'
-        metadata {
-          req ['REQ-6', 'REQ-7', 'REQ-53']
-        }
+        description '准入运行项并判定运行是否自然完成'
       }
-
-      halting = component 'Halt process' {
-        #leaf
-        description '负责运行的停机：收束准入与全部未结束的运行项，写下运行的结束锚点（REQ-52、REQ-58、REQ-59）。停机由没有线接住的异常、使用方的停下或介入、重启时发现的未结束运行三处触发（REQ-52、REQ-58），同一运行的停机请求并入同一个过程（REQ-53），所以它是推进与闭包过程之外单独的一个元素'
-        metadata {
-          req ['REQ-43', 'REQ-52', 'REQ-53', 'REQ-54', 'REQ-55', 'REQ-57', 'REQ-58', 'REQ-59']
-        }
+      halting = component 'Halting' {
+        description '收束一次运行并写下它的结束'
       }
-
-      closure = component 'Closure process' {
-        #contract #leaf
-        description '负责一个运行项的生命周期：在执行边界中协调执行，受理执行方的交互，校验并发布本运行项的结果；运行项的结束只由它写下（REQ-9、REQ-55、REQ-56）。它对执行方与使用方的承诺由契约持有（REQ-14、REQ-15、REQ-17、REQ-18、REQ-27、REQ-28、REQ-29、REQ-30、REQ-31）'
-        metadata {
-          req ['REQ-4', 'REQ-9', 'REQ-10', 'REQ-11', 'REQ-12', 'REQ-13', 'REQ-14', 'REQ-15', 'REQ-16', 'REQ-17', 'REQ-18', 'REQ-21', 'REQ-25', 'REQ-27', 'REQ-28', 'REQ-29', 'REQ-30', 'REQ-31', 'REQ-55', 'REQ-56', 'REQ-60']
-        }
+      closure = component 'Closure' {
+        #contract
+        description '负责一个运行项从准入到结束的全部生命周期'
       }
-
       derivation = component 'Derivation' {
-        #contract #leaf
-        description '负责基于既有运行的事实协调派生运行（REQ-41、REQ-42、REQ-44、REQ-45、REQ-50）。派生的准入与受影响范围是它自己的判定，由它的契约持有（REQ-46、REQ-47、REQ-48）'
-        metadata {
-          req ['REQ-32', 'REQ-38', 'REQ-41', 'REQ-42', 'REQ-43', 'REQ-44', 'REQ-45', 'REQ-46', 'REQ-47', 'REQ-48', 'REQ-49', 'REQ-50']
-        }
+        #contract
+        description '基于既有运行的事实派生新运行'
+      }
+      values = component 'Values' {
+        #contract
+        description '把原始文本按声明的结构解析成业务值的唯一入口'
       }
     }
 
     store = container 'Store' {
-      #contract #leaf
-      description '运行事实的唯一源头：持久保存运行记录与每个运行项的事实（REQ-32、REQ-35）。它只持有事实、不协调运行，所以它不依赖任何元素；事实的形状与每次读写的前后条件由它的契约持有（REQ-3、REQ-5、REQ-13、REQ-15、REQ-28、REQ-30、REQ-31、REQ-33、REQ-34、REQ-36、REQ-37、REQ-39、REQ-44、REQ-49、REQ-52、REQ-54、REQ-55、REQ-57）'
-      metadata {
-        req ['REQ-3', 'REQ-5', 'REQ-13', 'REQ-15', 'REQ-28', 'REQ-30', 'REQ-31', 'REQ-32', 'REQ-33', 'REQ-34', 'REQ-35', 'REQ-36', 'REQ-37', 'REQ-39', 'REQ-40', 'REQ-44', 'REQ-49', 'REQ-52', 'REQ-54', 'REQ-55', 'REQ-57', 'REQ-60']
-      }
+      #datastore #contract
+      technology 'Persistent store'
+      description '运行事实的唯一源头'
     }
 
     workspace = container 'Workspace' {
-      #contract #implementer
-      description '核心唯一的执行边界：承载执行方的运行，并负责其执行范围的收束（REQ-19、REQ-24）。它由实现者注入，与核心分属不同的信任边界（REQ-19、REQ-22），所以单独成为一个元素；对核心的承诺由它的契约持有（REQ-12、REQ-14、REQ-15、REQ-20、REQ-21、REQ-23、REQ-26、REQ-39）'
-      metadata {
-        req ['REQ-11', 'REQ-12', 'REQ-14', 'REQ-15', 'REQ-19', 'REQ-20', 'REQ-21', 'REQ-22', 'REQ-23', 'REQ-24', 'REQ-26', 'REQ-39']
-      }
-
-      executor = component 'Executor' {
-        #implementer #leaf
-        description '负责闭包的执行与文件环境，是该环境的文件权威，并承担闭包内执行范围的收束（REQ-19、REQ-20、REQ-24）'
-        metadata {
-          req ['REQ-13', 'REQ-19', 'REQ-20', 'REQ-24']
-        }
-      }
-
-      harness = component 'Harness slot' {
-        #implementer #leaf
-        description '启动 agent 的插槽；放什么由实现者决定，核心不知道 agent 的调用方式（REQ-19）。agent 启动失败的处理与 agent 执行记录的获取方式也是插槽的实现选择（REQ-25、REQ-26），所以它们不进入核心'
-        metadata {
-          req ['REQ-19', 'REQ-25', 'REQ-26']
-        }
-      }
-
-      route = component 'Closure route' {
-        #implementer #leaf
-        description '负责闭包内执行方与核心之间的交互适配及交互归属（REQ-11、REQ-19）'
-        metadata {
-          req ['REQ-11', 'REQ-19']
-        }
-      }
+      #contract
+      technology 'Execution service, implementer-provided'
+      description '承载执行方运行的执行边界，由实现者注入'
     }
   }
 
-  preset = system 'Preset 执行体' {
-    #untrusted
-    description '承担工作流中具体工作的执行方。它不归本系统实现，交出的结果没有可信来源保证，核心只检查结构（REQ-12），所以它写成系统之外、不可信的元素'
-    metadata {
-      req 'REQ-12'
-    }
-
-    agent = container 'Agent' {
-      #leaf
-      description '在闭包中完成工作的 agent'
-    }
-
-    programs = container 'Author programs' {
-      #leaf
-      description 'preset 作者提供的程序，在闭包中按所担任的角色运行'
-    }
+  preset = system 'Preset' {
+    #external
+    description '执行工作流里具体工作的 agent 与作者程序'
   }
 
-  // 关系逐层声明：每一层在兄弟元素之间声明本层的关系；展开一个元素时，
-  // 它在上一层的每条关系，都由本层子元素的关系落实。
+  // 顶层
+  caller -> soroi '管理运行并读取运行事实'
+  soroi -> preset '运行具体工作'
+  preset -> soroi '提交工具调用与返回结果'
 
-  // ── 顶层：caller、soroi、preset ──
-  caller -[calls]-> soroi '管理运行并取得运行事实' {
-    description '使用方管理运行、读取运行事实都只能找 soroi'
-  }
-  soroi -[calls]-> preset '承担工作流中具体工作的执行' {
-    description '具体工作由执行方完成，核心只协调执行（REQ-19）'
-  }
-  preset -[callback]-> soroi '交回工作结果与请求' {
-    description '执行方交回结果与请求是对核心的回调，核心不因此依赖执行方的实现（REQ-11、REQ-12）'
-  }
+  // soroi 容器层
+  caller -> soroi.engine '管理运行'
+  caller -> soroi.store '读取运行事实'
+  soroi.engine -> soroi.store '读写运行事实'
+  soroi.engine -> soroi.workspace '在执行边界内执行运行项'
+  soroi.workspace -> soroi.engine '转交执行方的调用与结果'
+  soroi.workspace -> preset '运行 agent 与作者程序'
+  preset -> soroi.workspace '提交工具调用与返回结果'
 
-  // ── soroi 内部：engine、store、workspace ──
-  caller -[calls]-> soroi.engine '管理运行的生命周期' {
-    description '管理运行要由引擎协调（REQ-8）'
-  }
-  caller -[calls]-> soroi.store '取得运行事实' {
-    description '读取运行事实不需要引擎协调，也不执行闭包（REQ-40），所以使用方直接依赖事实源头，不经过引擎'
-  }
-  soroi.engine -[calls]-> soroi.store '读取并记录运行事实' {
-    description '引擎自己不持有事实，协调所依据的运行事实都在事实源头（REQ-32、REQ-51）'
-  }
-  soroi.engine -[calls]-> soroi.workspace '在执行边界内执行运行项并收束' {
-    description '运行项只在执行边界内执行，引擎不直接运行执行方（REQ-19）'
-  }
-  soroi.workspace -[callback]-> soroi.engine '把执行方的交回与请求交给所属运行项' {
-    description '执行方只经执行边界进入核心（REQ-11、REQ-19）；这是回调，执行边界不依赖引擎'
-  }
-  soroi.workspace -[calls]-> preset '运行执行方' {
-    description '执行方由执行边界承载与运行（REQ-19）'
-  }
-  preset -[callback]-> soroi.workspace '交回工作结果与请求' {
-    description '执行方的交回与请求只进入执行边界（REQ-11）'
-  }
-
-  // ── engine 内部：control、scheduler、halting、closure、derivation ──
-  caller -[calls]-> soroi.engine.control '管理运行的生命周期' {
-    description '使用方与引擎之间只有一个操作面（REQ-8），所以使用方对引擎的依赖只落在 Control 上'
-  }
-
-  soroi.engine.control -[calls]-> soroi.engine.scheduler '把新运行交给推进' {
-    description '新运行的推进归推进，操作面只分派（REQ-8）'
-  }
-  soroi.engine.control -[calls]-> soroi.engine.halting '停下运行' {
-    description '停下请求归停机，操作面只分派（REQ-8、REQ-57）'
-  }
-  soroi.engine.control -[calls]-> soroi.engine.derivation '从旧运行派生新运行' {
-    description '派生请求归派生，操作面只分派（REQ-8、REQ-42）'
-  }
-  soroi.engine.control -[calls]-> soroi.store '发布新运行的记录' {
-    description '新运行的记录由操作面发布到事实源头，使用方拿到的运行身份对应一条已发布的记录（REQ-1、REQ-3）'
-  }
-
-  soroi.engine.derivation -[calls]-> soroi.engine.halting '依赖源运行的停机' {
-    description '派生要用到源运行的停机结局，而收束运行归停机（REQ-43），所以派生依赖停机，不自己收束旧运行'
-  }
-  soroi.engine.derivation -[calls]-> soroi.store '读取旧运行的记录，发布派生运行' {
-    description '受影响的范围与可沿用的结果只由旧运行的记录决定，派生运行也作为新的运行事实发布（REQ-32、REQ-38、REQ-49）'
-  }
-
-  soroi.engine.scheduler -[calls]-> soroi.store '读取运行事实并记录运行项' {
-    description '准入与完成的判断都依据运行事实（REQ-6、REQ-7）'
-  }
-  soroi.engine.scheduler -[calls]-> soroi.engine.closure '委托运行项的生命周期' {
-    description '准入的每个运行项交给它的闭包过程负责（REQ-9）'
-  }
-
-  soroi.engine.halting -[calls]-> soroi.engine.scheduler '停止为该运行准入' {
-    description '收束准入要由推进停止为该运行准入（REQ-53、REQ-54）'
-  }
-  soroi.engine.halting -[calls]-> soroi.engine.closure '收束未结束的运行项' {
-    description '运行项只由它的拥有者闭包过程收束，停机不越过闭包过程直接关闭执行（REQ-55）'
-  }
-  soroi.engine.halting -[calls]-> soroi.store '读取运行事实并写下运行的结束锚点' {
-    description '能否写下结束锚点由运行事实决定（REQ-54、REQ-57）'
-  }
-
-  soroi.engine.closure -[calls]-> soroi.store '直接取得本运行项的输入并写入它的事实' {
-    description '本运行项的数据在事实源头与闭包过程之间直接进出，不经推进转交（REQ-60）'
-  }
-  soroi.engine.closure -[calls]-> soroi.workspace '在闭包边界内执行并收束' {
-    description '执行、文件放置、出口捕获与闭包的关闭都在执行边界内完成（REQ-10、REQ-12、REQ-21、REQ-25）'
-  }
-  soroi.workspace -[callback]-> soroi.engine.closure '把执行方的交回与请求交给所属运行项的闭包过程' {
-    description '执行方的交互只进入所属运行项的闭包过程（REQ-11、REQ-13、REQ-16）'
-  }
-
-  // ── workspace 内部：executor、harness、route ──
-  soroi.workspace.route -[callback]-> soroi.engine.closure '把执行方的交回与请求交给所属运行项的闭包过程' {
-    description '交互连同运行项身份路由回所属运行项的闭包过程（REQ-11、REQ-19）'
-  }
-  soroi.workspace.executor -[calls]-> soroi.workspace.harness '经插槽启动 agent' {
-    description 'agent 的调用方式不归执行者，所以执行者经插槽启动 agent（REQ-19）'
-  }
-  soroi.workspace.harness -[calls]-> preset '启动 agent' {
-    description '对 agent 的依赖只在插槽里（REQ-19）'
-  }
-  soroi.workspace.executor -[calls]-> preset '运行作者程序' {
-    description '作者程序只由执行边界运行，agent 与作者程序之间没有依赖（REQ-13）'
-  }
-  preset -[callback]-> soroi.workspace.route '交回工作结果与请求' {
-    description '执行方只经闭包交互通道进入核心（REQ-11、REQ-19）'
-  }
-
-  // ── preset 内部：agent、programs ──
-  soroi.workspace.harness -[calls]-> preset.agent '启动 agent' {
-    description '插槽启动的是 agent（REQ-19）'
-  }
-  soroi.workspace.executor -[calls]-> preset.programs '运行作者程序' {
-    description '执行者直接运行作者程序（REQ-13）'
-  }
-  preset.agent -[callback]-> soroi.workspace.route '交回工作结果与请求' {
-    description 'agent 的交回与请求经闭包交互通道（REQ-11）'
-  }
-  preset.programs -[callback]-> soroi.workspace.route '交回工作结果与请求' {
-    description '作者程序的交回与请求经闭包交互通道（REQ-11）'
-  }
+  // engine 组件层
+  caller -> soroi.engine.control '提交启动、停止与派生请求'
+  soroi.engine.control -> soroi.engine.values '解析任务输入'
+  soroi.engine.control -> soroi.engine.scheduler '交出新运行'
+  soroi.engine.control -> soroi.engine.halting '停下运行'
+  soroi.engine.control -> soroi.engine.derivation '派生新运行'
+  soroi.engine.control -> soroi.store '发布新运行'
+  soroi.engine.scheduler -> soroi.engine.closure '交出准入的运行项'
+  soroi.engine.scheduler -> soroi.store '读取运行事实并登记运行项'
+  soroi.engine.halting -> soroi.engine.scheduler '停止准入'
+  soroi.engine.halting -> soroi.engine.closure '收束未结束的运行项'
+  soroi.engine.halting -> soroi.store '写下运行的结束'
+  soroi.engine.derivation -> soroi.engine.halting '停下源运行'
+  soroi.engine.derivation -> soroi.engine.values '解析编辑值'
+  soroi.engine.derivation -> soroi.store '读取源运行并发布派生运行'
+  soroi.engine.closure -> soroi.engine.values '解析执行方交回的值'
+  soroi.engine.closure -> soroi.store '读取输入并写入运行项事实'
+  soroi.engine.closure -> soroi.workspace '在执行边界内执行并关闭运行项'
+  soroi.workspace -> soroi.engine.closure '转交执行方的调用与结果'
 }
 
 deployment {
-  host daemonHost 'daemon host' {
-    process daemon 'soroi daemon' {
-      description '可以退出与重启的进程；事实源头不在这个进程里，进程退出不带走运行事实'
-      instanceOf soroi.engine
-    }
+  host daemonHost 'Daemon host' {
+    description '运行 soroi 守护进程与事实源头的主机'
+    instanceOf soroi.engine
     instanceOf soroi.store
   }
-  host execEnv 'execution environment' {
-    #implementer
-    description '执行边界及其中的执行方；与 daemon 分属不同的信任边界'
+  host execEnv 'Execution environment' {
+    #untrusted
+    description '实现者提供的执行环境，与核心分属不同的信任边界'
     instanceOf soroi.workspace
     instanceOf preset
   }
 }
 
+global {
+  styleGroup theme {
+    style element.tag = #external {
+      color muted
+      notation 'External Software System'
+    }
+    style element.tag = #datastore {
+      shape storage
+      notation 'Container: Data Store'
+    }
+  }
+}
+
 views {
+  global style theme
+
   view index {
-    title 'soroi 顶层'
+    title 'soroi 系统上下文'
+    description 'soroi 为谁服务，又调用哪些外部系统'
     include *
   }
 
   view soroiView of soroi {
-    title 'soroi 内部'
+    title 'soroi 容器图'
+    description 'soroi 由哪些运行单元组成，它们之间以及与外部怎样调用'
     include *
   }
 
   view engineView of soroi.engine {
-    title 'Engine 内部'
-    include *
-  }
-
-  view workspaceView of soroi.workspace {
-    title 'Workspace 内部'
-    include *
-  }
-
-  view presetView of preset {
-    title 'Preset 执行体内部'
+    title 'Engine 组件图'
+    description 'Engine 内部由哪些功能块组成，它们之间以及与外部怎样调用'
     include *
   }
 
   deployment view deployed {
-    title '部署与信任边界'
+    title 'soroi 部署图'
+    description 'soroi 的容器运行在哪些主机上，信任边界在哪里'
     include daemonHost.**
     include execEnv.**
+    exclude * -> * where source.kind is component or target.kind is component
+    style daemonHost.engine {
+      notation 'Container'
+    }
+    style execEnv.workspace {
+      notation 'Container'
+    }
+    style daemonHost.store {
+      shape storage
+      notation 'Container: Data Store'
+    }
+    style execEnv.preset {
+      color muted
+      notation 'External Software System'
+    }
+    style execEnv {
+      color red
+      notation 'Untrusted execution environment'
+    }
   }
 }

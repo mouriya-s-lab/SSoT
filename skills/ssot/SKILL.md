@@ -106,10 +106,10 @@ LikeC4 只用来画 C4 图。一张图是给人看的：读图的人只看这一
 **元素写法。**
 - 标题是名字；`description` 一句话写它负责什么，不写它为什么存在、怎样做、依据什么。
 - container 写 `technology`：它是哪一种运行单元（如 `'Daemon process'`、`'Persistent store'`），或设计已经定下的技术。component 只在设计已经定下技术时写；可以替换的技术选型属于实现，不写。
-- 数据存储带 `#datastore`，外部系统带 `#external`。它们的形状、颜色与图例由视图的全局样式统一给出（见下面的范例），元素上不单独写样式。
+- 数据存储带 `#datastore`，外部系统带 `#external`。它们在逻辑视图里的形状、颜色与图例由全局样式统一给出（见下面的范例），元素上不单独写样式；部署视图的样式见「部署」。
 - `#contract` 标记带契约模块的元素，只能写在没有子元素的元素上（见 VDM）。
 - 架构与业务：只服务一项业务的元素及其后代标 `#business`，图上由此看出哪些框是业务。“架构不引用业务”指契约的引用：架构元素的契约模块不得 import 业务元素的契约模块（`check` 以 `contract.layering` 拒绝）；箭头只表示谁发起调用，不受这条约束。
-- 信任边界用部署节点上的标签表达（如 `#implementer`、`#untrusted`）。
+- 信任边界用部署节点上的标签表达（如 `#untrusted`）。
 
 **关系写法。**
 - 一条关系是一个箭头：从发起调用的一方指向被调用的一方，写成无种类的 `->`。
@@ -120,11 +120,13 @@ LikeC4 只用来画 C4 图。一张图是给人看的：读图的人只看这一
 **视图写法。**
 - 顶层恰有一个视图，id 为 `index`，没有 `of`。
 - 每个有子元素的元素恰有一个 `view <id> of <fqn>`，id 取 fqn 最后一段加 `View`（与已有 id 重名时前面再加父元素 fqn 的最后一段）。视图只显示该元素、它的直接子元素和与它们有关系的外部元素，不显示孙辈。
-- 每个视图写 `title`，说明这是哪一种图、画的是什么（“soroi 容器图”）。
+- 每个视图写 `title` 与 `description`：`title` 说明这是哪一种图、画的是谁（“soroi 容器图”），`description` 一句话说这张图回答什么问题。渲染图顶部的标题栏只在视图有 `description` 时出现。
 - `specification` 给四种元素写 `notation`，渲染时生成图例。
 - 不写动态视图：次序归 Quint。
 
 **部署。** 部署节点用 `deploymentNode` 声明，节点里用 `instanceOf` 放 container；节点描述一句话写它是什么运行位置；信任边界用节点标签。部署视图单独画，不改变元素树。
+- 部署视图不应用全局样式：图上每个实例与信任边界节点的样式和 `notation` 写在部署视图里，按实例或节点的路径给出，图例由此说出每个框是什么、哪个节点是信任边界。
+- 部署视图只画容器之间的箭头：用 `exclude * -> * where source.kind is component or target.kind is component` 去掉组件一层的关系，否则同一对实例之间的多条关系会合并成一个标着 `[...]` 的箭头。
 
 **写法范例。**
 
@@ -170,6 +172,7 @@ views {
   global style theme
   view index {
     title 'soroi 系统上下文'
+    description 'soroi 为谁服务，又调用哪些外部系统'
     include *
   }
 }
@@ -242,7 +245,7 @@ Quint 轨迹 ──回放──▶ 在定义该操作的 VDM 模块里求 pre/po
 | `ssot check <design>` | 全量检查：编译三种载体、生成链新鲜度、跨载体规则、模拟、覆盖目标、回放、证明义务 |
 | `ssot check <design> --scope <视图 id>` | 仍编译全部内容，但模拟、回放、QuickCheck 只在该视图的切片闭包内运行，只报告归属于该视图节点的诊断 |
 | `ssot check <design> --scope <视图 id> --base <rev>` | 另列出 `<rev>` 之后落在该作用域之外的改动，提示应交给哪个叶子 |
-| `ssot render <design> [--out <目录>]` | 用 LikeC4 自己的渲染导出每个视图的 PNG（带图例），按 `index` → 逐层下钻 → 部署视图的顺序列出图片路径与视图 id |
+| `ssot render <design> [--out <目录>]` | 用 LikeC4 自己的渲染导出每个视图的 PNG（带标题栏与图例），按 `index` → 逐层下钻 → 部署视图的顺序列出图片路径与视图 id |
 | `ssot eval <design> <模块> '<表达式>' [--bind …]` | 在原样规格里求一个 VDM 表达式，用来构造违反实例 |
 | `ssot status <design> [--deadline 秒]` | 运行一次全量 `check`，派生一项前沿 `{skill, scope, reason}`；没有前沿时输出“没有前沿” |
 

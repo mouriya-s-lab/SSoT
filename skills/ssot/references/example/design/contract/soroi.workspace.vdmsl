@@ -50,7 +50,7 @@ types
 
 -- closures：每个运行项的闭包；configs：打开它时的 Config；closed：已记下关闭的运行项；
 -- running：被接纳、尚未终止的执行及其所属运行项；routing：soroi-closure 调用仍会连同运行项身份送回核心的运行项（REQ-19/REQ-24）；
--- roots：每个闭包的工作根（REQ-39），执行对它的改动在 collect 中可见。
+-- roots：每个闭包唯一的工作根（REQ-20/REQ-39）：注入的文件、执行的读写、[files] 与 list 都指向它，执行对它的改动在 collect 中可见。
 state Closures of
   closures : map soroi_store`RuntimeId to ClosureId
   configs  : map soroi_store`RuntimeId to Config

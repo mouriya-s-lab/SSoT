@@ -1,4 +1,5 @@
 -- 闭包过程的契约：soroi-closure 命令、各角色的闭包参数、工具调用、出口捕获、verify 与工具折叠。
+-- REQ-9：一次函数调用就是一个闭包：入口拿到 inputs，出口交出 Outcome（产出或异常），中间只经这里的命令与执行边界。
 -- 受理窗口何时打开和关闭、记录与回复的先后、出口捕获与 verify 的先后由 design/behavior 持有。
 module soroi_engine_closure
 imports
@@ -16,14 +17,15 @@ exports all
 definitions
 types
   Inputs = map soroi_store`AttrName to soroi_engine_values`Parsed;
-  -- prepare 成功产生的派生值。
+  -- REQ-18：prepare 成功产生的派生值；无 prepare 时为空映射。
   Prepared = map soroi_store`AttrName to soroi_engine_values`Parsed;
-  -- REQ-12：body 交出的返回值；槽为空且正常结束时为 Absent。
+  -- REQ-12/REQ-17：body 交出的返回值；槽为空且正常结束时为 Absent，缺值交给 verify 的 required 判断。
   BodyResult = soroi_engine_values`Parsed | <Absent>;
 
   -- REQ-14：闭包参数按角色闭合。
   PrepareArgs ::
     inputs : Inputs;
+  -- REQ-18：body 的参数含 prepare 的派生值，所以 prepare 在 body 之前完成。
   BodyArgs ::
     inputs   : Inputs
     prepared : Prepared;
@@ -31,7 +33,7 @@ types
   ToolArgs ::
     base : BodyArgs
     call : soroi_engine_values`Parsed;
-  -- REQ-28：capture 只看见 inputs、prepared 与 body 结果，看不到其他出口捕获。
+  -- REQ-27/REQ-28：capture 以 Capture 角色的参数运行，只看见 inputs、prepared 与 body 结果，看不到其他出口捕获。
   CaptureArgs ::
     base     : BodyArgs
     returned : BodyResult;
@@ -63,6 +65,7 @@ types
     output   : soroi_store`OutputName
     required : bool
     script   : [soroi_store`Path];
+  -- REQ-10：preset 声明的捕获集：capture 测量、约定路径上的 [files]、声明工具的记录；范围外的副作用不被捕获。
   ClosureDecl ::
     body          : BodyKind
     returnShape   : soroi_engine_values`Shape
@@ -137,6 +140,7 @@ functions
           soroi_engine_values`parse(d.outShape, res.stdout) = RESULT.reply.value);
 
   -- REQ-12：Agent 体的返回值是返回槽里写进的值；Program 体的返回值是 stdout 按声明结构解析的结果。
+  -- REQ-16：Agent 体的返回值只来自经 soroi-closure 写进的返回槽，harness 自己的输出不进入它。
   bodyResult : ClosureDecl * [soroi_store`SlotWrite] * soroi_workspace`Collected -> BodyResult
   bodyResult(d, slot, c) ==
     cases d.body:
@@ -145,7 +149,17 @@ functions
     end
   pre d.body = <Program> => soroi_engine_values`parsed(soroi_engine_values`parse(d.returnShape, c.stdout));
 
-  -- REQ-12：capture 程序在出口运行一次，stdout 按该 capture 声明的结构解析。
+  -- REQ-25：body 只启动一次，结束只看这一次：Program 非成功结束，或 Agent 非成功结束且返回槽为空时，
+  --        闭包以 Runtime{Body} 结束；否则交出 body 结果。
+  bodyEnd : ClosureDecl * [soroi_store`SlotWrite] * soroi_workspace`Collected -> BodyResult | soroi_store`RuntimeFault
+  bodyEnd(d, slot, c) ==
+    if c.status = <NonSuccess> and (d.body = <Program> or slot = nil)
+    then mk_soroi_store`RuntimeFault(<Body>)
+    else bodyResult(d, slot, c)
+  pre c.status = <Success> and d.body = <Program> =>
+        soroi_engine_values`parsed(soroi_engine_values`parse(d.returnShape, c.stdout));
+
+  -- REQ-12/REQ-27：capture 程序在出口运行一次，stdout 按该 capture 声明的结构解析。
   captureValue : soroi_engine_values`Shape * soroi_workspace`Collected -> soroi_store`CapturedValue
   captureValue(s, c) == soroi_engine_values`valueOf(soroi_engine_values`parse(s, c.stdout))
   pre c.status = <Success> and soroi_engine_values`parsed(soroi_engine_values`parse(s, c.stdout));
@@ -216,6 +230,7 @@ functions
   pre v.script <> nil;
 
   -- REQ-29：坏结果停在本节点：任一 verify 拒绝时 Outcome 是 Runtime，不是 Out。
+  -- REQ-31：全部出口捕获与 verify 通过时 Outcome 为 Out{captured[]}，AbsentCapture 也留在其中。
   exitOutcome : map soroi_store`OutputName to soroi_store`CapturedValue * set of soroi_store`RuntimeFault
                 -> soroi_store`Outcome
   exitOutcome(m, faults) ==

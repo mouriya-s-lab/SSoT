@@ -38,7 +38,7 @@ description: SSoT 写一个元素的一层（LikeC4）：按总纲第二节写�
 1. **子元素。** 种类按总纲的 C4 层级：system 的子元素是 container，container 的子元素是 component。每个子元素一句职责描述；container 写 `technology`；数据存储带 `#datastore`。按职责与运行单元划分，不按执行步骤、角色或文件切；同层的兄弟各管一块，不重叠。
 2. **外部元素。** 外部系统与别人负责的部分不展开。
 3. **本层关系。** 关系连在子元素之间，以及子元素与 E 在上一层有关系的外部元素 X 之间（写 X 本身，不写 X 的子元素）。标题用本层的说法，短动词短语，顺箭头读成一句话。从外部元素指向子元素的关系也由本层声明，不改 X。
-4. **视图。** 有 E 时写 `view <V> of E`，带 `title`，`include *`；V 是 `index` 时写顶层视图 `view index`，不带 `of`。视图使用全局样式（`global style theme`）。
+4. **视图。** 有 E 时写 `view <V> of E`，带 `title` 与 `description`，`include *`；V 是 `index` 时写顶层视图 `view index`，不带 `of`。视图使用全局样式（`global style theme`）。
 5. **契约标记。** `#contract` 只写在没有子元素的元素上。前沿 `reason` 要求某个子元素承担契约时，给它加 `#contract`。E 本来带 `#contract`、本层给了它子元素时，去掉 E 的 `#contract`，把它的契约应由哪个子元素承担写进交付，下一项前沿是那个子元素的 `ssot-write-contract`（原模块的定义搬过去）。
 
 不预建：没有职责的子元素、没有调用的关系、为将来准备的标签都不写。

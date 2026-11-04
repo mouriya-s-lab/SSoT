@@ -50,6 +50,7 @@ module engine {
     if (t == "Manual") Store::Trigger_Manual
     else if (t == "DaemonLost") Store::Trigger_DaemonLost
     else Store::Trigger_Uncaught
+  pure val startReq: Control::StartReq = { request: "q1", workflow: "wf", inputs: Map() }
   pure val deriveReq: Control::DeriveReq = { source: "r1", cwd: "/", edits: List(), parallel: Nil }
 
   // ---------- 状态 ----------
@@ -59,6 +60,8 @@ module engine {
     handedOver: Set[str],
     // 结局是异常、且工作流有线接住它的运行项（REQ-47 的 consumed，由边文件决定，不在事实源头里）。
     caught: Set[str],
+    // REQ-52：工作流的 uncaught 设置：true 为 Continue（没有线接住的异常作为叶子保留，不触发停机），false 为 Halt。
+    continueUncaught: bool,
   }
 
   // 执行边界里尚未得到回复的 launch；跨崩溃保留。接纳与关闭不在这里另存：
@@ -174,10 +177,14 @@ module engine {
   def isEnded(rt: str): bool = endTag(rt) != "Open"
   def allEndedRun(r: str): bool = rtsOfRun(r).forall(rt => isEnded(rt))
   def isException(rt: str): bool = endTag(rt) == "Thrown" or endTag(rt) == "RuntimeFault"
-  def settledNaturally(rt: str): bool =
+  // 结局能被后续消费：Out、Ref、被线接住的异常；派生时只有这些记录可引用（REQ-47）。
+  def consumable(rt: str): bool =
     endTag(rt) == "Out" or endTag(rt) == "Ref" or (isException(rt) and rt.in(sched.caught))
-  // REQ-57：没有线接住的异常使运行欠下一次停机。
-  def owesHalt(r: str): bool = rtsOfRun(r).exists(rt => isException(rt) and not(rt.in(sched.caught)))
+  // REQ-52：Continue 下没有线接住的异常作为叶子保留，同样算自然结束。
+  def settledNaturally(rt: str): bool = consumable(rt) or (isException(rt) and sched.continueUncaught)
+  // REQ-52/REQ-57：uncaught = halt 时，没有线接住的异常使运行欠下一次停机。
+  def owesHalt(r: str): bool =
+    not(sched.continueUncaught) and rtsOfRun(r).exists(rt => isException(rt) and not(rt.in(sched.caught)))
   def stopping(r: str): bool = dmn.halting.get(r) != NONE
   def over(r: str): bool = haltTag(r) != NONE or r.in(dmn.finished)
   // body 的 launch 已被接纳、尚未取回。
@@ -220,7 +227,8 @@ module engine {
     | soroi_workspace(_) => s
     | soroi_store(op) => match op {
         | writeBundle(a) => { ...s, bundles: s.bundles.union(Set(a.b)) }
-        | writeRun(a) => { ...s, runs: s.runs.put(a.r, a.rec), order: s.order.put(a.r, List()) }
+        | writeRun(a) => { ...s, runs: s.runs.put(a.r, a.rec), order: s.order.put(a.r, List()),
+            requests: match a.q { | Some(q) => s.requests.put(q, a.r) | Nil => s.requests } }
         | writeStart(a) => match a.result {
             | WriteStart_Result_RuntimeId(rt) => { ...s,
                 runtimes: s.runtimes.put(rt, Store::Entry_Own({ start: a.s, buckets: List(), fin: Nil })),
@@ -281,32 +289,35 @@ module engine {
   }
 
   // ---------- 初始状态 ----------
-  action init = all {
-    store' = Store::initial,
-    ws' = Ws::initial,
-    sched' = { handedOver: Set(), caught: Set() },
-    bnd' = { inflight: Set(), injecting: Set() },
-    dmn' = {
-      budget: RUNS.mapBy(_r => 0), pendingStarts: RUNS.mapBy(_r => 0), nextRt: 0, nextExec: 0,
-      proc: ALL_RTS.mapBy(_rt => NONE), phase: ALL_RTS.mapBy(_rt => NONE), bodyRef: ALL_RTS.mapBy(_rt => NONE),
-      window: ALL_RTS.mapBy(_rt => false), tool: ALL_RTS.mapBy(_rt => NONE), toolRef: ALL_RTS.mapBy(_rt => NONE),
-      recorded: ALL_RTS.mapBy(_rt => 0), replied: ALL_RTS.mapBy(_rt => 0),
-      capturedItems: ALL_RTS.mapBy(_rt => Set()),
-      halting: RUNS.mapBy(_r => NONE), defect: RUNS.mapBy(_r => false),
-      stopWaiting: RUNS.mapBy(_r => false), finished: Set(),
-      crashed: false, startState: NONE, derive: NONE, haltByDerive: false, plannedRefs: Set(),
-    },
-    ghost' = {
-      admittedWhileHalting: false, cmdOutsideWindow: false,
-      recordedOutsideWindow: false, recordedUnobserved: false,
-      captureBeforeBody: false, verifiedEarly: false, deriveRejected: false, reattached: false,
-      defectReplied: false, deriveDefectReplied: false, lateLaunchAnswered: false, lateInjectAnswered: false, listFailed: false, firstTrigger: RUNS.mapBy(_r => NONE),
-    },
-    lastCall' = NoCall,
+  action init = {
+    nondet continueUncaught = Set(true, false).oneOf()
+    all {
+      store' = Store::initial,
+      ws' = Ws::initial,
+      sched' = { handedOver: Set(), caught: Set(), continueUncaught: continueUncaught },
+      bnd' = { inflight: Set(), injecting: Set() },
+      dmn' = {
+        budget: RUNS.mapBy(_r => 0), pendingStarts: RUNS.mapBy(_r => 0), nextRt: 0, nextExec: 0,
+        proc: ALL_RTS.mapBy(_rt => NONE), phase: ALL_RTS.mapBy(_rt => NONE), bodyRef: ALL_RTS.mapBy(_rt => NONE),
+        window: ALL_RTS.mapBy(_rt => false), tool: ALL_RTS.mapBy(_rt => NONE), toolRef: ALL_RTS.mapBy(_rt => NONE),
+        recorded: ALL_RTS.mapBy(_rt => 0), replied: ALL_RTS.mapBy(_rt => 0),
+        capturedItems: ALL_RTS.mapBy(_rt => Set()),
+        halting: RUNS.mapBy(_r => NONE), defect: RUNS.mapBy(_r => false),
+        stopWaiting: RUNS.mapBy(_r => false), finished: Set(),
+        crashed: false, startState: NONE, derive: NONE, haltByDerive: false, plannedRefs: Set(),
+      },
+      ghost' = {
+        admittedWhileHalting: false, cmdOutsideWindow: false,
+        recordedOutsideWindow: false, recordedUnobserved: false,
+        captureBeforeBody: false, verifiedEarly: false, deriveRejected: false, reattached: false,
+        defectReplied: false, deriveDefectReplied: false, lateLaunchAnswered: false, lateInjectAnswered: false, listFailed: false, firstTrigger: RUNS.mapBy(_r => NONE),
+      },
+      lastCall' = NoCall,
+    }
   }
 
   // ---------- 使用方的操作面（REQ-8） ----------
-  // 起运行：先发布 bundle，再发布完整的运行记录，之后才回复 RunId。
+  // REQ-3：起运行：先发布 bundle，再在一次发布中写下完整的运行记录与请求身份，之后才回复 RunId。
   action publishStartBundle = all {
     dmn.startState == NONE,
     not(dmn.crashed),
@@ -320,8 +331,7 @@ module engine {
     dmn.startState == NONE,
     not(dmn.crashed),
     sched' = sched, bnd' = bnd, ghost' = ghost, dmn' = dmn,
-    commit(soroi_engine_control(Control::Start({
-      req: { workflow: "wf", inputs: Map() }, result: Control::StartReply_InputRejected }))),
+    commit(soroi_engine_control(Control::Start({ req: startReq, result: Control::StartReply_InputRejected }))),
   }
 
   action publishStartRun = all {
@@ -329,7 +339,7 @@ module engine {
     not(dmn.crashed),
     sched' = sched, bnd' = bnd, ghost' = ghost,
     dmn' = { ...dmn, startState: "Published" },
-    commit(soroi_store(Store::writeRun({ r: "r1", rec: record(Nil) }))),
+    commit(soroi_store(Store::writeRun({ r: "r1", q: Some("q1"), rec: record(Nil) }))),
   }
 
   action replyStart = all {
@@ -338,8 +348,7 @@ module engine {
     sched' = { ...sched, handedOver: sched.handedOver.union(Set("r1")) },
     bnd' = bnd, ghost' = ghost,
     dmn' = { ...dmn, startState: "Replied", budget: dmn.budget.set("r1", BUDGET) },
-    commit(soroi_engine_control(Control::Start({
-      req: { workflow: "wf", inputs: Map() }, result: Control::StartReply_RunId("r1") }))),
+    commit(soroi_engine_control(Control::Start({ req: startReq, result: Control::StartReply_RunId("r1") }))),
   }
 
   // REQ-53：同一运行后到的停机请求并入进行中的停机过程，触发保持为最先受理的那个。
@@ -430,16 +439,16 @@ module engine {
     not(dmn.crashed),
     sched' = sched, bnd' = bnd, ghost' = ghost,
     dmn' = { ...dmn, derive: "Created" },
-    commit(soroi_store(Store::writeRun({ r: "r2",
+    commit(soroi_store(Store::writeRun({ r: "r2", q: Nil,
       rec: record(Some({ id: "d1", source: "r1", edits: List() })) }))),
   }
 
-  // REQ-47–REQ-49：派生按旧运行的记录取得沿用与重跑分区。分区只由 derivation`plan 的 post 定义，
+  // REQ-47/REQ-48/REQ-49：派生按旧运行的记录取得沿用与重跑分区。分区只由 derivation`plan 的 post 定义，
   // 这里给出的结果载荷由回放检查（本模型的编辑集合为空、记录没有来源，重跑的就是不可引用的记录）。
   action planDerive = all {
     dmn.derive == "Created",
     not(dmn.crashed),
-    val refs = rtsOfRun("r1").filter(rt => settledNaturally(rt))
+    val refs = rtsOfRun("r1").filter(rt => consumable(rt))
     all {
       sched' = sched, bnd' = bnd, ghost' = ghost,
       dmn' = { ...dmn, derive: "Planned", plannedRefs: refs },
@@ -476,6 +485,7 @@ module engine {
 
   // ---------- 推进 ----------
   // REQ-53：停机过程开始后不为该运行准入候选。
+  // REQ-6：准入只受并发上限与停机约束，候选之间不排序、不互相等待。
   action admit(r: str): bool = all {
     r.in(sched.handedOver),
     dmn.budget.get(r) > 0,
@@ -527,7 +537,7 @@ module engine {
     commit(NoCall),
   }
 
-  // REQ-57：没有线接住的异常（uncaught = halt）触发停机。
+  // REQ-52/REQ-57：uncaught = halt 时，没有线接住的异常触发停机；Continue 下运行不欠停机。
   action haltOnUncaught(r: str): bool = all {
     owesHalt(r),
     not(stopping(r)),
@@ -549,6 +559,7 @@ module engine {
     commit(soroi_store(Store::readStart({ rt: rt, result: startOf(rt) }))),
   }
 
+  // REQ-4：闭包只为 writeStart 已返回 RuntimeId 的运行项打开：writeStart 先于该运行项的 open。
   action openClosure(rt: str): bool = all {
     live(rt),
     dmn.phase.get(rt) == "Read",
@@ -944,7 +955,7 @@ module engine {
     commit(NoCall),
   }
 
-  // 重启后对每个尚未结束的运行以 DaemonLost 开始停机过程，不 resume。
+  // REQ-51/REQ-58：重启后对每个尚未结束的运行以 DaemonLost 开始停机过程；引擎不 resume、不重试、不回退。
   action daemonLost(r: str): bool = all {
     not(dmn.crashed),
     published(r),
@@ -1024,6 +1035,8 @@ module engine {
   val finishedIsQuiescent = RUNS.forall(r => r.in(dmn.finished) implies finishedByRecords(r))
   // REQ-57
   val finishedHasNoHalt = RUNS.forall(r => r.in(dmn.finished) implies haltTag(r) == NONE)
+  // REQ-52
+  val continueNeverHaltsOnUncaught = sched.continueUncaught implies RUNS.forall(r => haltTag(r) != "Uncaught")
   // REQ-42
   val rejectedDeriveHasNoEffect = ghost.deriveRejected implies (not(dmn.haltByDerive) and not(published("r2")))
   // REQ-44
@@ -1032,7 +1045,7 @@ module engine {
   val safety = and {
     noAdmitWhileHalting, triggerIsFirst, commandsInsideWindow, capturesAfterBody, replyAfterRecord,
     recordOnlyObserved, noRecordAfterWindow,
-    verifyAfterAllCaptures, endAfterClose, finishedIsQuiescent, finishedHasNoHalt,
+    verifyAfterAllCaptures, endAfterClose, finishedIsQuiescent, finishedHasNoHalt, continueNeverHaltsOnUncaught,
     rejectedDeriveHasNoEffect, deriveAfterOldRunStopped,
   }
 
@@ -1044,6 +1057,9 @@ module engine {
   val witnessUncaughtHalt = RUNS.exists(r => haltTag(r) == "Uncaught")
   // 路径要走完一个运行项的整个闭包（含 inject）再停机，约 30 步，放宽定向模拟的步数。
   pure val maxSteps_witnessUncaughtHalt = 45
+  // REQ-52：Continue 下运行带着没有线接住的异常自然完成，不写 halt。
+  val witnessContinuedUncaught = RUNS.exists(r =>
+    r.in(dmn.finished) and rtsOfRun(r).exists(rt => isException(rt) and not(rt.in(sched.caught))))
   val witnessReattached = ghost.reattached
   val witnessToolReplied = ALL_RTS.exists(rt => dmn.replied.get(rt) > 0)
   val witnessDefectReplied = ghost.defectReplied

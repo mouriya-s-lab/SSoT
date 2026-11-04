@@ -28,6 +28,7 @@ soroi.engine.scheduler -> soroi.store '读取运行事实并登记运行项'
 ```text
 view engineView of soroi.engine {
   title 'Engine 组件图'
+  description 'Engine 内部由哪些功能块组成，它们之间以及与外部怎样调用'
   include *
 }
 ```
@@ -38,6 +39,7 @@ view engineView of soroi.engine {
 ```text
 view engineView of soroi.engine {
   title 'Engine 组件图'
+  description 'Engine 内部由哪些功能块组成，它们之间以及与外部怎样调用'
   include *
   group '受理' {
     include soroi.engine.control
@@ -50,20 +52,16 @@ view engineView of soroi.engine {
 ```text
 specification {
   deploymentNode host
-  deploymentNode process
-  tag implementer
+  tag untrusted
 }
 deployment {
   host daemonHost 'Daemon host' {
     description '运行 soroi 守护进程与事实源头的主机'
-    process daemon 'soroi daemon' {
-      description '可以退出与重启的守护进程'
-      instanceOf soroi.engine
-    }
+    instanceOf soroi.engine
     instanceOf soroi.store
   }
   host execEnv 'Execution environment' {
-    #implementer
+    #untrusted
     description '实现者提供的执行环境，与核心分属不同的信任边界'
     instanceOf soroi.workspace
     instanceOf preset
@@ -72,13 +70,35 @@ deployment {
 views {
   deployment view deployed {
     title 'soroi 部署图'
+    description 'soroi 的容器运行在哪些主机上，信任边界在哪里'
     include daemonHost.**
     include execEnv.**
+    exclude * -> * where source.kind is component or target.kind is component
+    style daemonHost.engine {
+      notation 'Container'
+    }
+    style execEnv.workspace {
+      notation 'Container'
+    }
+    style daemonHost.store {
+      shape storage
+      notation 'Container: Data Store'
+    }
+    style execEnv.preset {
+      color muted
+      notation 'External Software System'
+    }
+    style execEnv {
+      color red
+      notation 'Untrusted execution environment'
+    }
   }
 }
 ```
 
 部署视图的 id 就是部署切片的名字。部署模型不在任何逻辑视图里，它的诊断按全局报告，部署切片的检查用 `ssot check <design> --scope index`。
+
+部署视图里的 `style` 只能按实例或节点的路径选中（`daemonHost.store`、`execEnv`）；按标签或种类选中的样式规则 LikeC4 不支持，写了以后整个视图不被导出。
 
 ## 三、自查渲染图
 

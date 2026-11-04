@@ -29,7 +29,7 @@ types
     reason : RejectedEdit;
   RejectedEdit = <ForeignRuntime> | <UnknownAttr> | <DuplicateEdit> | <BadValue>;
 
-  -- REQ-47–REQ-49：压平后的旧运行：每个运行项都是 Own 记录（Ref 已解析为它的源记录）。
+  -- REQ-47/REQ-48/REQ-49：压平后的旧运行：每个运行项都是 Own 记录（Ref 已解析为它的源记录）。
   Flat = map soroi_store`RuntimeId to soroi_store`Own;
 
   Partition ::
@@ -118,6 +118,7 @@ functions
     (not consumed and (is_soroi_store`Thrown(o.fin.outcome) or is_soroi_store`RuntimeFault(o.fin.outcome)));
 
   -- REQ-47：A₀ 是每个编辑 at 的位置与全部不可引用记录的位置的并集。
+  -- REQ-50：没有编辑时起点只有不可引用记录的位置，它们与下游在新闭包里从头运行，即原样继续。
   seeds : Flat * set of soroi_store`RuntimeId * seq of soroi_store`Edit -> set of soroi_store`Position
   seeds(f, consumed, es) ==
     {f(e.at).start.position | e in set elems es & e.at in set dom f} union
@@ -151,6 +152,7 @@ functions
                               (f(r).start.position in set RESULT.rerun <=> f(r).start.position in set aff);
 
   -- REQ-38：环境只由记录重建，不执行程序。Out 的有值产出进入 outputs，被消费的异常进入 caught。
+  -- REQ-31：AbsentCapture 留在 Out 里，但不进入环境。
   rebuildEnv : Flat * set of soroi_store`RuntimeId -> Env
   rebuildEnv(f, consumed) ==
     mk_Env(
@@ -174,7 +176,8 @@ functions
   reasonText(-) == is not yet specified;
 
 operations
-  -- REQ-47–REQ-49：按旧运行的记录给出沿用与重跑分区；派生运行为 refs 中的每个旧记录追加一条 Ref。
+  -- REQ-47/REQ-48/REQ-49：按旧运行的记录给出沿用与重跑分区；派生运行为 refs 中的每个旧记录追加一条 Ref。
+  -- REQ-41：停机、暂停、崩溃恢复与介入都经这一个分区继续：旧记录不改写，受影响与被停机结束的位置重跑，其余以 Ref 复用。
   plan(f : Flat, consumed : set of soroi_store`RuntimeId, es : seq of soroi_store`Edit) p : Partition
   post p = partition(f, affected(f, seeds(f, consumed, es)));
 

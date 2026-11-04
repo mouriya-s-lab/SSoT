@@ -14,34 +14,9 @@
       "fqn": "preset",
       "kind": "system",
       "parent": null,
-      "children": [
-        "preset.agent",
-        "preset.programs"
-      ],
-      "tags": [
-        "untrusted"
-      ],
-      "business": false,
-      "contract": null
-    },
-    {
-      "fqn": "preset.agent",
-      "kind": "container",
-      "parent": "preset",
       "children": [],
       "tags": [
-        "leaf"
-      ],
-      "business": false,
-      "contract": null
-    },
-    {
-      "fqn": "preset.programs",
-      "kind": "container",
-      "parent": "preset",
-      "children": [],
-      "tags": [
-        "leaf"
+        "external"
       ],
       "business": false,
       "contract": null
@@ -55,16 +30,9 @@
         "soroi.store",
         "soroi.workspace"
       ],
-      "tags": [
-        "contract",
-        "shared"
-      ],
+      "tags": [],
       "business": false,
-      "contract": {
-        "module": "soroi",
-        "shared": true,
-        "allowedImports": []
-      }
+      "contract": null
     },
     {
       "fqn": "soroi.engine",
@@ -75,12 +43,11 @@
         "soroi.engine.control",
         "soroi.engine.derivation",
         "soroi.engine.halting",
-        "soroi.engine.scheduler"
+        "soroi.engine.scheduler",
+        "soroi.engine.values"
       ],
-      "tags": [
-        "business"
-      ],
-      "business": true,
+      "tags": [],
+      "business": false,
       "contract": null
     },
     {
@@ -89,18 +56,11 @@
       "parent": "soroi.engine",
       "children": [],
       "tags": [
-        "contract",
-        "leaf"
+        "contract"
       ],
-      "business": true,
+      "business": false,
       "contract": {
-        "module": "soroi_engine_closure",
-        "shared": false,
-        "allowedImports": [
-          "soroi",
-          "soroi_store",
-          "soroi_workspace"
-        ]
+        "module": "soroi_engine_closure"
       }
     },
     {
@@ -109,18 +69,11 @@
       "parent": "soroi.engine",
       "children": [],
       "tags": [
-        "contract",
-        "leaf"
+        "contract"
       ],
-      "business": true,
+      "business": false,
       "contract": {
-        "module": "soroi_engine_control",
-        "shared": false,
-        "allowedImports": [
-          "soroi",
-          "soroi_engine_derivation",
-          "soroi_store"
-        ]
+        "module": "soroi_engine_control"
       }
     },
     {
@@ -129,17 +82,11 @@
       "parent": "soroi.engine",
       "children": [],
       "tags": [
-        "contract",
-        "leaf"
+        "contract"
       ],
-      "business": true,
+      "business": false,
       "contract": {
-        "module": "soroi_engine_derivation",
-        "shared": false,
-        "allowedImports": [
-          "soroi",
-          "soroi_store"
-        ]
+        "module": "soroi_engine_derivation"
       }
     },
     {
@@ -147,10 +94,8 @@
       "kind": "component",
       "parent": "soroi.engine",
       "children": [],
-      "tags": [
-        "leaf"
-      ],
-      "business": true,
+      "tags": [],
+      "business": false,
       "contract": null
     },
     {
@@ -158,11 +103,22 @@
       "kind": "component",
       "parent": "soroi.engine",
       "children": [],
-      "tags": [
-        "leaf"
-      ],
-      "business": true,
+      "tags": [],
+      "business": false,
       "contract": null
+    },
+    {
+      "fqn": "soroi.engine.values",
+      "kind": "component",
+      "parent": "soroi.engine",
+      "children": [],
+      "tags": [
+        "contract"
+      ],
+      "business": false,
+      "contract": {
+        "module": "soroi_engine_values"
+      }
     },
     {
       "fqn": "soroi.store",
@@ -171,280 +127,167 @@
       "children": [],
       "tags": [
         "contract",
-        "leaf"
+        "datastore"
       ],
       "business": false,
       "contract": {
-        "module": "soroi_store",
-        "shared": false,
-        "allowedImports": [
-          "soroi"
-        ]
+        "module": "soroi_store"
       }
     },
     {
       "fqn": "soroi.workspace",
       "kind": "container",
       "parent": "soroi",
-      "children": [
-        "soroi.workspace.executor",
-        "soroi.workspace.harness",
-        "soroi.workspace.route"
-      ],
+      "children": [],
       "tags": [
-        "contract",
-        "implementer"
+        "contract"
       ],
       "business": false,
       "contract": {
-        "module": "soroi_workspace",
-        "shared": false,
-        "allowedImports": [
-          "soroi"
-        ]
+        "module": "soroi_workspace"
       }
-    },
-    {
-      "fqn": "soroi.workspace.executor",
-      "kind": "component",
-      "parent": "soroi.workspace",
-      "children": [],
-      "tags": [
-        "implementer",
-        "leaf"
-      ],
-      "business": false,
-      "contract": null
-    },
-    {
-      "fqn": "soroi.workspace.harness",
-      "kind": "component",
-      "parent": "soroi.workspace",
-      "children": [],
-      "tags": [
-        "implementer",
-        "leaf"
-      ],
-      "business": false,
-      "contract": null
-    },
-    {
-      "fqn": "soroi.workspace.route",
-      "kind": "component",
-      "parent": "soroi.workspace",
-      "children": [],
-      "tags": [
-        "implementer",
-        "leaf"
-      ],
-      "business": false,
-      "contract": null
     }
   ],
   "relations": [
     {
       "source": "caller",
       "target": "soroi",
-      "kind": "calls",
-      "title": "管理运行并取得运行事实"
+      "title": "管理运行并读取运行事实"
     },
     {
       "source": "caller",
       "target": "soroi.engine",
-      "kind": "calls",
-      "title": "管理运行的生命周期"
+      "title": "管理运行"
     },
     {
       "source": "caller",
       "target": "soroi.engine.control",
-      "kind": "calls",
-      "title": "管理运行的生命周期"
+      "title": "提交启动、停止与派生请求"
     },
     {
       "source": "caller",
       "target": "soroi.store",
-      "kind": "calls",
-      "title": "取得运行事实"
+      "title": "读取运行事实"
     },
     {
       "source": "preset",
       "target": "soroi",
-      "kind": "callback",
-      "title": "交回工作结果与请求"
+      "title": "提交工具调用与返回结果"
     },
     {
       "source": "preset",
       "target": "soroi.workspace",
-      "kind": "callback",
-      "title": "交回工作结果与请求"
-    },
-    {
-      "source": "preset",
-      "target": "soroi.workspace.route",
-      "kind": "callback",
-      "title": "交回工作结果与请求"
-    },
-    {
-      "source": "preset.agent",
-      "target": "soroi.workspace.route",
-      "kind": "callback",
-      "title": "交回工作结果与请求"
-    },
-    {
-      "source": "preset.programs",
-      "target": "soroi.workspace.route",
-      "kind": "callback",
-      "title": "交回工作结果与请求"
+      "title": "提交工具调用与返回结果"
     },
     {
       "source": "soroi",
       "target": "preset",
-      "kind": "calls",
-      "title": "承担工作流中具体工作的执行"
+      "title": "运行具体工作"
     },
     {
       "source": "soroi.engine",
       "target": "soroi.store",
-      "kind": "calls",
-      "title": "读取并记录运行事实"
+      "title": "读写运行事实"
     },
     {
       "source": "soroi.engine",
       "target": "soroi.workspace",
-      "kind": "calls",
-      "title": "在执行边界内执行运行项并收束"
+      "title": "在执行边界内执行运行项"
+    },
+    {
+      "source": "soroi.engine.closure",
+      "target": "soroi.engine.values",
+      "title": "解析执行方交回的值"
     },
     {
       "source": "soroi.engine.closure",
       "target": "soroi.store",
-      "kind": "calls",
-      "title": "直接取得本运行项的输入并写入它的事实"
+      "title": "读取输入并写入运行项事实"
     },
     {
       "source": "soroi.engine.closure",
       "target": "soroi.workspace",
-      "kind": "calls",
-      "title": "在闭包边界内执行并收束"
+      "title": "在执行边界内执行并关闭运行项"
     },
     {
       "source": "soroi.engine.control",
       "target": "soroi.engine.derivation",
-      "kind": "calls",
-      "title": "从旧运行派生新运行"
+      "title": "派生新运行"
     },
     {
       "source": "soroi.engine.control",
       "target": "soroi.engine.halting",
-      "kind": "calls",
       "title": "停下运行"
     },
     {
       "source": "soroi.engine.control",
       "target": "soroi.engine.scheduler",
-      "kind": "calls",
-      "title": "把新运行交给推进"
+      "title": "交出新运行"
+    },
+    {
+      "source": "soroi.engine.control",
+      "target": "soroi.engine.values",
+      "title": "解析任务输入"
     },
     {
       "source": "soroi.engine.control",
       "target": "soroi.store",
-      "kind": "calls",
-      "title": "发布新运行的记录"
+      "title": "发布新运行"
     },
     {
       "source": "soroi.engine.derivation",
       "target": "soroi.engine.halting",
-      "kind": "calls",
-      "title": "依赖源运行的停机"
+      "title": "停下源运行"
+    },
+    {
+      "source": "soroi.engine.derivation",
+      "target": "soroi.engine.values",
+      "title": "解析编辑值"
     },
     {
       "source": "soroi.engine.derivation",
       "target": "soroi.store",
-      "kind": "calls",
-      "title": "读取旧运行的记录，发布派生运行"
+      "title": "读取源运行并发布派生运行"
     },
     {
       "source": "soroi.engine.halting",
       "target": "soroi.engine.closure",
-      "kind": "calls",
       "title": "收束未结束的运行项"
     },
     {
       "source": "soroi.engine.halting",
       "target": "soroi.engine.scheduler",
-      "kind": "calls",
-      "title": "停止为该运行准入"
+      "title": "停止准入"
     },
     {
       "source": "soroi.engine.halting",
       "target": "soroi.store",
-      "kind": "calls",
-      "title": "读取运行事实并写下运行的结束锚点"
+      "title": "写下运行的结束"
     },
     {
       "source": "soroi.engine.scheduler",
       "target": "soroi.engine.closure",
-      "kind": "calls",
-      "title": "委托运行项的生命周期"
+      "title": "交出准入的运行项"
     },
     {
       "source": "soroi.engine.scheduler",
       "target": "soroi.store",
-      "kind": "calls",
-      "title": "读取运行事实并记录运行项"
+      "title": "读取运行事实并登记运行项"
     },
     {
       "source": "soroi.workspace",
       "target": "preset",
-      "kind": "calls",
-      "title": "运行执行方"
+      "title": "运行 agent 与作者程序"
     },
     {
       "source": "soroi.workspace",
       "target": "soroi.engine",
-      "kind": "callback",
-      "title": "把执行方的交回与请求交给所属运行项"
+      "title": "转交执行方的调用与结果"
     },
     {
       "source": "soroi.workspace",
       "target": "soroi.engine.closure",
-      "kind": "callback",
-      "title": "把执行方的交回与请求交给所属运行项的闭包过程"
-    },
-    {
-      "source": "soroi.workspace.executor",
-      "target": "preset",
-      "kind": "calls",
-      "title": "运行作者程序"
-    },
-    {
-      "source": "soroi.workspace.executor",
-      "target": "preset.programs",
-      "kind": "calls",
-      "title": "运行作者程序"
-    },
-    {
-      "source": "soroi.workspace.executor",
-      "target": "soroi.workspace.harness",
-      "kind": "calls",
-      "title": "经插槽启动 agent"
-    },
-    {
-      "source": "soroi.workspace.harness",
-      "target": "preset",
-      "kind": "calls",
-      "title": "启动 agent"
-    },
-    {
-      "source": "soroi.workspace.harness",
-      "target": "preset.agent",
-      "kind": "calls",
-      "title": "启动 agent"
-    },
-    {
-      "source": "soroi.workspace.route",
-      "target": "soroi.engine.closure",
-      "kind": "callback",
-      "title": "把执行方的交回与请求交给所属运行项的闭包过程"
+      "title": "转交执行方的调用与结果"
     }
   ],
   "views": [
@@ -459,6 +302,7 @@
         "soroi.engine.derivation",
         "soroi.engine.halting",
         "soroi.engine.scheduler",
+        "soroi.engine.values",
         "soroi.store",
         "soroi.workspace"
       ]
@@ -473,16 +317,6 @@
       ]
     },
     {
-      "id": "presetView",
-      "of": "preset",
-      "nodes": [
-        "preset",
-        "preset.agent",
-        "preset.programs",
-        "soroi"
-      ]
-    },
-    {
       "id": "soroiView",
       "of": "soroi",
       "nodes": [
@@ -492,18 +326,6 @@
         "soroi.engine",
         "soroi.store",
         "soroi.workspace"
-      ]
-    },
-    {
-      "id": "workspaceView",
-      "of": "soroi.workspace",
-      "nodes": [
-        "preset",
-        "soroi.engine",
-        "soroi.workspace",
-        "soroi.workspace.executor",
-        "soroi.workspace.harness",
-        "soroi.workspace.route"
       ]
     }
   ]

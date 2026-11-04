@@ -1,4 +1,5 @@
 // 编译阶段：Quint。只读 CLI 的 --out JSON（parse/compile/typecheck/run）与 --source-map；不读控制台文本。
+import { availableParallelism } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { type Diagnostic, type Position, type Subject, diag, global } from "../diag";
 import { type Origin } from "../gen/contract";
@@ -76,12 +77,77 @@ export type QuintCompile =
   | { readonly kind: "ok"; readonly module: QuintModule; readonly diagnostics: readonly Diagnostic[] }
   | { readonly kind: "failed"; readonly diagnostics: readonly Diagnostic[] };
 
-/** 每次 Quint 调用都有截止；超时被杀时返回 "timeout"，调用方据此报诊断，不死等。 */
-export async function quint(args: readonly string[], deadlineMs = 300_000): Promise<number | "timeout"> {
-  const proc = Bun.spawn([...quintCommand(), ...args], { stdout: "pipe", stderr: "pipe", timeout: deadlineMs, killSignal: "SIGKILL" });
-  await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
-  const code = await proc.exited;
-  return proc.signalCode !== null ? "timeout" : code;
+/**
+ * 每个 quint 子进程自成一个进程组（detached → setsid）。rust 后端的求值器是 quint 的子进程，只杀 quint 会把它留成孤儿继续跑，
+ * 所以截止、调用结束与 ssot 自身退出时都按组杀；脱离了终端的进程组收不到终端的 Ctrl-C，由这里转发。
+ */
+const live = new Set<number>();
+
+function killGroup(pid: number): void {
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch (e) {
+    if (!(e instanceof Error && "code" in e && e.code === "ESRCH")) throw e;
+  }
+}
+
+process.on("exit", () => {
+  for (const pid of live) killGroup(pid);
+});
+for (const [signal, code] of [["SIGINT", 130], ["SIGTERM", 143]] as const)
+  process.on(signal, () => process.exit(code));
+
+/** 同时运行的 quint 进程数；留一个核给并行的 QuickCheck。 */
+const SLOTS = Math.max(1, availableParallelism() - 1);
+let running = 0;
+const waiting: (() => void)[] = [];
+
+async function acquire(): Promise<void> {
+  if (running < SLOTS) {
+    running++;
+    return;
+  }
+  const { promise, resolve } = Promise.withResolvers<void>();
+  waiting.push(resolve);
+  await promise;
+}
+
+function release(): void {
+  const next = waiting.shift();
+  if (next) next();
+  else running--;
+}
+
+/** 一次 quint 调用怎样结束，以及进程本身运行了多久（不含在进程池里排队的时间）。 */
+export interface QuintExit {
+  readonly kind: "exited" | "timeout";
+  readonly ms: number;
+}
+
+/** 每次 Quint 调用都有截止（从进程启动算起，不含排队）；超时被杀时 kind 为 "timeout"，调用方据此报诊断，不死等。 */
+export async function quint(args: readonly string[], deadlineMs = 300_000): Promise<QuintExit> {
+  await acquire();
+  try {
+    const proc = Bun.spawn([...quintCommand(), ...args], { stdout: "pipe", stderr: "pipe", detached: true });
+    const started = performance.now();
+    live.add(proc.pid);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      killGroup(proc.pid);
+    }, deadlineMs);
+    try {
+      await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+      await proc.exited;
+      return { kind: timedOut ? "timeout" : "exited", ms: Math.round(performance.now() - started) };
+    } finally {
+      clearTimeout(timer);
+      killGroup(proc.pid);
+      live.delete(proc.pid);
+    }
+  } finally {
+    release();
+  }
 }
 
 export function quintPosition(l: QuintLoc, mapFile: (f: string) => string): Position {

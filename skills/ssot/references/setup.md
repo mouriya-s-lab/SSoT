@@ -15,6 +15,7 @@
 |---|---|
 | VDMJ 与 QuickCheck 的 jar（Maven Central） | `${XDG_DATA_HOME:-~/.local/share}/ssot/` |
 | LikeC4、Quint、TypeScript（npm） | 同一目录下的 `node_modules/` |
+| Quint 模拟用的 rust 求值器（版本由所装的 Quint 决定） | `~/.quint/rust-evaluator-<版本>/`；设了 `QUINT_HOME` 时在它下面 |
 | `ssot` 命令 | `~/.local/bin/ssot`，运行本 skill 的 `scripts/ssot.ts` |
 
 想换到更新的版本，再运行一次 `ssot setup`。

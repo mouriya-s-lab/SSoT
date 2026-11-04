@@ -584,8 +584,8 @@ public class Vdm {
     });
   }
   static J run(String[] args) throws Exception {
-    if(args.length<2) throw new IllegalArgumentException("Usage: Vdm.java project [--check=m1,m2] files... OR eval files... < [[module, expression], ...]");
-    String cmd=args[0]; if(!Set.of("project","eval").contains(cmd)) throw new IllegalArgumentException("Unknown subcommand "+cmd);
+    if(args.length<2) throw new IllegalArgumentException("Usage: Vdm.java project|obligations [--check=m1,m2] files... OR eval files... < [[module, expression], ...]");
+    String cmd=args[0]; if(!Set.of("project","obligations","eval").contains(cmd)) throw new IllegalArgumentException("Unknown subcommand "+cmd);
     int first=1;
     if(args[1].startsWith("--check=")) {
       String list=args[1].substring("--check=".length());
@@ -620,9 +620,18 @@ public class Vdm {
       ModuleInterpreter initialized=interpreter;
       put(out,"modules",array(tc,m->module(m,initialized,projectionMessages)));
       put(out,"typecheckDiagnostics",new Arr(projectionMessages));
-      if(initialized!=null) initialized.setDefaultName(tc.get(0).name.getName());
+    }
+    // QuickCheck runs in its own process so the caller can overlap it with behaviour simulation; contract projection does not need it.
+    // An uninitialisable state has no obligations to check; the project subcommand reports why.
+    if(ok && cmd.equals("obligations")) {
+      ModuleInterpreter interpreter;
+      try {
+        INModuleList in=ClassMapper.getInstance(INNode.MAPPINGS).init().convert(tc);
+        interpreter=new ModuleInterpreter(in,tc); interpreter.init();
+      } catch(Exception e) { interpreter=null; }
+      if(interpreter!=null) interpreter.setDefaultName(tc.get(0).name.getName());
       long poStart=System.nanoTime();
-      put(out,"proofObligations",initialized==null?new Arr(List.of()):obligations(tc)); put(out,"poMs",n(ms(poStart)));
+      put(out,"proofObligations",interpreter==null?new Arr(List.of()):obligations(tc)); put(out,"poMs",n(ms(poStart)));
       put(out,"poDiagnostics",diagnostics(TypeChecker.getErrors(),TypeChecker.getWarnings()));
     }
     if(ok && cmd.equals("eval")) {

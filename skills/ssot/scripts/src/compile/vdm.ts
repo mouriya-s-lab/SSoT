@@ -143,6 +143,12 @@ interface ProjectOutput {
   readonly parseDiagnostics: readonly Message[];
   readonly typecheckDiagnostics: readonly Message[];
   readonly modules?: readonly VdmModule[];
+  readonly kind?: "error";
+  readonly message?: string;
+}
+
+interface ObligationsOutput {
+  readonly ok?: boolean;
   readonly proofObligations?: readonly ProofObligation[];
   readonly kind?: "error";
   readonly message?: string;
@@ -150,12 +156,15 @@ interface ProjectOutput {
 
 export interface VdmProject {
   readonly modules: readonly VdmModule[];
-  readonly proofObligations: readonly ProofObligation[];
 }
 
 export type VdmResult =
   | { readonly kind: "ok"; readonly project: VdmProject; readonly diagnostics: readonly Diagnostic[] }
   | { readonly kind: "failed"; readonly diagnostics: readonly Diagnostic[] };
+
+export type ObligationsResult =
+  | { readonly kind: "ok"; readonly obligations: readonly ProofObligation[] }
+  | { readonly kind: "failed"; readonly diagnostic: Diagnostic };
 
 export interface EvalResult {
   readonly module: string;
@@ -187,17 +196,28 @@ async function helper<T>(args: readonly string[], stdin?: string): Promise<T> {
 
 /**
  * 文件 → 元素归属由调用方给出；这里只把 VDMJ 消息变成诊断。
- * checked：只对这些模块做谓词采样与 QuickCheck（`--scope` 的切片闭包）；null 为全部模块。编译与投影总是全量。
+ * checked：只对这些模块做谓词采样（`--scope` 的切片闭包）；null 为全部模块。编译与投影总是全量。
  */
 export async function compileVdm(files: readonly string[], subjectOf: (file: string) => Diagnostic["subject"], checked: ReadonlySet<string> | null): Promise<VdmResult> {
-  if (files.length === 0) return { kind: "ok", project: { modules: [], proofObligations: [] }, diagnostics: [] };
+  if (files.length === 0) return { kind: "ok", project: { modules: [] }, diagnostics: [] };
   const out = await helper<ProjectOutput>(["project", ...(checked === null ? [] : [`--check=${[...checked].sort().join(",")}`]), ...files]);
   if (out.kind === "error") return { kind: "failed", diagnostics: [diag("compile.vdm", global, null, `VDMJ 投影失败：${out.message}`)] };
   const diagnostics = [...out.parseDiagnostics, ...out.typecheckDiagnostics].map((m) =>
     diag("compile.vdm", subjectOf(m.file), { file: m.file, line: m.line, col: m.col }, `VDMJ ${m.number}: ${m.message}`, m.severity),
   );
   if (!out.ok || !out.modules) return { kind: "failed", diagnostics };
-  return { kind: "ok", project: { modules: out.modules, proofObligations: out.proofObligations ?? [] }, diagnostics };
+  return { kind: "ok", project: { modules: out.modules }, diagnostics };
+}
+
+/**
+ * 证明义务与 QuickCheck，单独一个进程，调用方可与行为模拟并行。只在 compileVdm 成功之后调用；checked 同上。
+ * 编译与类型检查的诊断由 compileVdm 报告，这里不重复。
+ */
+export async function checkObligations(files: readonly string[], checked: ReadonlySet<string> | null): Promise<ObligationsResult> {
+  if (files.length === 0) return { kind: "ok", obligations: [] };
+  const out = await helper<ObligationsOutput>(["obligations", ...(checked === null ? [] : [`--check=${[...checked].sort().join(",")}`]), ...files]);
+  if (out.kind === "error") return { kind: "failed", diagnostic: diag("compile.vdm", global, null, `VDMJ 证明义务检查失败：${out.message}`) };
+  return { kind: "ok", obligations: out.proofObligations ?? [] };
 }
 
 /** 一个不透明值：在 module 里求 expr 得到，以 typeModule`typeName 的类型绑定为 name（见 java/Vdm.java 的 Bind）。 */

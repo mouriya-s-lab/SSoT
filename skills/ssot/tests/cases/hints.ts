@@ -87,7 +87,7 @@ export function verifyProjections(): number {
   const allImporter = { ...importer, imports: [{ module: "shop_ledger", items: [{ kind: "all", name: null, renamed: null } as const] }] };
   const reader = { ...importer, fieldReads: ["shop_ledger`Thing.value"] };
   function check(id: string, rule: RuleId, count: number, modules: readonly VdmModule[], structure = s): void {
-    const project: VdmProject = { modules, proofObligations: [] };
+    const project: VdmProject = { modules };
     const found = hintRules(structure, project).filter((d) => d.rule === rule);
     assert.equal(found.length, count, id);
     for (const d of found) {

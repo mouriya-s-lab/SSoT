@@ -1,7 +1,7 @@
-// `ssot setup`：检查 java，取最新的 VDMJ 与 QuickCheck、LikeC4、Quint、TypeScript，装进 DATA；把 `ssot` 装进 BIN。
-import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+// `ssot setup`：检查 java，取最新的 VDMJ 与 QuickCheck、LikeC4、Quint（含它的 rust 求值器）、TypeScript，装进 DATA；把 `ssot` 装进 BIN。
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { BIN, DATA, JARS, SETUP_GUIDE } from "./install";
+import { BIN, DATA, JARS, SETUP_GUIDE, quintCommand } from "./install";
 
 const MAVEN = "https://repo1.maven.org/maven2/dk/au/ece/vdmj";
 /** Vdm.java 用到 sealed interface、record 与 switch 模式匹配。 */
@@ -58,6 +58,22 @@ async function installPackages(): Promise<void> {
   if (run.exitCode !== 0) throw new Error(`bun add 以 ${run.exitCode} 退出`);
 }
 
+/**
+ * 模拟用 Quint 的 rust 后端。它的求值器在第一次使用时才从 GitHub 下载到 ~/.quint（或 QUINT_HOME）；
+ * check 会并发启动多个 quint run，若由它们同时触发下载会争写同一个文件，所以在这里用一次最小的模拟先取下来。
+ */
+function installRustEvaluator(): void {
+  const dir = mkdtempSync("/tmp/ssot-setup-");
+  try {
+    const spec = join(dir, "fetch.qnt");
+    writeFileSync(spec, "module fetch {\n  var x: int\n  action init = x' = 0\n  action step = x' = x\n}\n");
+    const run = Bun.spawnSync([...quintCommand(), "run", spec, "--main", "fetch", "--backend", "rust", "--max-samples", "1", "--max-steps", "1", "--out", join(dir, "out.json")], { stdout: "inherit", stderr: "inherit" });
+    if (run.exitCode !== 0) throw new Error(`quint 的 rust 求值器未能取得：quint run 以 ${run.exitCode} 退出`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 function installLauncher(): void {
   mkdirSync(BIN, { recursive: true });
   const launcher = join(BIN, "ssot");
@@ -87,6 +103,7 @@ export async function setup(): Promise<number> {
   mkdirSync(DATA, { recursive: true });
   await installJars();
   await installPackages();
+  installRustEvaluator();
   installLauncher();
   const launcher = join(BIN, "ssot");
   const resolved = Bun.which("ssot");

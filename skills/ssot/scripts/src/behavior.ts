@@ -3,7 +3,7 @@
 import { mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { quint, readJson, errorDiagnostics, type QuintDecl, type QuintError, type QuintModule } from "./compile/quint";
-import { type Diagnostic, type Subject, diag, global } from "./diag";
+import { type Diagnostic, type Subject, assertNever, diag, global } from "./diag";
 import { type ItfTrace, type ItfValue, readTrace } from "./itf";
 
 export interface CoverOptions {
@@ -47,42 +47,54 @@ function relatedToScope(q: QuintModule, witness: QuintDecl, modules: ReadonlySet
  */
 export async function coverWitnesses(file: string, q: QuintModule, outDir: string, opts: CoverOptions): Promise<Coverage> {
   const witnesses = q.decls.filter((d) => (d.kind === "val" || d.kind === "def") && d.name.startsWith("witness") && relatedToScope(q, d, opts.callModules));
+  // 各目标的搜索互不依赖，并发运行（并发数由 quint 的进程池限定）；结果按声明次序汇总，输出与回放次序不随完成先后变化。
+  const searches = await Promise.all(witnesses.map((witness) => searchWitness(file, q, witness, outDir, opts)));
   const traces: ItfTrace[] = [];
   const diagnostics: Diagnostic[] = [];
   const reached = new Map<string, { states: number; ms: number }>();
-  for (const witness of witnesses) {
-    const w = witness.name;
-    const at = witness.at;
-    const bound = q.decls.find((d) => d.name === `maxSteps_${w}`);
-    if (bound && (bound.kind !== "pureval" || bound.intLiteral === null || !Number.isSafeInteger(bound.intLiteral) || bound.intLiteral <= 0)) {
-      diagnostics.push(diag("behavior.call", global, bound.at, `maxSteps_${w} 必须是 pure val 的正整数字面量`));
-      continue;
-    }
-    const steps = bound?.intLiteral ?? opts.steps;
-    const dir = join(outDir, `${q.name}.cover.${w}`);
-    mkdirSync(dir, { recursive: true });
-    const res = join(outDir, `${q.name}.cover.${w}.json`);
-    const started = performance.now();
-    const code = await quint(
-      ["run", file, "--main", q.name, "--backend", "typescript", "--mbt", "--invariant", `not(${w})`, "--max-samples", String(opts.samples), "--max-steps", String(steps), "--seed", opts.seed, "--out-itf", join(dir, "t_{seq}.itf.json"), "--out", res],
-      opts.deadlineMs,
-    );
-    const ms = Math.round(performance.now() - started);
-    if (code === "timeout") {
-      diagnostics.push(diag("resource.deadline", global, at, `${q.name} 的覆盖目标 ${w} 搜索超过截止 ${opts.deadlineMs / 1000}s 被终止；验证未完成（${ms}ms）`, "warning"));
-      continue;
-    }
-    const out = await readJson<{ status?: string; errors: QuintError[] }>(res);
-    const files = out.status === "violation" ? readdirSync(dir).filter((f) => f.endsWith(".itf.json")) : [];
-    const found = (await Promise.all(files.map((f) => readTrace(join(dir, f))))).find((t) => t.status === "violation");
-    if (found) {
-      traces.push(found);
-      reached.set(w, { states: found.states.length, ms });
-    } else {
-      diagnostics.push(diag("replay.incomplete", global, at, `验证不完整：覆盖目标 ${w} 在定向模拟 ${opts.samples} 次 × ${steps} 步内没有到达（${out.status}，${ms}ms）`));
+  for (const [i, s] of searches.entries()) {
+    switch (s.kind) {
+      case "reached":
+        traces.push(s.trace);
+        reached.set(witnesses[i]!.name, { states: s.trace.states.length, ms: s.ms });
+        break;
+      case "missed":
+        diagnostics.push(s.diagnostic);
+        break;
+      default:
+        assertNever(s);
     }
   }
   return { traces, diagnostics, reached };
+}
+
+type Search =
+  | { readonly kind: "reached"; readonly trace: ItfTrace; readonly ms: number }
+  | { readonly kind: "missed"; readonly diagnostic: Diagnostic };
+
+async function searchWitness(file: string, q: QuintModule, witness: QuintDecl, outDir: string, opts: CoverOptions): Promise<Search> {
+  const w = witness.name;
+  const at = witness.at;
+  const bound = q.decls.find((d) => d.name === `maxSteps_${w}`);
+  if (bound && (bound.kind !== "pureval" || bound.intLiteral === null || !Number.isSafeInteger(bound.intLiteral) || bound.intLiteral <= 0))
+    return { kind: "missed", diagnostic: diag("behavior.call", global, bound.at, `maxSteps_${w} 必须是 pure val 的正整数字面量`) };
+  const steps = bound?.intLiteral ?? opts.steps;
+  const dir = join(outDir, `${q.name}.cover.${w}`);
+  mkdirSync(dir, { recursive: true });
+  const res = join(outDir, `${q.name}.cover.${w}.json`);
+  const exit = await quint(
+    ["run", file, "--main", q.name, "--backend", "rust", "--mbt", "--invariant", `not(${w})`, "--max-samples", String(opts.samples), "--max-steps", String(steps), "--seed", opts.seed, "--out-itf", join(dir, "t_{seq}.itf.json"), "--out", res],
+    opts.deadlineMs,
+  );
+  const ms = exit.ms;
+  if (exit.kind === "timeout")
+    return { kind: "missed", diagnostic: diag("resource.deadline", global, at, `${q.name} 的覆盖目标 ${w} 搜索超过截止 ${opts.deadlineMs / 1000}s 被终止；验证未完成（${ms}ms）`, "warning") };
+  const out = await readJson<{ status?: string; errors: QuintError[] }>(res);
+  const files = out.status === "violation" ? readdirSync(dir).filter((f) => f.endsWith(".itf.json")) : [];
+  const found = (await Promise.all(files.map((f) => readTrace(join(dir, f))))).find((t) => t.status === "violation");
+  return found
+    ? { kind: "reached", trace: found, ms }
+    : { kind: "missed", diagnostic: diag("replay.incomplete", global, at, `验证不完整：覆盖目标 ${w} 在定向模拟 ${opts.samples} 次 × ${steps} 步内没有到达（${out.status}，${ms}ms）`) };
 }
 
 export interface RunOptions {
@@ -97,6 +109,8 @@ export interface BehaviorRun {
   readonly module: string;
   readonly traces: readonly ItfTrace[];
   readonly diagnostics: readonly Diagnostic[];
+  /** 模拟进程本身的运行时间（不含排队）。 */
+  readonly ms: number;
 }
 
 /** Call 值（contract::Call）里的模块名；NoCall 返回 null。 */
@@ -117,9 +131,9 @@ export async function runBehavior(
   const itfDir = join(outDir, `${module}.itf`);
   mkdirSync(itfDir, { recursive: true });
   const res = join(outDir, `${module}.run.json`);
-  const code = await quint(
+  const exit = await quint(
     [
-      "run", file, "--main", module, "--backend", "typescript", "--mbt",
+      "run", file, "--main", module, "--backend", "rust", "--mbt",
       "--invariant", "safety",
       "--max-samples", String(opts.samples), "--n-traces", String(opts.samples),
       "--max-steps", String(opts.steps), "--seed", opts.seed,
@@ -127,14 +141,15 @@ export async function runBehavior(
     ],
     opts.deadlineMs,
   );
-  if (code === "timeout")
-    return { module, traces: [], diagnostics: [diag("resource.deadline", global, null, `${module} 的模拟超过截止 ${opts.deadlineMs / 1000}s 被终止；验证未完成`, "warning")] };
+  const ms = exit.ms;
+  if (exit.kind === "timeout")
+    return { module, traces: [], ms, diagnostics: [diag("resource.deadline", global, null, `${module} 的模拟超过截止 ${opts.deadlineMs / 1000}s 被终止；验证未完成`, "warning")] };
   const out = await readJson<{ status?: string; errors: QuintError[] }>(res);
   const files = readdirSync(itfDir).filter((f) => f.endsWith(".itf.json")).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   const traces = await Promise.all(files.map((f) => readTrace(join(itfDir, f))));
   switch (out.status) {
     case "ok":
-      return { module, traces, diagnostics: [] };
+      return { module, traces, ms, diagnostics: [] };
     case "violation": {
       const bad = traces.find((t) => t.status === "violation") ?? traces.at(-1);
       const calls = callVar && bad ? bad.states.map((s) => callModuleOf(s.vars.get(callVar))).filter((m): m is string => m !== null) : [];
@@ -143,6 +158,7 @@ export async function runBehavior(
       return {
         module,
         traces,
+        ms,
         diagnostics: [
           diag("behavior.run", last ? subjectOfModules([last]) : global, null, `${module} 的 safety 被违反；轨迹 ${bad?.file ?? "-"}：${steps}`),
         ],
@@ -152,6 +168,7 @@ export async function runBehavior(
       return {
         module,
         traces,
+        ms,
         diagnostics: out.errors.length > 0 ? errorDiagnostics(out.errors, mapFile).map((d) => ({ ...d, rule: "behavior.run" as const })) : [diag("behavior.run", global, null, `${module} 模拟失败，状态 ${out.status}`)],
       };
   }

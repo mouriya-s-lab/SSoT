@@ -12,8 +12,8 @@ import { basename, join, resolve } from "node:path";
 import { baseChanges } from "./src/base";
 import { compileLikeC4, type Structure } from "./src/compile/likec4";
 import { compileBehavior, type QuintModule, typecheckFile } from "./src/compile/quint";
-import { compileVdm, type VdmProject } from "./src/compile/vdm";
-import { type Diagnostic, diag, element, format, global } from "./src/diag";
+import { checkObligations, compileVdm, type VdmProject } from "./src/compile/vdm";
+import { type Diagnostic, assertNever, diag, element, format, global } from "./src/diag";
 import { coverWitnesses, runBehavior } from "./src/behavior";
 import { type ContractGen, generateContract } from "./src/gen/contract";
 import { generateStructure } from "./src/gen/structure";
@@ -52,13 +52,13 @@ const listFiles = (dir: string, ext: string): string[] =>
 
 /**
  * 编译 LikeC4 与 VDM，并生成两份 .gen 内容（在内存中）。
- * scopeId：`--scope` 的视图；谓词采样与 QuickCheck 只对作用域节点的模块运行。"none"：不做采样与 QuickCheck（gen、eval）。
+ * scopeId：`--scope` 的视图；谓词采样与 QuickCheck 只对作用域节点的模块（checked）运行。"none"：不做采样（gen、eval）。
  */
 async function front(l: Layout, scopeId: string | null | "none") {
   const diagnostics: Diagnostic[] = [];
   const c4 = await compileLikeC4(l.structure);
   diagnostics.push(...c4.diagnostics);
-  if (c4.kind === "failed") return { diagnostics, structure: null, scope: { kind: "all" } as const, project: null, contract: null, structureJson: null, vdmFiles: [] as string[] };
+  if (c4.kind === "failed") return { diagnostics, structure: null, scope: { kind: "all" } as const, project: null, contract: null, structureJson: null, vdmFiles: [] as string[], checked: null };
   const s = c4.structure;
   const scope = resolveScope(s, scopeId === "none" ? null : scopeId);
   const structureJson = generateStructure(s);
@@ -78,7 +78,7 @@ async function front(l: Layout, scopeId: string | null | "none") {
     contract = generateContract(project, new Set(owner.keys()), (m) => (owner.has(m) ? element(owner.get(m)!) : global));
     diagnostics.push(...contract.diagnostics);
   }
-  return { diagnostics, structure: s, scope, project, contract, structureJson, vdmFiles };
+  return { diagnostics, structure: s, scope, project, contract, structureJson, vdmFiles, checked };
 }
 
 async function gen(l: Layout): Promise<number> {
@@ -124,6 +124,66 @@ interface CheckRun {
   readonly stage: string;
 }
 
+/** 先挂上处理器的结果：并行启动、稍后才 await 的 promise 若在此期间失败，不成为未处理的拒绝；await 时照原样抛出。 */
+type Settled<T> = { readonly kind: "value"; readonly value: T } | { readonly kind: "thrown"; readonly error: unknown };
+
+function settle<T>(p: Promise<T>): Promise<Settled<T>> {
+  return p.then((value): Settled<T> => ({ kind: "value", value }), (error: unknown): Settled<T> => ({ kind: "thrown", error }));
+}
+
+function unwrap<T>(s: Settled<T>): T {
+  if (s.kind === "thrown") throw s.error;
+  return s.value;
+}
+
+type ModuleVerification =
+  | { readonly kind: "skipped"; readonly info: string }
+  | { readonly kind: "verified"; readonly module: string; readonly diagnostics: readonly Diagnostic[]; readonly outcomes: BehaviorOutcomes; readonly info: readonly string[] };
+
+interface BehaviorInput {
+  readonly structure: Structure;
+  readonly project: VdmProject;
+  readonly vdmFiles: readonly string[];
+  readonly behavior: readonly QuintModule[];
+  readonly stage: string;
+  readonly work: string;
+  readonly mapFile: (p: string) => string;
+  readonly options: CheckOptions;
+  readonly callModules: ReadonlySet<string> | null;
+}
+
+/**
+ * 每个可运行模块：模拟与覆盖目标搜索，再用全部轨迹回放。模块之间、模拟与覆盖搜索之间都并发（并发数由 quint 的进程池限定）；
+ * 结果按模块次序返回，诊断与 info 的次序不随完成先后变化。
+ */
+function verifyBehavior(x: BehaviorInput): Promise<readonly ModuleVerification[]> {
+  const { structure: s, options: o, callModules } = x;
+  return Promise.all(x.behavior.filter(isRunnable).map(async (q): Promise<ModuleVerification> => {
+    // 切片闭包：不引用作用域内任何生成模块（Call 变体、构造子或状态类型）的可运行模块，不模拟也不回放。
+    if (callModules !== null && !q.decls.some((d) => d.modules.some((m) => callModules.has(m)) || (d.varType !== null && callModules.has(d.varType.module))))
+      return { kind: "skipped", info: `行为 ${q.name}：不引用作用域内的生成模块，跳过模拟、覆盖目标与回放` };
+    const callVar = q.decls.find((d) => d.isCallVar)?.name ?? null;
+    const file = join(x.stage, "behavior", `${q.name}.qnt`);
+    const [run, cover] = await Promise.all([
+      runBehavior(file, q.name, callVar, x.work, o, x.mapFile, (mods) => behaviorSubject(s, mods)),
+      coverWitnesses(file, q, x.work, { samples: o.samples * 10, steps: o.steps, seed: o.seed, deadlineMs: o.deadlineMs, callModules }),
+    ]);
+    const r = await replay({ structure: s, project: x.project, vdmFiles: x.vdmFiles, module: q, callVar, traces: [...run.traces, ...cover.traces], callModules });
+    return {
+      kind: "verified",
+      module: q.name,
+      diagnostics: [...run.diagnostics, ...cover.diagnostics, ...r.diagnostics],
+      outcomes: { module: q.name, outcomes: r.outcomes, replayed: r.replayed },
+      info: [
+        `行为 ${q.name}：模拟 ${run.traces.length} 条轨迹（${run.ms}ms）`,
+        `行为 ${q.name}：覆盖目标 ${[...cover.reached].map(([w, c]) => `${w}（定向模拟，${c.states} 个状态，${c.ms}ms）`).join("，") || "（无）"}`,
+        `行为 ${q.name}：回放 ${[...r.replayed].map(([k, n]) => `${k}×${n}`).join("，") || "（无）"}`,
+        ...[...r.outcomes].map(([op, counts]) => `行为 ${q.name}：结局 ${op}：${[...counts].map(([v, n]) => `${v}×${n}`).join("，")}`),
+      ],
+    };
+  }));
+}
+
 async function runCheck(l: Layout, o: CheckOptions): Promise<CheckRun | { readonly kind: "unknown"; readonly id: string }> {
   const f = await front(l, o.scope);
   const scope = f.scope;
@@ -131,16 +191,15 @@ async function runCheck(l: Layout, o: CheckOptions): Promise<CheckRun | { readon
   const ds: Diagnostic[] = [...f.diagnostics];
   const info: string[] = [];
   const s: Structure | null = f.structure;
+  // 证明义务与 QuickCheck 单独一个进程，与下面的 Quint 编译、模拟与回放并行；它的诊断插回 importRules 之后的原位置。
+  const obligations = s && f.project ? settle(checkObligations(f.vdmFiles, f.checked)) : null;
+  let obligationsAt = ds.length;
   if (s) {
     ds.push(...structureRules(s));
     ds.push(...freshness(l, "structure.json", f.structureJson!));
     ds.push(...moduleRules(s, f.vdmFiles, f.project));
     if (f.project) ds.push(...importRules(s, f.project));
-    if (f.project) {
-      const po = obligationRules(s, f.project);
-      ds.push(...po.diagnostics);
-      info.push(po.summary);
-    }
+    obligationsAt = ds.length;
     if (f.project) ds.push(...hintRules(s, f.project));
     ds.push(...reviewDiagnostics(s));
   }
@@ -193,8 +252,8 @@ async function runCheck(l: Layout, o: CheckOptions): Promise<CheckRun | { readon
   }
   if (s) ds.push(...vocabRules(s, f.project, behavior));
 
-  // 行为验证与回放只在前面没有错误时进行：类型不对时模拟没有意义。
-  const blocking = ds.some((d) => d.severity === "error");
+  // 行为验证与回放只在前面没有错误时进行：类型不对时模拟没有意义。证明义务的 FAILED 也是前面的错误：
+  // 模拟先与 QuickCheck 并行，QuickCheck 报出错误时丢弃模拟的全部结果，输出与等 QuickCheck 之后再决定是否模拟相同。
   const owner = s ? elementOfModule(s) : new Map<string, string>();
   const callModules = scope.kind === "all" ? null : new Set(
     (f.contract?.callModules ?? []).filter((m) => {
@@ -202,36 +261,48 @@ async function runCheck(l: Layout, o: CheckOptions): Promise<CheckRun | { readon
       return element !== undefined && scope.nodes.has(element);
     }),
   );
-  const behaviorOf = new Map<Diagnostic, string>();
-  const outcomes: BehaviorOutcomes[] = [];
-  const attribute = (q: QuintModule, list: readonly Diagnostic[]): void => {
-    for (const d of list) behaviorOf.set(d, q.name);
-    ds.push(...list);
-  };
+  let verification: Promise<Settled<readonly ModuleVerification[]>> | null = null;
   if (callModules !== null && callModules.size === 0) {
     info.push("作用域没有生成的 Call 模块：跳过模拟、覆盖目标与回放");
-  } else if (s && f.project && f.contract && !blocking) {
-    for (const q of behavior.filter(isRunnable)) {
-      // 切片闭包：不引用作用域内任何生成模块（Call 变体、构造子或状态类型）的可运行模块，不模拟也不回放。
-      if (callModules !== null && !q.decls.some((d) => d.modules.some((m) => callModules.has(m)) || (d.varType !== null && callModules.has(d.varType.module)))) {
-        info.push(`行为 ${q.name}：不引用作用域内的生成模块，跳过模拟、覆盖目标与回放`);
-        continue;
+  } else if (s && f.project && f.contract && !ds.some((d) => d.severity === "error")) {
+    verification = settle(verifyBehavior({ structure: s, project: f.project, vdmFiles: f.vdmFiles, behavior, stage, work, mapFile, options: o, callModules }));
+  }
+  if (obligations && s) {
+    const po = unwrap(await obligations);
+    switch (po.kind) {
+      case "ok": {
+        const r = obligationRules(s, po.obligations);
+        ds.splice(obligationsAt, 0, ...r.diagnostics);
+        info.unshift(r.summary);
+        break;
       }
-      const callVar = q.decls.find((d) => d.isCallVar)?.name ?? null;
-      const file = join(stage, "behavior", `${q.name}.qnt`);
-      const t0 = performance.now();
-      const run = await runBehavior(file, q.name, callVar, work, o, mapFile, (mods) => behaviorSubject(s, mods));
-      const simMs = Math.round(performance.now() - t0);
-      attribute(q, run.diagnostics);
-      const cover = await coverWitnesses(file, q, work, { samples: o.samples * 10, steps: o.steps, seed: o.seed, deadlineMs: o.deadlineMs, callModules });
-      attribute(q, cover.diagnostics);
-      const r = await replay({ structure: s, project: f.project, vdmFiles: f.vdmFiles, module: q, callVar, traces: [...run.traces, ...cover.traces], callModules });
-      attribute(q, r.diagnostics);
-      outcomes.push({ module: q.name, outcomes: r.outcomes, replayed: r.replayed });
-      info.push(`行为 ${q.name}：模拟 ${run.traces.length} 条轨迹（${simMs}ms）`);
-      info.push(`行为 ${q.name}：覆盖目标 ${[...cover.reached].map(([w, x]) => `${w}（定向模拟，${x.states} 个状态，${x.ms}ms）`).join("，") || "（无）"}`);
-      info.push(`行为 ${q.name}：回放 ${[...r.replayed].map(([k, n]) => `${k}×${n}`).join("，") || "（无）"}`);
-      for (const [op, counts] of r.outcomes) info.push(`行为 ${q.name}：结局 ${op}：${[...counts].map(([v, n]) => `${v}×${n}`).join("，")}`);
+      case "failed":
+        ds.splice(obligationsAt, 0, po.diagnostic);
+        break;
+      default:
+        assertNever(po);
+    }
+  }
+  const behaviorOf = new Map<Diagnostic, string>();
+  const outcomes: BehaviorOutcomes[] = [];
+  if (verification) {
+    const modules = unwrap(await verification);
+    if (!ds.some((d) => d.severity === "error")) {
+      for (const m of modules) {
+        switch (m.kind) {
+          case "skipped":
+            info.push(m.info);
+            break;
+          case "verified":
+            for (const d of m.diagnostics) behaviorOf.set(d, m.module);
+            ds.push(...m.diagnostics);
+            outcomes.push(m.outcomes);
+            info.push(...m.info);
+            break;
+          default:
+            assertNever(m);
+        }
+      }
     }
   }
   return { kind: "ran", structure: s, scope, diagnostics: ds, behavior, behaviorOf, outcomes, info, stage };

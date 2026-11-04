@@ -36,8 +36,8 @@ export async function initialRules(s: Structure, project: VdmProject, behavior: 
     const dir = mkdtempSync("/tmp/ssot-init-");
     try {
       const file = join(dir, "typecheck.json");
-      const code = await quint(["typecheck", q.file, "--out", file]);
-      if (code === "timeout") {
+      const exit = await quint(["typecheck", q.file, "--out", file]);
+      if (exit.kind === "timeout") {
         diagnostics.push(diag("resource.deadline", global, null, `${q.name} 的初态检查超过 Quint 截止，验证未完成`, "warning"));
         continue;
       }

@@ -23,7 +23,6 @@ export function obligationRules(structure: Structure, obligations: readonly Proo
       case "UNPROVED":
       case "MAYBE":
       case "UNCHECKED":
-      case "TIMEOUT":
         diagnostics.push(diag("contract.po", subject, vdmPosition(po.location), details, "info"));
         break;
       default:

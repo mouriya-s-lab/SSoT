@@ -114,7 +114,7 @@ export interface VdmModule {
   readonly references: readonly string[];
 }
 
-export type POStatus = "UNPROVED" | "PROVABLE" | "MAYBE" | "UNCHECKED" | "FAILED" | "TIMEOUT";
+export type POStatus = "UNPROVED" | "PROVABLE" | "MAYBE" | "UNCHECKED" | "FAILED";
 
 export interface ProofObligation {
   readonly number: number;

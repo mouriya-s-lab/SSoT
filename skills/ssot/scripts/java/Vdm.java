@@ -27,7 +27,6 @@ import com.fujitsu.vdmj.po.PONode;
 import com.fujitsu.vdmj.po.modules.POModuleList;
 import com.fujitsu.vdmj.in.INNode;
 import com.fujitsu.vdmj.pog.*;
-import com.fujitsu.vdmj.debug.ConsoleExecTimer;
 import quickcheck.QuickCheck;
 import quickcheck.commands.QCConsole;
 import com.fujitsu.vdmj.in.modules.INModuleList;
@@ -294,7 +293,7 @@ public class Vdm {
       default -> throw new IllegalArgumentException("Initial state contains unsupported native value "+value.getClass().getName());
     };
   }
-  // Sampling evaluates predicates on generated values, and those evaluations abort (partial predicates, timer). Run on
+  // Sampling evaluates predicates on generated values, and those evaluations abort (partial predicates). Run on
   // this thread, later QuickCheck reported FAILED with the bindings of a recursive measured function (B2 PO #14/#61;
   // fixture po-after-sampling). VDMJ's FunctionValue keys its measure state by thread id, so sampling runs on its own thread.
   static J sample(TCExplicitFunctionDefinition predicate,ModuleInterpreter interpreter,boolean invariant) {
@@ -306,9 +305,9 @@ public class Vdm {
     if(failure[0]!=null) throw failure[0];
     return result[0];
   }
+  /** At most 128 combinations of at most 8 values per parameter: bounded by count, not by wall clock, so the counts do not depend on machine load. */
   static J sampleOnThread(TCExplicitFunctionDefinition predicate,ModuleInterpreter interpreter,boolean invariant) {
     int yes=0,no=0;
-    ConsoleExecTimer timer=new ConsoleExecTimer(500); timer.start();
     boolean invchecks=Settings.invchecks;
     try {
       interpreter.setDefaultName(predicate.name.getModule());
@@ -341,7 +340,6 @@ public class Vdm {
           }
           if(evaluated.boolValue(context)) yes++; else no++;
         } catch(ContextException | ValueException e) {
-          if(e instanceof ContextException c && c.isUserCancel()) break;
           // Partial predicates may be undefined for a candidate; only actual boolean results count.
         }
         int i=indices.length-1;
@@ -352,9 +350,7 @@ public class Vdm {
       if(!(e instanceof ContextException) && !(e instanceof ValueException) && !(e instanceof UnsupportedOperationException))
         throw new IllegalStateException("Sampling "+predicate.name+" failed",e);
     } finally {
-      Settings.invchecks=invchecks; timer.interrupt();
-      try { timer.join(); } catch(InterruptedException e) { Thread.currentThread().interrupt(); }
-      Breakpoint.setExecInterrupt(0);
+      Settings.invchecks=invchecks;
     }
     return yes+no==0?new Nil():put(put(obj(),"trueCount",n(yes)),"falseCount",n(no));
   }
@@ -556,22 +552,13 @@ public class Vdm {
       if(qc.hasErrors() || !options.isEmpty()) throw new IllegalStateException("QuickCheck strategies failed to load");
       ProofObligationList chosen=qc.getPOs(obligations,List.of(),List.of(".*"));
       if(qc.hasErrors() || !qc.initStrategies()) throw new IllegalStateException("QuickCheck initialization failed");
+      // No wall-clock limit: each obligation is bounded by the strategy sizes above, so its status does not depend on machine load.
       for(ProofObligation p:chosen) {
         if(!p.isCheckable) continue;
         qc.resetErrors();
-        ConsoleExecTimer timer=new ConsoleExecTimer(1000);
-        timer.start();
-        try {
-          var values=qc.getValues(p);
-          if(qc.hasErrors()) p.markUnchecked("QuickCheck could not generate bindings");
-          else qc.checkObligation(p,values);
-        } catch(ContextException e) {
-          if(e.isUserCancel()) { p.setStatus(POStatus.TIMEOUT); p.setMessage(e.getMessage()); }
-          else throw e;
-        } finally {
-          timer.interrupt(); timer.join();
-          Breakpoint.setExecInterrupt(0);
-        }
+        var values=qc.getValues(p);
+        if(qc.hasErrors()) p.markUnchecked("QuickCheck could not generate bindings");
+        else qc.checkObligation(p,values);
       }
     }
     return array(obligations,p->{

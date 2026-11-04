@@ -62,7 +62,7 @@ description: SSoT 契约评审清单（一个带 contract 标签的元素的 VDM
 | 领域性质不冒充不变量 | 外部世界本身成立的领域性质没有写成本系统保证的不变量 | — |
 | 每个定义服务需求 | 每个定义、谓词子句、参数与调用都服务某条需求约束或必需的连接；没有为过工具而造的元素、守卫或消费者 | — |
 
-`contract.po` 的 MAYBE、UNCHECKED、UNPROVED、TIMEOUT 是 info：逐条看它对应的谓词是否真有缺口，可以用第二节的方法求一个实例确认。这些 info 不进 `ssot status` 的前沿，只在这次评审里判断。
+`contract.po` 的 MAYBE、UNCHECKED、UNPROVED 是 info：逐条看它对应的谓词是否真有缺口，可以用第二节的方法求一个实例确认。这些 info 不进 `ssot status` 的前沿，只在这次评审里判断。
 
 ## 四、交付
 

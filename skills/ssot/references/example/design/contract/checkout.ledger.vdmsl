@@ -1,0 +1,59 @@
+-- 账本事实源头这个盒子：订单、订单项、订单项的结算结局与整单取消锚点。
+-- 只写每个端口在数据上的前后条件；端口之间的先后由 design/behavior 持有。
+-- 精度停在“事实只写一次、按序写下”：商品明细、金额与支付凭据保持不透明。
+module checkout_ledger
+exports
+  types
+    OrderId; ItemId; struct Outcome; Trigger
+  operations
+    writeOrder : OrderId ==> ();
+    writeItem : OrderId ==> ItemId;
+    writeOutcome : ItemId * Outcome ==> ();
+    writeCancel : OrderId * Trigger ==> ()
+definitions
+types
+  OrderId = token;
+  ItemId = token;
+  -- 订单项的结算内容保持不透明，只区分正常成交还是取消。
+  Outcome = <Fulfilled> | <Cancelled>;
+  Trigger = token;
+
+state Records of
+  orders   : set of OrderId
+  items    : map ItemId to OrderId
+  outcomes : map ItemId to Outcome
+  cancels  : map OrderId to Trigger
+inv mk_Records(os, its, outs, cns) ==
+  rng its subset os and dom outs subset dom its and dom cns subset os
+init s == s = mk_Records({}, {|->}, {|->}, {|->})
+end
+
+operations
+  writeOrder(o : OrderId)
+  ext wr orders
+  pre o not in set orders
+  post orders = orders~ union {o};
+
+  -- 已写下取消锚点的订单不再登记新的订单项；新订单项的身份是新的。
+  writeItem(o : OrderId) res : ItemId
+  ext rd orders, cancels
+      wr items
+  pre o in set orders and o not in set dom cancels
+  post res not in set dom items~ and items = items~ munion {res |-> o};
+
+  -- REQ-8：每个订单项的结算结局至多写下一次。
+  writeOutcome(it : ItemId, out : Outcome)
+  ext rd items
+      wr outcomes
+  pre it in set dom items and it not in set dom outcomes
+  post outcomes = outcomes~ munion {it |-> out};
+
+  -- REQ-11：整单取消锚点只在该订单的全部订单项都已写下结局之后写下，且至多写一次。
+  writeCancel(o : OrderId, t : Trigger)
+  ext rd orders, items, outcomes
+      wr cancels
+  pre o in set orders and o not in set dom cancels and
+      forall it in set dom items & items(it) = o => it in set dom outcomes
+  post cancels = cancels~ munion {o |-> t};
+
+end checkout_ledger

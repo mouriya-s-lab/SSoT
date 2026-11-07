@@ -1,0 +1,50 @@
+-- 仓储库存边界这个盒子（REQ-5）：按订单项接纳锁库、确认扣减或释放库存。
+-- 只写每个端口在数据上的前后条件；释放与在途 reserve 的先后由 design/behavior 持有。
+-- 精度停在“释放与锁库互斥”：SKU 数量、库位与仓储内部失败不在这里展开。
+module checkout_inventory
+imports
+  from checkout_ledger
+    types ItemId
+exports
+  types
+    HoldId; struct Rejected
+  operations
+    reserve : checkout_ledger`ItemId * HoldId ==> HoldId | Rejected;
+    commitHold : checkout_ledger`ItemId * HoldId ==> ();
+    release : checkout_ledger`ItemId ==> ()
+definitions
+types
+  HoldId = token;
+  Rejected = <Rejected>;
+
+-- 哪些订单项已关闭锁库窗口（已释放或已扣减），以及当前未释放的锁库属于哪个订单项。
+state Reservations of
+  released : set of checkout_ledger`ItemId
+  held     : map HoldId to checkout_ledger`ItemId
+inv mk_Reservations(rs, hs) ==
+  rng hs inter rs = {}
+init s == s = mk_Reservations({}, {|->})
+end
+
+operations
+  -- REQ-6：已记入 released 的订单项一律拒绝后续 reserve；被接纳的锁库记入 held。
+  reserve(it : checkout_ledger`ItemId, h : HoldId) r : HoldId | Rejected
+  ext rd released
+      wr held
+  pre h not in set dom held
+  post (it in set released => r = <Rejected>) and
+       ((r = h and it not in set released and held = held~ munion {h |-> it}) or
+        (r = <Rejected> and held = held~));
+
+  -- REQ-7：确认扣减已锁定的库存，同时关闭该订单项的锁库窗口。
+  commitHold(it : checkout_ledger`ItemId, h : HoldId)
+  ext wr released, held
+  pre h in set dom held and held(h) = it
+  post released = released~ union {it} and held = held~ :-> {it};
+
+  -- REQ-6：关闭该订单项的锁库窗口并清空其未扣减的锁库；对同一订单项幂等。
+  release(it : checkout_ledger`ItemId)
+  ext wr released, held
+  post released = released~ union {it} and held = held~ :-> {it};
+
+end checkout_inventory

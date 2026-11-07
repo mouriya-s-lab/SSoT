@@ -2,7 +2,7 @@
   "generatedBy": "ssot gen",
   "elements": [
     {
-      "fqn": "caller",
+      "fqn": "buyer",
       "kind": "actor",
       "parent": null,
       "children": [],
@@ -11,7 +11,107 @@
       "contract": null
     },
     {
-      "fqn": "preset",
+      "fqn": "checkout",
+      "kind": "system",
+      "parent": null,
+      "children": [
+        "checkout.inventory",
+        "checkout.ledger",
+        "checkout.service"
+      ],
+      "tags": [],
+      "business": false,
+      "contract": null
+    },
+    {
+      "fqn": "checkout.inventory",
+      "kind": "container",
+      "parent": "checkout",
+      "children": [],
+      "tags": [
+        "contract"
+      ],
+      "business": false,
+      "contract": {
+        "module": "checkout_inventory"
+      }
+    },
+    {
+      "fqn": "checkout.ledger",
+      "kind": "container",
+      "parent": "checkout",
+      "children": [],
+      "tags": [
+        "contract",
+        "datastore"
+      ],
+      "business": false,
+      "contract": {
+        "module": "checkout_ledger"
+      }
+    },
+    {
+      "fqn": "checkout.service",
+      "kind": "container",
+      "parent": "checkout",
+      "children": [
+        "checkout.service.api",
+        "checkout.service.cancellation",
+        "checkout.service.fulfillment",
+        "checkout.service.notifier",
+        "checkout.service.pricing"
+      ],
+      "tags": [],
+      "business": false,
+      "contract": null
+    },
+    {
+      "fqn": "checkout.service.api",
+      "kind": "component",
+      "parent": "checkout.service",
+      "children": [],
+      "tags": [],
+      "business": false,
+      "contract": null
+    },
+    {
+      "fqn": "checkout.service.cancellation",
+      "kind": "component",
+      "parent": "checkout.service",
+      "children": [],
+      "tags": [],
+      "business": false,
+      "contract": null
+    },
+    {
+      "fqn": "checkout.service.fulfillment",
+      "kind": "component",
+      "parent": "checkout.service",
+      "children": [],
+      "tags": [],
+      "business": false,
+      "contract": null
+    },
+    {
+      "fqn": "checkout.service.notifier",
+      "kind": "component",
+      "parent": "checkout.service",
+      "children": [],
+      "tags": [],
+      "business": false,
+      "contract": null
+    },
+    {
+      "fqn": "checkout.service.pricing",
+      "kind": "component",
+      "parent": "checkout.service",
+      "children": [],
+      "tags": [],
+      "business": false,
+      "contract": null
+    },
+    {
+      "fqn": "gateway",
       "kind": "system",
       "parent": null,
       "children": [],
@@ -20,296 +120,141 @@
       ],
       "business": false,
       "contract": null
-    },
-    {
-      "fqn": "soroi",
-      "kind": "system",
-      "parent": null,
-      "children": [
-        "soroi.engine",
-        "soroi.store",
-        "soroi.workspace"
-      ],
-      "tags": [],
-      "business": false,
-      "contract": null
-    },
-    {
-      "fqn": "soroi.engine",
-      "kind": "container",
-      "parent": "soroi",
-      "children": [
-        "soroi.engine.closure",
-        "soroi.engine.control",
-        "soroi.engine.derivation",
-        "soroi.engine.halting",
-        "soroi.engine.scheduler",
-        "soroi.engine.values"
-      ],
-      "tags": [],
-      "business": false,
-      "contract": null
-    },
-    {
-      "fqn": "soroi.engine.closure",
-      "kind": "component",
-      "parent": "soroi.engine",
-      "children": [],
-      "tags": [],
-      "business": false,
-      "contract": null
-    },
-    {
-      "fqn": "soroi.engine.control",
-      "kind": "component",
-      "parent": "soroi.engine",
-      "children": [],
-      "tags": [],
-      "business": false,
-      "contract": null
-    },
-    {
-      "fqn": "soroi.engine.derivation",
-      "kind": "component",
-      "parent": "soroi.engine",
-      "children": [],
-      "tags": [],
-      "business": false,
-      "contract": null
-    },
-    {
-      "fqn": "soroi.engine.halting",
-      "kind": "component",
-      "parent": "soroi.engine",
-      "children": [],
-      "tags": [],
-      "business": false,
-      "contract": null
-    },
-    {
-      "fqn": "soroi.engine.scheduler",
-      "kind": "component",
-      "parent": "soroi.engine",
-      "children": [],
-      "tags": [],
-      "business": false,
-      "contract": null
-    },
-    {
-      "fqn": "soroi.engine.values",
-      "kind": "component",
-      "parent": "soroi.engine",
-      "children": [],
-      "tags": [],
-      "business": false,
-      "contract": null
-    },
-    {
-      "fqn": "soroi.store",
-      "kind": "container",
-      "parent": "soroi",
-      "children": [],
-      "tags": [
-        "contract",
-        "datastore"
-      ],
-      "business": false,
-      "contract": {
-        "module": "soroi_store"
-      }
-    },
-    {
-      "fqn": "soroi.workspace",
-      "kind": "container",
-      "parent": "soroi",
-      "children": [],
-      "tags": [
-        "contract"
-      ],
-      "business": false,
-      "contract": {
-        "module": "soroi_workspace"
-      }
     }
   ],
   "relations": [
     {
-      "source": "caller",
-      "target": "soroi",
-      "title": "管理运行并读取运行事实"
+      "source": "buyer",
+      "target": "checkout",
+      "title": "下单、取消并查询订单"
     },
     {
-      "source": "caller",
-      "target": "soroi.engine",
-      "title": "管理运行"
+      "source": "buyer",
+      "target": "checkout.ledger",
+      "title": "查询订单状态"
     },
     {
-      "source": "caller",
-      "target": "soroi.engine.control",
-      "title": "提交启动、停止与派生请求"
+      "source": "buyer",
+      "target": "checkout.service",
+      "title": "提交下单与取消请求"
     },
     {
-      "source": "caller",
-      "target": "soroi.store",
-      "title": "读取运行事实"
+      "source": "buyer",
+      "target": "checkout.service.api",
+      "title": "提交下单与取消请求"
     },
     {
-      "source": "preset",
-      "target": "soroi",
-      "title": "提交工具调用与返回结果"
+      "source": "checkout",
+      "target": "gateway",
+      "title": "发起支付扣款"
     },
     {
-      "source": "preset",
-      "target": "soroi.workspace",
-      "title": "提交工具调用与返回结果"
+      "source": "checkout.service",
+      "target": "checkout.inventory",
+      "title": "锁定、扣减与释放库存"
     },
     {
-      "source": "soroi",
-      "target": "preset",
-      "title": "运行具体工作"
+      "source": "checkout.service",
+      "target": "checkout.ledger",
+      "title": "读写订单与结算事实"
     },
     {
-      "source": "soroi.engine",
-      "target": "soroi.store",
-      "title": "读写运行事实"
+      "source": "checkout.service",
+      "target": "gateway",
+      "title": "发起支付扣款"
     },
     {
-      "source": "soroi.engine",
-      "target": "soroi.workspace",
-      "title": "在执行边界内执行运行项"
+      "source": "checkout.service.api",
+      "target": "checkout.ledger",
+      "title": "登记新订单"
     },
     {
-      "source": "soroi.engine.closure",
-      "target": "soroi.engine.values",
-      "title": "解析执行方交回的值"
+      "source": "checkout.service.api",
+      "target": "checkout.service.cancellation",
+      "title": "转交取消请求"
     },
     {
-      "source": "soroi.engine.closure",
-      "target": "soroi.store",
-      "title": "读取输入并写入运行项事实"
+      "source": "checkout.service.api",
+      "target": "checkout.service.fulfillment",
+      "title": "交出待履约订单"
     },
     {
-      "source": "soroi.engine.closure",
-      "target": "soroi.workspace",
-      "title": "在执行边界内执行并关闭运行项"
+      "source": "checkout.service.api",
+      "target": "checkout.service.pricing",
+      "title": "计算订单金额"
     },
     {
-      "source": "soroi.engine.control",
-      "target": "soroi.engine.derivation",
-      "title": "派生新运行"
+      "source": "checkout.service.cancellation",
+      "target": "checkout.inventory",
+      "title": "释放订单项库存"
     },
     {
-      "source": "soroi.engine.control",
-      "target": "soroi.engine.halting",
-      "title": "停下运行"
+      "source": "checkout.service.cancellation",
+      "target": "checkout.ledger",
+      "title": "写入取消结果"
     },
     {
-      "source": "soroi.engine.control",
-      "target": "soroi.engine.scheduler",
-      "title": "交出新运行"
+      "source": "checkout.service.cancellation",
+      "target": "checkout.service.notifier",
+      "title": "通知订单取消"
     },
     {
-      "source": "soroi.engine.control",
-      "target": "soroi.engine.values",
-      "title": "解析任务输入"
+      "source": "checkout.service.fulfillment",
+      "target": "checkout.inventory",
+      "title": "锁定并扣减库存"
     },
     {
-      "source": "soroi.engine.control",
-      "target": "soroi.store",
-      "title": "发布新运行"
+      "source": "checkout.service.fulfillment",
+      "target": "checkout.ledger",
+      "title": "登记订单项并写入成交"
     },
     {
-      "source": "soroi.engine.derivation",
-      "target": "soroi.engine.halting",
-      "title": "停下源运行"
+      "source": "checkout.service.fulfillment",
+      "target": "checkout.service.notifier",
+      "title": "通知订单成交"
     },
     {
-      "source": "soroi.engine.derivation",
-      "target": "soroi.engine.values",
-      "title": "解析编辑值"
-    },
-    {
-      "source": "soroi.engine.derivation",
-      "target": "soroi.store",
-      "title": "读取源运行并发布派生运行"
-    },
-    {
-      "source": "soroi.engine.halting",
-      "target": "soroi.engine.closure",
-      "title": "收束未结束的运行项"
-    },
-    {
-      "source": "soroi.engine.halting",
-      "target": "soroi.engine.scheduler",
-      "title": "停止准入"
-    },
-    {
-      "source": "soroi.engine.halting",
-      "target": "soroi.store",
-      "title": "写下运行的结束"
-    },
-    {
-      "source": "soroi.engine.scheduler",
-      "target": "soroi.engine.closure",
-      "title": "交出准入的运行项"
-    },
-    {
-      "source": "soroi.engine.scheduler",
-      "target": "soroi.store",
-      "title": "读取运行事实并登记运行项"
-    },
-    {
-      "source": "soroi.workspace",
-      "target": "preset",
-      "title": "运行 agent 与作者程序"
-    },
-    {
-      "source": "soroi.workspace",
-      "target": "soroi.engine",
-      "title": "转交执行方的调用与结果"
-    },
-    {
-      "source": "soroi.workspace",
-      "target": "soroi.engine.closure",
-      "title": "转交执行方的调用与结果"
+      "source": "checkout.service.fulfillment",
+      "target": "gateway",
+      "title": "发起支付扣款"
     }
   ],
   "views": [
     {
-      "id": "engineView",
-      "of": "soroi.engine",
+      "id": "checkoutView",
+      "of": "checkout",
       "nodes": [
-        "caller",
-        "soroi.engine",
-        "soroi.engine.closure",
-        "soroi.engine.control",
-        "soroi.engine.derivation",
-        "soroi.engine.halting",
-        "soroi.engine.scheduler",
-        "soroi.engine.values",
-        "soroi.store",
-        "soroi.workspace"
+        "buyer",
+        "checkout",
+        "checkout.inventory",
+        "checkout.ledger",
+        "checkout.service",
+        "gateway"
       ]
     },
     {
       "id": "index",
       "of": null,
       "nodes": [
-        "caller",
-        "preset",
-        "soroi"
+        "buyer",
+        "checkout",
+        "gateway"
       ]
     },
     {
-      "id": "soroiView",
-      "of": "soroi",
+      "id": "serviceView",
+      "of": "checkout.service",
       "nodes": [
-        "caller",
-        "preset",
-        "soroi",
-        "soroi.engine",
-        "soroi.store",
-        "soroi.workspace"
+        "buyer",
+        "checkout.inventory",
+        "checkout.ledger",
+        "checkout.service",
+        "checkout.service.api",
+        "checkout.service.cancellation",
+        "checkout.service.fulfillment",
+        "checkout.service.notifier",
+        "checkout.service.pricing",
+        "gateway"
       ]
     }
   ]

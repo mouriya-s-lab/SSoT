@@ -1,0 +1,172 @@
+specification {
+  element actor {
+    notation 'Person'
+    style {
+      shape person
+    }
+  }
+  element system {
+    notation 'Software System'
+  }
+  element container {
+    notation 'Container'
+  }
+  element component {
+    notation 'Component'
+  }
+
+  tag external
+  tag datastore
+  tag contract
+  tag untrusted
+
+  deploymentNode host
+}
+
+model {
+  buyer = actor 'Buyer' {
+    description '提交订单、发起取消并查询订单状态的买家'
+  }
+
+  checkout = system 'checkout' {
+    description '协调订单履约、库存预占、支付扣款与订单取消的交易系统'
+
+    service = container 'Order Service' {
+      technology 'Service process'
+      description '受理买家请求，推进订单履约与订单取消'
+
+      api = component 'API' {
+        description '受理买家下单与取消请求的唯一入口'
+      }
+      pricing = component 'Pricing' {
+        description '计算商品金额、优惠与税费'
+      }
+      fulfillment = component 'Fulfillment' {
+        description '推进订单项完成锁库、扣款与成交结算'
+      }
+      cancellation = component 'Cancellation' {
+        description '撤销未完成订单，释放库存并记录取消结果'
+      }
+      notifier = component 'Notifier' {
+        description '汇总订单结算结果并生成买家通知'
+      }
+    }
+
+    ledger = container 'Ledger' {
+      #datastore #contract
+      technology 'Transactional database'
+      description '订单、订单项与结算结局的唯一权威源头'
+    }
+
+    inventory = container 'Inventory' {
+      #contract
+      technology 'Warehouse stock service'
+      description '维护商品库存，处理库存锁定、扣减与释放'
+    }
+  }
+
+  gateway = system 'Payment Gateway' {
+    #external
+    description '执行支付扣款的外部支付通道'
+  }
+
+  // 顶层
+  buyer -> checkout '下单、取消并查询订单'
+  checkout -> gateway '发起支付扣款'
+
+  // checkout 容器层
+  buyer -> checkout.service '提交下单与取消请求'
+  buyer -> checkout.ledger '查询订单状态'
+  checkout.service -> checkout.ledger '读写订单与结算事实'
+  checkout.service -> checkout.inventory '锁定、扣减与释放库存'
+  checkout.service -> gateway '发起支付扣款'
+
+  // service 组件层
+  buyer -> checkout.service.api '提交下单与取消请求'
+  checkout.service.api -> checkout.service.pricing '计算订单金额'
+  checkout.service.api -> checkout.service.fulfillment '交出待履约订单'
+  checkout.service.api -> checkout.service.cancellation '转交取消请求'
+  checkout.service.api -> checkout.ledger '登记新订单'
+  checkout.service.fulfillment -> checkout.ledger '登记订单项并写入成交'
+  checkout.service.fulfillment -> checkout.inventory '锁定并扣减库存'
+  checkout.service.fulfillment -> gateway '发起支付扣款'
+  checkout.service.fulfillment -> checkout.service.notifier '通知订单成交'
+  checkout.service.cancellation -> checkout.inventory '释放订单项库存'
+  checkout.service.cancellation -> checkout.ledger '写入取消结果'
+  checkout.service.cancellation -> checkout.service.notifier '通知订单取消'
+}
+
+deployment {
+  host coreNet 'Core VPC' {
+    description '运行订单服务与账本数据库的核心内网'
+    instanceOf checkout.service
+    instanceOf checkout.ledger
+  }
+  host partnerNet 'Partner & warehouse network' {
+    #untrusted
+    description '运行合作方仓储节点与外部支付网关的外部网络，与核心内网分属不同信任边界'
+    instanceOf checkout.inventory
+    instanceOf gateway
+  }
+}
+
+global {
+  styleGroup theme {
+    style element.tag = #external {
+      color muted
+      notation 'External Software System'
+    }
+    style element.tag = #datastore {
+      shape storage
+      notation 'Container: Data Store'
+    }
+  }
+}
+
+views {
+  global style theme
+
+  view index {
+    title 'checkout 系统上下文'
+    description 'checkout 为谁服务，又调用哪些外部系统'
+    include *
+  }
+
+  view checkoutView of checkout {
+    title 'checkout 容器图'
+    description 'checkout 由哪些运行单元组成，它们之间以及与外部怎样调用'
+    include *
+  }
+
+  view serviceView of checkout.service {
+    title 'Order Service 组件图'
+    description 'Order Service 内部由哪些功能块组成，它们之间以及与外部怎样调用'
+    include *
+  }
+
+  deployment view deployed {
+    title 'checkout 部署图'
+    description 'checkout 的容器运行在哪些网络节点上，信任边界在哪里'
+    include coreNet.**
+    include partnerNet.**
+    exclude * -> * where source.kind is component or target.kind is component
+    style coreNet.service {
+      notation 'Container'
+    }
+    style partnerNet.inventory {
+      notation 'Container'
+    }
+    style coreNet.ledger {
+      shape storage
+      notation 'Container: Data Store'
+    }
+    style partnerNet.gateway {
+      color muted
+      notation 'External Software System'
+    }
+    style partnerNet {
+      color red
+      notation 'Untrusted partner network'
+    }
+  }
+}

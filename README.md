@@ -1,58 +1,127 @@
 # SSoT
 
-SSoT 给一个系统一个机会：随着代码落地，从宏观到微观逐步建模。它不证明设计完美无缺，也不保证系统没有 bug。一个位置默认停在架构图上的一个框；只有对 AI 来说不轻松、且使用者声明的阶段支持时，才往下写它的盒子或接线。方法与规则在 [`skills/ssot`](skills/ssot/SKILL.md)，本文件只是概览。
+软件工程中的设计危机通常表现为两个同样失效的极端。一端是自然语言设计文档：架构拓扑、数据表字段、局部重试策略与接口承诺混杂在同一篇散文里，既无法被编译器检验，也无法阻止实现细节渗透，代码一旦演进便沦为过时的注释。另一端是前置的全量形式化建模：在系统动工前用状态机语言完整刻画全局行为并证明安全性质，却违背了工程演进的基本事实——任何形式化验证都以验证对象的稳定为前提，而在业务探索期与设计早期，模型本身恰恰是最不稳定的假设。
 
-## 三层
+在系统真正经历运行时检验之前，业务边界尚在调整，并发与故障模式尚未充分暴露。此时若强行将整个系统塞进状态转移模型，所有形式化推导都建立在脆弱的猜测之上；业务认知一旦修正，状态空间与证明便全盘作废。反之，若因早期认知不稳定而彻底放弃形式化约束、退回自然语言，系统边界又会立刻失去机器可检验的准绳。
+
+解开这一死结的切入点，是承认软件系统中**不同层次的认知具有截然不同的半衰期**，并按认知稳定的先后次序，将建模与验证拆解到三种不同的载体上：
+
+最先稳定的是**宏观拓扑与权威归属**——系统由哪些运行单元组成、哪一处是某类事实的唯一存储源头、信任边界落在何处。这些划分是一切形式化契约的宿主，但只能在容器或组件粒度上截断（绝不下探到代码层），且其合理性依赖对领域角色的定性，必须借由层级遮蔽与视觉密度来审视（**LikeC4**）。其次稳定的是**单个底层边界上的消极约束**——一个模块对外暴露哪些端口、守住哪些不可违背的数据不变量。这一层直接替代传统的模块设计文档，但前提是规格语言必须在一阶逻辑谓词之外原生支持“局部留白”，允许对未定的内部结构与可替换的实现机制保持不透明（**VDM-SL**）。最后稳定的才是**跨边界的串并行动态组合**——并发竞争、异步消息乱序与进程崩溃恢复几乎全部发生在盒子与盒子的交界处；只有当单个盒子内部的不变量经过验证站稳之后，才针对确有交错风险的边界接入动态模型，在有界模拟与跨层轨迹回放中检验各盒子的边界规则在串并行组合下是否自洽（**Quint**）。
+
+SSoT（Single Source of Truth）将这三层载体组织为单向生成与验证链。系统中的任何位置默认只停留在架构图上的一个框或一根箭头（默认不可见）。只有当某处存在具体的可证伪隐患、仅凭结构边界与常规编译检查无法定位、且向下建模确实能揭露某类错误的契约或交错时，才向下展开一层；模型的精度则严格受限于使用者声明的项目阶段与已有的运行时观测，不在无观测支撑处超前建模。
+
+---
+
+## 一、结构层（LikeC4）：层级遮蔽、耦合守恒与无源码视觉盲审
+
+形式化契约不能脱离宿主单独存在。在写下任何前置条件或不变量之前，必须先界定契约归属于哪一个架构单元。然而，在宏观层面决定“什么应当单独成为一个框”，本质上是一次无法用语法规则预先形式化的本体定性：这个区块究竟是一个独立的操作系统进程（`container`），一个容器内部隐藏在接口之后的功能模块（`component`），还是某类核心事实的持久化权威源头（`#datastore`）？
+
+这种定性错误在工程中极其普遍，且无法被语法解释器捕获。例如，当系统通过外部托管服务的接口来读写某类核心业务记录时，若仅按网络调用的表象将其标为外部系统（`#external`），而非本系统的领域数据存储（`#datastore`），围绕它的权威源头归属、读写方向与容错边界就会全部扭曲。大语言模型尤其擅长在完全满足 AST 语法与嵌套约束（如 `component` 必须位于 `container` 内、最多只画到组件层）的前提下，构造出本体定性错乱或按执行步骤胡乱切分的架构模型；一旦允许评审者阅读 `.c4` 源文件或设计说明，源码中的注释与文字辩解又会诱导评审者接受作者的合理化解释。
+
+因此，SSoT 将结构层的验证一分为二：由确定性的编译器（`ssot check`）守住形式底线——强制仅使用四种 C4 元素（`actor`、`system`、`container`、`component`，不再向代码层下钻）、每个非叶子元素必须具备唯一对应的下钻视图（`struct.views`），并禁止在结构元数据中夹带契约或行为层的标识符（`vocab.slots`）；而将架构划分的合理性完全交给基于 **LikeC4 渲染图的纯视觉盲审（`ssot-verify-structure`）**。
+
+视觉盲审之所以比源码审查更可靠，并非依赖主观审美，而是因为 LikeC4 的层级遮蔽机制（`view of`）将**信息隐藏与跨层耦合守恒**转化成了直接可见的几何约束。每一层视图自动隐去更低层级的内部细节，每个框体仅保留图例形状、一行技术标注与一句职责描述，每根箭头仅保留一个顺向动词短语。在这一受限的视觉预算下，父层框体上的每一根进出箭头在下钻到子层视图时，必须能清楚看到由哪一个直接子元素承接，且不能凭空多出父层未声明的外部连接。一旦某个区块的角色定性失真或职责混杂，图上的扇入扇出失衡、双向调用回路、图例形状（如存储桶与灰暗外部框）与动词短语之间的语义冲突就会在视觉密度上直接暴露。独立评审代理（`ssot:reviewer`）在完全不接触 `.c4` 源码、诊断与需求文档的条件下按序审阅渲染图，任何需要借助外部解释才能看懂的图形均被直接判定为结构问题并退回修改。
+
+---
+
+## 二、盒子层（VDM-SL）：以“可留白的一阶逻辑”替代模块设计文档
+
+当结构图上的某个叶子元素（不继续展开子元素的 `container` 或 `component`）通过深入三问、决定标记 `#contract` 向下建模时，它所承担的是对传统模块设计文档的替代。但无论是自然语言文档、领域驱动设计（DDD）辅助工具，还是构造性定理证明器，在处理“模块边界该写什么、不该写什么”时都会陷入失衡。
+
+模块内部绝大多数代码机制，仅仅是为了维持某条外部可观察的不变量而存在的手段。例如，两个模块经由缓冲通道交接任务时，为了防止并发读写破坏通道内的数据形态，实现层可以在写入端加互斥锁、在读取端加锁，或采用无锁原子队列。但同步原语本身绝不应进入设计规格：只要通道两端观察到的输入输出关系不变，锁的形态与位置在接口不变时随时可以替换；在设计模型里刻画互斥锁并证明其互斥性，既是在重复验证早已成熟的标准范式，又会将特定的实现手段固化为契约偏差（implementation bias）。设计唯一应当锁死的，是通道端口对外承诺的结果关系与数据不变量。
+
+| 载体类型 | 作为模块边界规格的缺陷 |
+|---|---|
+| 自然语言设计文档 | 无语法边界，极易混入锁、重试、缓存与临时字段等实现手段；无法做类型检查或反例求值，随代码演进静默失效 |
+| DDD 辅助工具 / Schema DSL | 本质是结构化字段清单，迫使设计者在早期展开 Entity 与 Value Object 的存储布局，却缺乏一阶逻辑谓词与集合/映射代数来陈述不变量 |
+| 构造性定理证明器（Dafny / Lean / Event-B） | 要求构造性闭合证明：一旦声明某条后置条件，工具即要求提供能推出该结论的具体过程与中间引理，迫使建模者把同步机制与算法步骤重新写进规格 |
+| **VDM-SL（SSoT 盒子载体）** | **在完整的一阶逻辑谓词（$\forall, \exists$）与集合、序列、映射代数之上，原生允许不展开类型、不定义过程体、不强制闭合证明** |
+
+SSoT 退回 VDM-SL，正是利用它在“精确数学约束”与“受控留白”之间的平衡。一个 VDM-SL 模块对应结构图上的一个底层叶子盒子：导出的函数与操作是盒子的**端口**，参数与返回值类型是连接端口的**线**，模块的 `state` 则是盒子自身的**反馈线**——将上一次端口调用留下的源头事实传递给下一次调用（例如 `soroi_workspace` 在反馈线上记录 `closed` 集合，唯一原因是 `launch` 端口的后置条件承诺在关闭之后拒绝新执行，而非为了记录生命周期走到了哪一步）。
+
+在项目早期或尚无运行时观测支撑的位置，尚未关心的身份与载荷直接声明为不透明的 `token`，未定约束的端口声明为 `is not yet specified`，不预建任何状态字段；随着运行观测确立，才将证实的底线补入隐式操作的 `ext rd`/`ext wr`、`pre`/`post` 与状态 `inv`，同时工具强制拒绝任何包含局部变量（`dcl`）、赋值（`:=`）或循环的过程式实现体（`contract.body`）。
+
+为了防止留白让规格退化成毫无约束的空壳，SSoT 不要求把每条证明义务都做完构造性证明（未决的 `MAYBE` 仅作为评审提示，由 QuickCheck 搜寻到确定反例时才报 `contract.po` 错误），但强制执行两项判据：**充分性**要求规格约束加上外部世界的领域性质（Domain Properties）足以推出所附着的需求（$\text{Spec} \land \text{Domain} \Rightarrow \text{Req}$），且每个 `pre`、`post`、`inv` 都必须能通过 `ssot eval` 在原样规格中代入具体的违反实例求值并被拒绝；**无偏差**则要求反馈线上的每一处状态区分都必须能被一串导出端口调用观察到，任何无法被外部端口区分的阶段枚举、计数器或进度标志都会被当作实现偏差剔除。
+
+---
+
+## 三、接线层（Quint + String Diagram）：用类型化反馈接线检验跨边界组合
+
+单个盒子内部的不变量在 VDM-SL 中确立后，系统最隐蔽的故障往往出现在**多个盒子的交界处**：守护进程半途崩溃重启、在途异步请求晚于关闭信号到达、多个过程并发修改同一份持久化事实。
+
+传统并发建模习惯用状态迁移图（$S_1 \to S_2 \to S_3$）刻画这类行为，但状态迁移图在面对跨组件组合时存在结构性缺陷。对于单一端口返回并类型（如 `ExecRef | Rejected`）后的局部分支，常规条件判断即可表达，无需状态机；而对于真正复杂的跨进程协作，状态迁移图把每个节点定义为一个枚举标签（如 `Pending | Opening | Running | Closing | Ended`），并围绕“标签如何跃迁”编写转移表。然而，控制流标签只是一个空洞的**类型标识符**——标签本身既不解释系统凭什么到达该位置，也不携带此时已经建立的数据凭据与不变量。更严重的是，分布式与并发系统中的状态分布在不同生命周期的位置上（崩溃即失的进程内存、跨崩溃留存的在途网络消息、持久化的存储源头），强行用枚举标签的笛卡尔积去穷举全局状态迁移表，只要增加一个正交维度（如进程重启代次 `epoch` 或异步停机触发），迁移规则就会组合爆炸。
+
+剥离人为发明的阶段标签后，状态迁移图里一个节点背后真正的类型，实质上是**特定生命周期通道上当前持有的值（由上游端口交出的凭据）及其满足的契约不变量**。基于开放迁移系统的反馈代数（Di Lavore 等，*Span(Graph): Theory of Processes + Feedback = Theory of Stateful Processes*），SSoT 在第三层摒弃了状态迁移表，采用 **String Diagram（接线图）** 与具备静态类型系统和现代语法的 **Quint**（取代语法晦涩的无类型 TLA+）来组合多个盒子。
+
+在一张 Quint 接线图中，每个 `var` 都是一条具有明确类型与生命周期的延迟线：契约盒子的反馈线直接采用 `.gen/contract.qnt` 从 VDM 生成的状态类型并以 `<别名>::initial` 初始化；进程内部步骤之间的传递线（如 `toOpen: Set[RuntimeId]`、`awaiting: Set[(RuntimeId, ExecRef)]`）与跨崩溃留存的在途请求线（`inflight`）则各自携带对应的领域凭据类型。一串连续处理被写成顺接的步骤盒子（`action`），步骤能否触发不读任何阶段字段，只看其输入线上是否有前一步放上去的值（未调用 `writeStart` 取得 `RuntimeId`，下一步连入参都不存在）。`ssot render` 将模块直接渲染为“线 $\to$ 步骤 $\to$ 线 $\to$ 步骤”的组合图，任何被大量步骤共同读写的伪状态机进度变量都会在图上暴露为异常的汇聚中心；而引入进程崩溃或停机接管时，只需新增一个环境盒子，声明其清空进程内局部线、保留持久化契约反馈线与在途网络线，即可局部组合出故障重入场景。
+
+将 Quint 置于第三层且仅按需启用，对应着工程演进的先后律：在单个盒子的 VDM 不变量尚未站稳之前，跨盒子的并发模型没有稳定的边界可言；当各个底层盒子的 `pre`/`post`/`inv` 确立后，再围绕具体的并发或崩溃担心将相关盒子接成 String Diagram。因为 VDM-SL 的隐式 `post` 是前后状态的数学关系，而 Quint 模拟需要可执行的状态推进步骤（`commit`），`ssot check` 在运行 Quint 有界模拟（验证可观察线上的安全性 `safety`，并通过 `witness*` 覆盖目标证明模型确实走到了关键交错而非空转满足）之后，会将生成的 ITF 轨迹中的每一次契约调用**自动回放到原样 VDM 规格中由 VDMJ 求值**，逐步核验 `pre`、`post`、`inv` 与 `ext rd`/`wr` 帧条件（`replay.*`），使单点契约与跨边界交错在单向链条上严格闭环。
+
+---
+
+## 四、防污染隔离墙与可组合的 Skill 盒子
+
+将大语言模型引入形式化设计时，首要威胁并非语法错误，而是**上下文污染**。只要模型在上下文中接触到旧设计文档或业务实现代码，就会不可避免地把旧文档里的表结构字段、校验步骤、重试参数，或现有代码里的临时补丁、锁机制与历史缺陷照搬进规格，使设计真源退化为实现细节的复述。
+
+SSoT 在代理工作流上强制实施三道信息隔离。第一是**历史文档代读隔离（`ssot:reader`）**：迁移旧文档时，主会话严禁直接读取原始文档；一切旧资料交由与新设计隔离的 `ssot:reader` 子代理按章节区域代读，仅向外输出剥离了实现机制与数据格式的领域概念备忘（`concepts.md`）和原文明确陈述的需求摘录（`requirements.md`），以受控的信息折损换取设计真源的纯净。第二是**实现代码隔离**：全部建模与评审环节只读设计目录、用户给出的需求原文与运行时观测，严禁读取业务代码、测试或配置文件，切断由错误实现反向污染规格的路径。第三是**无上下文独立盲审（`ssot:reviewer`）**：每个切片完成后，派发全新的 `ssot:reviewer` 子代理执行对应的 `ssot-verify-*` 审查；评审者不接触作者的推理记录与草稿，必须先依据 `ssot render` 导出的图形（C4 视图、VDM 盒子图、Quint 组合图）审视边界与接线，再结合作用域诊断给出独立裁决。
+
+为了适配不同演进阶段只需动用局部能力的特点，SSoT 将整套方法拆解为**核心判据 + 载体规则 + 独立操作盒子**。每个判断与操作 skill 都在头部声明严格的六元组接口（**输入、可读、可改、可运行、输出、上抛**），并在交付前通过 `ssot check <design> --scope <视图> --base <起始提交>` 校验改动边界：凡落在本切片可改范围之外的修改一律撤回；凡在底层建模中发现上游结构缺失或契约端口不足，严禁越权修补，必须通过**上抛**将事实交回上游切片。
+
+这种正交的盒子化架构使 SSoT 既可用于新系统的渐进建模与旧文档净化迁移，也可直接作为存量系统疑难缺陷的**隔离实验场**：当线上某个局部模块反复出现并发失步或状态错乱时，无需通读或迁就既有代码，可以直接将该局部的边界与担心单独抽入 SSoT 建模实验，待不变量与接线组合在模型中彻底理顺后，再用验证清晰的结构直接重构或重写问题模块。
+
+---
+
+## 五、单向验证链与仓库概览
+
+### 三层载体与单向生成链
 
 | 层 | 载体 | 文件 | 回答什么 |
 |---|---|---|---|
 | 结构 | LikeC4 | `design/structure/*.c4` | 按 C4 逐层放大的架构图：人、系统、容器、组件，谁调用谁，部署与信任边界 |
-| 盒子 | VDM-SL | `design/contract/<元素 fqn>.vdmsl` | 一个决定深入的底层元素：端口、线上的类型、反馈线（state）与端口上的承诺 |
-| 接线 | Quint | `design/behavior/<模块名>.qnt` | 围绕一个担心，把盒子接在一起：反馈、跨盒子的先后与收束、性质与覆盖目标 |
+| 盒子 | VDM-SL | `design/contract/<元素 fqn>.vdmsl` | 带 `#contract` 的底层元素：导出端口、线上的类型、自身反馈线（`state`）与端口上的 `pre`/`post`/`inv` |
+| 接线 | Quint | `design/behavior/<模块名>.qnt` | 围绕一个具体担心把盒子接成 String Diagram：带延迟的线、跨盒子的先后与收束、可观察线上的 `safety` 与 `witness*` 覆盖目标 |
 
-下层只在写下时存在，存在时只对照上层检查：
+下层只在经过深入判断决定写下时才存在，存在时严格对照上层单向验证：
 
 ```text
-LikeC4 ──gen──▶ .gen/structure.json
-VDM 盒子 ──gen──▶ .gen/contract.qnt（类型、Call 变体、状态类型、initial）
-Quint 接线 ──回放──▶ 轨迹里出现的每次契约调用，在 VDM 里求 pre/post/inv 与 frame
+LikeC4 ──gen──▶ .gen/structure.json（元素树、视图、带 #contract 的底层元素与模块名）
+VDM 盒子 ──gen──▶ .gen/contract.qnt（类型、Call 变体、状态类型、initial 初态）
+Quint 接线 ──回放──▶ 轨迹中每次契约调用，在原样 VDM 规格中求值检验 pre / post / inv 与 frame
 ```
 
-需求清单 `design/requirements.md` 不是载体：每条需求以 `REQ-<编号>` 开头，原文由用户给出；需求编号只附在确实兑现它的定义或声明上，不要求每条都附着，不进 LikeC4。结构只看 C4 渲染图评审；盒子与接线先看盒子图、组合图再读源文件。
+需求清单 `design/requirements.md` 独立于三层载体：每条需求以 `REQ-<编号>` 记录用户原文；一条需求可由结构图直接回答、由某个盒子或接线兑现，也可留给代码实现，仅在确实兑现它的 VDM 定义或 Quint 声明上方附着编号。完整示例见 [`skills/ssot/references/example/`](skills/ssot/references/example/README.md)，方法论与学术文献出处见 [`sources.md`](skills/ssot/references/sources.md)。
 
-## skill 树
+### Skill 树
 
-| 层 | skill | 是什么 |
+| 层 | Skill | 职责 |
 |---|---|---|
-| 核心 | [`ssot`](skills/ssot/SKILL.md) | SSoT 是什么、默认不可见、深度与精度两条轴、skill 怎样组合、命令 |
-| 核心 | [`ssot-judge`](skills/ssot-judge/SKILL.md) | 一个位置或一份观测要不要往下写 |
-| 核心 | [`ssot-requirement`](skills/ssot-requirement/SKILL.md) | 收下一条需求，并在同一次调用里判断它由哪里回答 |
-| 载体 | [`ssot-c4`](skills/ssot-c4/SKILL.md)、[`ssot-vdm`](skills/ssot-vdm/SKILL.md)、[`ssot-quint`](skills/ssot-quint/SKILL.md) | 三种载体各自的写法、惯用法与禁止项 |
-| 操作 | [`ssot-write-level`](skills/ssot-write-level/SKILL.md)、[`ssot-write-deploy`](skills/ssot-write-deploy/SKILL.md)、[`ssot-write-contract`](skills/ssot-write-contract/SKILL.md)、[`ssot-write-behavior`](skills/ssot-write-behavior/SKILL.md) | 写一个切片，与对应的载体 skill 一起读 |
-| 操作 | [`ssot-verify-structure`](skills/ssot-verify-structure/SKILL.md)、[`ssot-verify-contract`](skills/ssot-verify-contract/SKILL.md)、[`ssot-verify-behavior`](skills/ssot-verify-behavior/SKILL.md) | 评一个切片 |
-| 操作 | [`ssot-migrate-read`](skills/ssot-migrate-read/SKILL.md) | 由代读者读旧文档的一个区域 |
+| 核心 | [`ssot`](skills/ssot/SKILL.md) | 核心总纲：三层定位、默认不可见、深度与精度两条轴、skill 组合协议、命令与诊断准则 |
+| 核心 | [`ssot-judge`](skills/ssot-judge/SKILL.md) | 对一个位置或一份运行观测按深入三问判断停在原处、写盒子还是写接线，并定精度 |
+| 核心 | [`ssot-requirement`](skills/ssot-requirement/SKILL.md) | 编号收录一条需求原文，写出领域性质论证，并在同一次调用内完成深入判断 |
+| 载体 | [`ssot-c4`](skills/ssot-c4/SKILL.md)、[`ssot-vdm`](skills/ssot-vdm/SKILL.md)、[`ssot-quint`](skills/ssot-quint/SKILL.md) | 三种载体各自的写法、惯用法、工具拒绝规则与评审判据 |
+| 写入 | [`ssot-write-level`](skills/ssot-write-level/SKILL.md)、[`ssot-write-deploy`](skills/ssot-write-deploy/SKILL.md)、[`ssot-write-contract`](skills/ssot-write-contract/SKILL.md)、[`ssot-write-behavior`](skills/ssot-write-behavior/SKILL.md) | 编写单个结构层级、部署视图、VDM 盒子或 Quint 接线切片 |
+| 评审 | [`ssot-verify-structure`](skills/ssot-verify-structure/SKILL.md)、[`ssot-verify-contract`](skills/ssot-verify-contract/SKILL.md)、[`ssot-verify-behavior`](skills/ssot-verify-behavior/SKILL.md) | 对单个切片执行盲审（由 [`ssot:reviewer`](skills/ssot/agents/ssot-reviewer.md) 承载） |
+| 迁移 | [`ssot-migrate-read`](skills/ssot-migrate-read/SKILL.md) | 派 [`ssot:reader`](skills/ssot/agents/ssot-reader.md) 代读旧文档区域，过滤实现细节并提取概念与需求 |
 
-每个 skill 开头写明输入、可读、可改、可运行、输出与上抛；skill 之间不互相调用，由会话按 `ssot` 第五节的接法组合。评审者 `ssot:reviewer` 与代读者 `ssot:reader` 是 omp 的 agent 定义，在 [`skills/ssot/agents/`](skills/ssot/agents/)。
-
-## 安装
+### 安装
 
 ```sh
 npx skills add mouriya-s-lab/SSoT --skill ssot ssot-judge ssot-requirement ssot-c4 ssot-vdm ssot-quint ssot-write-level ssot-write-deploy ssot-write-contract ssot-write-behavior ssot-verify-structure ssot-verify-contract ssot-verify-behavior ssot-migrate-read --global --agent codex claude-code --yes
 ```
 
-装好后运行一次 `ssot setup`（第一次还没有 `ssot` 命令时，运行 `bun ~/.agents/skills/ssot/scripts/ssot.ts setup`）。它准备检查与渲染所需的工具，并把 `ssot` 装进 PATH；细节见 [`setup.md`](skills/ssot/references/setup.md)。
+安装后运行一次 `ssot setup`（首次尚未将 `ssot` 加入 `PATH` 时，执行 `bun ~/.agents/skills/ssot/scripts/ssot.ts setup`），自动配置 VDMJ、QuickCheck、LikeC4、Quint、elkjs 与无头浏览器并将 `ssot` 链入 `~/.local/bin/ssot`；环境要求与目录说明见 [`setup.md`](skills/ssot/references/setup.md)。
 
-## 命令
+### 命令
 
 | 命令 | 作用 |
 |---|---|
-| `ssot setup` | 准备检查与渲染所需的工具，把 `ssot` 装进 PATH |
-| `ssot gen <design>` | 重新生成 `.gen/` |
-| `ssot check <design>` | 全量检查：编译三种载体、生成链新鲜度、跨载体规则、模拟、覆盖目标、回放、证明义务 |
-| `ssot check <design> --scope <视图 id>` | 仍编译全部内容，模拟、回放、QuickCheck 只在该视图的切片闭包内运行，只报告该切片的诊断 |
-| `ssot check <design> --scope <视图 id> --base <rev>` | 另列出 `<rev>` 之后落在该作用域之外的改动 |
-| `ssot render <design> [--out <目录>]` | 导出 C4 视图、每个契约模块的盒子图、每个 Quint 模块的组合图，按宏观到微观的顺序列出 |
-| `ssot eval <design> <模块> '<表达式>' [--bind …]` | 在原样规格里求一个 VDM 表达式，用来构造违反实例 |
-| `ssot status <design> [--deadline 秒]` | 只报已写下内容里的 error，以及带 `#contract` 却没有模块的元素；都没有时输出“没有前沿” |
+| `ssot setup` | 安装检查与渲染依赖，将 `ssot` 放入 `PATH` |
+| `ssot gen <design>` | 从结构与契约重新生成 `.gen/structure.json` 与 `.gen/contract.qnt` |
+| `ssot check <design>` | 全量检查：编译三种载体、生成链新鲜度、跨载体规则、模拟、覆盖目标、轨迹回放、证明义务 |
+| `ssot check <design> --scope <视图 id>` | 编译全部内容，但仅在该视图的切片闭包内运行模拟、回放与 QuickCheck，只报告归属该切片的诊断 |
+| `ssot check <design> --scope <视图 id> --base <rev>` | 额外列出 `<rev>` 之后落在该切片可改范围之外的越界改动 |
+| `ssot render <design> [--out <目录>]` | 按从宏观到微观的顺序导出 C4 视图、每个契约模块的盒子图（`box:<模块名>`）与每个 Quint 模块的组合图（`composition:<模块名>`） |
+| `ssot eval <design> <模块> '<表达式>' [--bind …]` | 在原样 VDM 规格中对表达式求值，用于验证违反实例是否被规格拒绝 |
+| `ssot status <design> [--deadline 秒]` | 报告已写下内容中的首个 error，或已标记 `#contract` 但尚无模块的元素；均无时输出“没有前沿” |
 
-`check` 的退出码：`0` 通过，`1` 有 error，`3` 验证没有做完（`resource.deadline`），不是设计被拒绝。
+`ssot check` 退出码：`0` 通过；`1` 存在确证的 error；`3` 无 error 但触发 `resource.deadline`（验证未在时限内跑完，不代表设计被拒绝）。

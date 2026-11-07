@@ -5,7 +5,7 @@ description: SSoT 接线载体（Quint）：一个 Quint 模块是围绕一个�
 
 # ssot-quint：接线与反馈
 
-例子取自 soroi 示例设计（[`../ssot/references/example/design/`](../ssot/references/example/design/)）的 `design/behavior/winddown.qnt`。
+例子取自 checkout 示例设计（[`../ssot/references/example/design/`](../ssot/references/example/design/)）的 `design/behavior/cancellation.qnt`。
 
 ## 一、一个模块是一张接线图
 
@@ -14,12 +14,12 @@ description: SSoT 接线载体（Quint）：一个 Quint 模块是围绕一个�
 - **一个模块围绕一个担心。** 担心来自深入判断（`ssot` 第三节）。模块开头的注释写出这个担心、接进来的盒子，以及步骤怎样顺接：
 
 ```quint
-// 担心：停机或 daemon 崩溃之后，一个运行项的结束可能在它的闭包里还有执行时就被写下（REQ-55），
-// 或者已退出的 daemon 发出的 launch 在闭包关闭之后才到达执行边界、却被接纳（REQ-24）。
-// 盒子：使用方 caller、停机过程 halting、daemon 的崩溃环境 epoch，契约盒子 soroi_store、soroi_workspace；
-// 闭包过程是一串顺接的步骤（open → launch → collect → close → end），每一步从它的输入线取一个值、调用端口、
-// 把结果放到下一步的输入线上。每个 var 是一条带延迟的线；先后只来自线上的值，不记“走到哪一步”。
-module winddown {
+// 担心：取消订单或 Order Service 崩溃重启之后，某个订单项的结局在它的库存尚未释放时就被写下（REQ-10），
+// 或者已退出的旧进程发出的在途 reserve 在订单项释放之后才到达仓储边界、却仍被接纳锁库（REQ-6）。
+// 盒子：买家 buyer、取消收束过程 cancelling、进程崩溃环境 epoch，契约盒子 checkout_ledger、checkout_inventory；
+// 履约过程是一串顺接的步骤（startItem → sendReserve → answerReserve → fulfillCommit → fulfillSettle），
+// 每一步从输入线取值、调用端口、把凭据放到下一步的输入线上。每个 var 是一条带延迟的线；先后只来自线上的值，不记“走到哪一步”。
+module cancellation {
 ```
 
 - **每个 `var` 是一条带延迟的线。** 它要么是一个盒子自己的反馈（契约盒子的状态、停机过程记着的触发、崩溃环境记着 daemon 运行到第几次），要么是两个盒子之间在途的值（一步放上去、下一步取下来）：
@@ -29,33 +29,31 @@ module winddown {
 - **不直接建模状态机。** 不为一个实体记“它走到了哪一步”，再据此选下一步：阶段枚举、阶段字符串、计数器，以及一组只用来区分进度的布尔位或可选字段，都是状态机换了写法。一串先后相继的步骤写成顺接的盒子：每一步从输入线取一个值、调用端口、把结果放到下一步的输入线上；先后只来自线上有没有值：
 
 ```quint
-  // 闭包过程各步之间的线（daemon 进程内，崩溃时消失）。
-  var toOpen: Set[Store::RuntimeId]
-  var toLaunch: Set[Store::RuntimeId]
-  var awaiting: Set[(Store::RuntimeId, Ws::ExecRef)]
-  var toCollect: Set[(Store::RuntimeId, Ws::ExecRef)]
-  var toClose: Set[Store::RuntimeId]
-  var toEnd: Set[Store::RuntimeId]
+  // 履约过程各步之间的传递线（Order Service 进程内，崩溃时清空）。
+  var toReserve: Set[Ledger::ItemId]
+  var awaiting: Set[(Ledger::ItemId, Inv::HoldId)]
+  var toCommit: Set[(Ledger::ItemId, Inv::HoldId)]
+  var toSettle: Set[Ledger::ItemId]
   …
-  action closureClose(rt: Store::RuntimeId): bool = all {
-    rt.in(toClose),
-    running(rt),
-    toClose' = toClose.exclude(Set(rt)),
-    toEnd' = toEnd.union(Set(rt)),
+  action fulfillCommit(it: Ledger::ItemId, h: Inv::HoldId): bool = all {
+    (it, h).in(toCommit),
+    active(it),
+    toCommit' = toCommit.exclude(Set((it, h))),
+    toSettle' = toSettle.union(Set(it)),
     …
-    commit(soroi_workspace(Ws::close({ rt: rt }))),
+    commit(checkout_inventory(Inv::commitHold({ it: it, h: h }))),
   }
 ```
 
 - **在途的请求是一条带延迟的线。** 发出与回复之间可能隔着崩溃：在途请求自己是一条线，跨崩溃留下；回复的一步取下它、调用契约端口，只把结果交给仍在等它的那一步。回复取契约允许的每一种结果，不在行为里替执行边界挑：
 
 ```quint
-  // REQ-24：关闭已记下时回复 Rejected；未关闭时执行边界也可以拒绝。回复只交给仍在等它的闭包过程。
-  action answerLaunch(rt: Store::RuntimeId, x: Ws::ExecRef, e: int, accept: bool): bool = all {
-    (rt, x, e).in(inflight),
-    val res = if (rt.in(ws.closed) or not(accept)) Ws::Launch_Result_Rejected(Ws::Rejected_Rejected)
-              else Ws::Launch_Result_ExecRef(x)
-    val waiting = e == epoch and (rt, x).in(awaiting)
+  // REQ-6：订单项已记入 released 时回复 Rejected；未释放时仓储也可因缺货拒绝。回复只交给仍在当前进程等待的履约步骤。
+  action answerReserve(it: Ledger::ItemId, h: Inv::HoldId, e: int, accept: bool): bool = all {
+    (it, h, e).in(inflight),
+    val res = if (it.in(inv.released) or not(accept)) Inv::Reserve_Result_Rejected(Inv::Rejected_Rejected)
+              else Inv::Reserve_Result_HoldId(h)
+    val waiting = e == epoch and (it, h).in(awaiting)
     …
 ```
 
@@ -69,8 +67,8 @@ module winddown {
 ```quint
   import contract.* from "../.gen/contract"
   import Vdm.* from "../.gen/contract"
-  import soroi_store as Store from "../.gen/contract"
-  import soroi_workspace as Ws from "../.gen/contract"
+  import checkout_ledger as Ledger from "../.gen/contract"
+  import checkout_inventory as Inv from "../.gen/contract"
 ```
 
 `.gen/contract.qnt` 由 `ssot gen` 写出，不手改。行为里不声明与契约的类型、操作或函数同名的东西；行为自己的概念在本模块定义一次。
@@ -84,13 +82,13 @@ module winddown {
 ```quint
   action commit(call: Call): bool = all {
     lastCall' = call,
-    store' = storeAfter(store, call),
-    ws' = workspaceAfter(ws, call),
+    ledger' = ledgerAfter(ledger, call),
+    inv' = inventoryAfter(inv, call),
   }
 ```
 
   这是 `post` 的第二份手写，由回放检查：轨迹里出现的每次调用，取调用前后的反馈线与载荷，在定义它的 VDM 模块里求 `pre`、`post`、`inv` 与 frame。没有接进来的端口不回放。
-- **契约盒子已经持有的事实，从它的反馈线读。** 守卫要判断“闭包已关闭”，读 `ws.closed`，不在行为一侧的盒子里另记一份。
+- **契约盒子已经持有的事实，从它的反馈线读。** 守卫要判断“订单项的锁库窗口已关闭”，读 `inv.released`，不在行为一侧的盒子里另记一份。
 
 ## 四、不重写契约的事实
 
@@ -100,9 +98,9 @@ module winddown {
 
 ## 五、次序怎样写
 
-- **参与者只用自己知道的值。** 每一步的守卫与载荷只用它输入线上的值、它所属盒子自己的反馈，或前一个端口交给它的值（闭包过程用 `writeStart` 返回的运行项）。读别的盒子的反馈，就是一条从那个盒子接过来的线，只在确有这条线时才读。
+- **参与者只用自己知道的值。** 每一步的守卫与载荷只用它输入线上的值、它所属盒子自己的反馈，或前一个端口交给它的值（履约过程用 `writeItem` 返回的订单项身份）。读别的盒子的反馈，就是一条从那个盒子接过来的线，只在确有这条线时才读。
 - **每个结局都有去处。** 被调端口的结果是并类型时，每个变体都有产生它的步骤，也有接住它之后的路。
-- **集合用有界常量完整表达。** `pure val RUNS = Set("r1", "r2")` 这类常量给出候选集合，每个元素都可能被选到。
+- **集合用有界常量完整表达。** `pure val ORDERS = Set("o1", "o2")` 这类常量给出候选集合，每个元素都可能被选到。
 - **每一步改它碰到的线。** 一个 `action` 从哪些线取值、往哪些线放值，它就连着哪些线；组合图就按这个画（第七节）。
 
 ## 六、性质与覆盖目标
@@ -110,19 +108,19 @@ module winddown {
 - **性质写在对外可观察的线上。** `safety` 是不变式的合取，写在契约盒子的反馈线或几个盒子之间可观察的关系上，不复述某个动作自己的守卫，不用只为不变式存在的影子变量：
 
 ```quint
-  // REQ-55：一个运行项的结束写下时，它的闭包里没有仍在运行的执行。
-  val noExecAfterEnd = ws.running.keys().forall(x => not(ended(ws.running.get(x))))
-  // REQ-55：打开过闭包的运行项，结束写下时闭包已经关闭。
-  val endAfterClose = store.ends.keys().forall(rt => rt.in(ws.opened) implies rt.in(ws.closed))
-  val safety = noExecAfterEnd and endAfterClose
+  // REQ-10：一个订单项写下结算结局时，仓储里没有属于它的未释放锁库。
+  val noHoldAfterOutcome = inv.held.keys().forall(h => not(settled(inv.held.get(h))))
+  // REQ-10：任何已写下结算结局的订单项，它在仓储中的锁库窗口都已关闭。
+  val outcomeAfterRelease = ledger.outcomes.keys().forall(it => it.in(inv.released))
+  val safety = noHoldAfterOutcome and outcomeAfterRelease
 ```
 
 - **覆盖目标证明模型确实在做事。** 每个名字以 `witness` 开头的 `val` 都是必须走到的情形，工具对它做一次定向模拟，走不到时检查失败。一个什么都不做的模型永远满足性质，所以每条性质涉及的情形都要有覆盖目标；需要的步数多于默认值时，在同一模块声明 `pure val maxSteps_<目标名> = <正整数字面量>`。覆盖目标写在可观察的线上，说出的情形要与注释一致——“已退出的 daemon 发出的请求”就要看得出发出它的是哪一次运行：
 
 ```quint
-  // REQ-24：已退出的 daemon 发出的 launch 还在途，它的闭包已经关闭。
-  val witnessLateLaunchAfterClose = inflight.exists(p => p._3 < epoch and p._1.in(ws.closed))
-  pure val maxSteps_witnessLateLaunchAfterClose = 40
+  // REQ-6：已退出的旧进程发出的 reserve 仍在途，而该订单项的锁库窗口已经释放。
+  val witnessLateReserveAfterRelease = inflight.exists(p => p._3 < epoch and p._1.in(inv.released))
+  pure val maxSteps_witnessLateReserveAfterRelease = 40
 ```
 
 - 随机模拟不保证走到少见的交错。目标很少出现时，用 `nondet roll = 1.to(8).oneOf()` 这类频率放慢外部事件与崩溃，或放宽这个目标的步数。
@@ -160,7 +158,7 @@ module winddown {
 1. **担心与接线对得上。** 模块开头写的担心，组合图里接进来的盒子足以表达；没有与担心无关的盒子；环境盒子都有阶段或观测支撑。
 2. **不直接建模状态机。** 没有阶段枚举、阶段字符串、计数器，也没有一组只用来区分进度的布尔位或可选字段；没有包揽几个进程的大节点；先后来自线上有没有值。
 3. **性质在可观察的线上。** `safety` 不复述动作自己的守卫，不依赖影子变量；每条性质都有覆盖目标说明它涉及的情形确实走到了。
-4. **换掉一个盒子会怎样。** 对每条性质问：哪一个错误的盒子或错误的接线会让它失败（例如执行边界在关闭之后仍接纳 launch）？答不出，这条性质很可能是空的。
+4. **换掉一个盒子会怎样。** 对每条性质问：哪一个错误的盒子或错误的接线会让它失败（例如仓储边界在释放之后仍接纳 reserve）？答不出，这条性质很可能是空的。
 5. **不重写契约事实。** 契约盒子的反馈线只用生成类型、用 `initial` 初始化、只在对应 `Call` 那一步改变；没有与它并行的另一份事实。
 6. **参与者只用自己知道的值；每个结局都有处理；集合完整表达。**
 7. **需求编号。** 每个附着的编号都在确实兑现它的声明上。

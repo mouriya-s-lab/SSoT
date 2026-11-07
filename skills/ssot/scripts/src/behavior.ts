@@ -40,7 +40,7 @@ function relatedToScope(q: QuintModule, witness: QuintDecl, modules: ReadonlySet
 }
 
 /**
- * 随机模拟不保证走到少见的交错（例如 close 之后才回复的 launch）。设计在 Quint 里用 `val witness*` 声明必须覆盖的情形；
+ * 随机模拟不保证走到少见的交错（例如 release 之后才回复的 reserve）。设计在 Quint 里用 `val witness*` 声明必须覆盖的情形；
  * 这里对每个目标做以它为终点的定向模拟（`--invariant not(witness)`，由 Quint 自己求值目标）：到达即得到一条轨迹交给回放，
  * 到达不了即“验证不完整”。不用 quint verify：Apalache 在这里会把不可达的目标报成可达（见 REPORT §7），
  * 而且在 B2 的契约上被 Quint 0.33.1 的展平器缺陷挡住。

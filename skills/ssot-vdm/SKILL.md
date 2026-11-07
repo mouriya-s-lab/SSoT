@@ -5,7 +5,7 @@ description: SSoT 盒子载体（VDM-SL）：一个带 #contract 的底层元素
 
 # ssot-vdm：盒子
 
-例子取自 soroi 示例设计（[`../ssot/references/example/design/`](../ssot/references/example/design/)）的 `soroi_store`、`soroi_workspace`。VDM 语法查 [`references/vdm/`](references/vdm/README.md)。
+例子取自 checkout 示例设计（[`../ssot/references/example/design/`](../ssot/references/example/design/)）的 `checkout_ledger`、`checkout_inventory`。VDM 语法查 [`references/vdm/`](references/vdm/README.md)。
 
 ## 一、一个模块就是一个盒子
 
@@ -14,7 +14,7 @@ description: SSoT 盒子载体（VDM-SL）：一个带 #contract 的底层元素
   - 模块的 `state` 是这个盒子自己的**反馈线**：端口的调用沿着它把上一次留下的事实交给下一次；没有状态的盒子没有 `state`；
   - 每个操作的 `ext rd`/`ext wr` 说明这个端口读、写反馈线的哪一段；
   - `pre`、`post`、`inv` 是端口上的承诺：什么时候能调、调完成立什么、任何时刻都成立什么。
-- **不直接建模状态机。** 不把盒子写成“阶段 + 迁移表”，不为一个实体记“它走到了哪一步”：阶段枚举、阶段字段、计数器，以及一组只用来区分进度的布尔位，都不放进反馈线。反馈线上只放端口承诺要读到的源头事实——`soroi_workspace` 记下 `closed`，是因为“关闭之后拒绝 launch”要读它，不是为了记闭包走到了哪里。跨盒子的先后交给接线（`ssot-quint`）。
+- **不直接建模状态机。** 不把盒子写成“阶段 + 迁移表”，不为一个实体记“它走到了哪一步”：阶段枚举、阶段字段、计数器，以及一组只用来区分进度的布尔位，都不放进反馈线。反馈线上只放端口承诺要读到的源头事实——`checkout_inventory` 记下 `released`，是因为“释放之后拒绝 reserve”要读它，不是为了记订单生命周期走到了哪里。跨盒子的先后交给接线（`ssot-quint`）。
 - 盒子图：`ssot render` 为每个契约模块画一张盒子图（端口、线、反馈线、每个端口读写的分量）。写完先看这张图：端口是不是只有必要的几个，反馈线上是不是只有这个盒子守住的源头事实。
 
 ## 二、从模糊到精确
@@ -22,18 +22,18 @@ description: SSoT 盒子载体（VDM-SL）：一个带 #contract 的底层元素
 精度随使用者声明的阶段增加（`ssot` 第三节）：
 
 - **早期：** 只写端口签名；类型多为 `token`；效果还没有约束的端口写成显式操作 `is not yet specified`；判定写成体为 `is not yet specified` 的函数；不预建 `state`。
-- **有运行观测支撑的地方：** 只把观测证实的那几条性质写成 `pre`/`post`/`inv`。soroi 的 `soroi_store` 停在“事实只写一次、按序写下”：记录的内容保持不透明，结束只区分是否由停机结束：
+- **有运行观测支撑的地方：** 只把观测证实的那几条性质写成 `pre`/`post`/`inv`。checkout 的 `checkout_ledger` 停在“事实只写一次、按序写下”：商品明细与金额保持不透明，结算结局只区分正常成交还是取消：
 
 ```vdm
-  -- 结束的内容保持不透明，只区分是否由停机结束。
-  Outcome = <Settled> | <Halted>;
+  -- 订单项的结算内容保持不透明，只区分正常成交还是取消。
+  Outcome = <Fulfilled> | <Cancelled>;
   …
-  -- REQ-34：一个运行项的结束至多写下一次。
-  writeEnd(rt : RuntimeId, o : Outcome)
-  ext rd runtimes
-      wr ends
-  pre rt in set dom runtimes and rt not in set dom ends
-  post ends = ends~ munion {rt |-> o};
+  -- REQ-8：每个订单项的结算结局至多写下一次。
+  writeOutcome(it : ItemId, out : Outcome)
+  ext rd items
+      wr outcomes
+  pre it in set dom items and it not in set dom outcomes
+  post outcomes = outcomes~ munion {it |-> out};
 ```
 
 `token` 与 `is not yet specified` 是合法的终态，一直保留到有约束要求观察它的结构或规定它的结果。
@@ -41,10 +41,10 @@ description: SSoT 盒子载体（VDM-SL）：一个带 #contract 的底层元素
 模块开头的注释写这个盒子负责什么、端口之间的先后归谁、精度停在哪里：
 
 ```vdm
--- 事实源头这个盒子：运行、运行项、运行项的结束与运行的停机锚点。
+-- 账本事实源头这个盒子：订单、订单项、订单项的结算结局与整单取消锚点。
 -- 只写每个端口在数据上的前后条件；端口之间的先后由 design/behavior 持有。
--- 精度停在“事实只写一次、按序写下”：记录的内容（输入、产出、现场）保持不透明。
-module soroi_store
+-- 精度停在“事实只写一次、按序写下”：商品明细、金额与支付凭据保持不透明。
+module checkout_ledger
 ```
 
 ## 三、定义多少
@@ -64,10 +64,10 @@ SignalColour = <Red> | <Amber> | <FlashingAmber> | <Green>
 
 ## 四、文件与模块
 
-- 文件 `design/contract/<fqn>.vdmsl`，恰有一个模块，模块名是 fqn 把 `.` 换成 `_`：`soroi.store` → `soroi_store`。`#contract` 只在没有子元素的元素上。
+- 文件 `design/contract/<fqn>.vdmsl`，恰有一个模块，模块名是 fqn 把 `.` 换成 `_`：`checkout.ledger` → `checkout_ledger`。`#contract` 只在没有子元素的元素上。
 - `imports` 由契约自己决定：用到哪个模块的定义，就从持有它的模块 import，只列实际用到的名字。结构不为 import 画任何关系。
 - 模块之间的 import 不能成环（生成的 Quint 模块不允许循环引用）；架构元素的模块不得 import 业务元素的模块。两条由 `contract.imports`、`contract.layering` 拒绝。
-- 共用的身份定义在维护它的盒子：soroi 的运行与运行项身份由事实源头 `soroi_store` 持有，`soroi_workspace` import 它。不为了放共用定义新建元素。
+- 共用的身份定义在维护它的盒子：checkout 的订单与订单项身份由事实源头 `checkout_ledger` 持有，`checkout_inventory` import 它。不为了放共用定义新建元素。
 - 文件是原生 `.vdmsl`，不嵌在 Markdown 里。
 
 为了让 `.gen/contract.qnt` 能生成：
@@ -84,16 +84,17 @@ SignalColour = <Red> | <Amber> | <FlashingAmber> | <Green>
 **模块头。** `exports` 列出别的模块能用的东西；`struct` 表示连同结构导出，不带则使用方不能构造、读字段或分支匹配：
 
 ```vdm
-module soroi_workspace
+module checkout_inventory
 imports
-  from soroi_store
-    types RuntimeId
+  from checkout_ledger
+    types ItemId
 exports
   types
-    ExecRef; struct Rejected
+    HoldId; struct Rejected
   operations
-    open : soroi_store`RuntimeId ==> ();
-    launch : soroi_store`RuntimeId * ExecRef ==> ExecRef | Rejected;
+    reserve : checkout_ledger`ItemId * HoldId ==> HoldId | Rejected;
+    commitHold : checkout_ledger`ItemId * HoldId ==> ();
+    release : checkout_ledger`ItemId ==> ()
 ```
 
 **类型。** `token` 是没有结构的值；`inv` 给类型加不变式；`::` 定义记录，字段之间不加分号；`|` 组成并类型，`<Rejected>` 是 quote 值。
@@ -103,28 +104,27 @@ exports
 **反馈线（`state`）。** 一条记录，带不变式与初值。`init` 写成 `s == s = mk_<状态名>(...)`：工具从它求出初态，生成行为要用的 `initial`。只放这个盒子守住、有观察者的源头事实；身份之间的事实用映射与集合；能算出来的写成纯函数：
 
 ```vdm
--- 一个运行项的闭包是否打开、是否已记下关闭，以及被接纳、尚未终止的执行属于哪个运行项。
-state Closures of
-  opened  : set of soroi_store`RuntimeId
-  closed  : set of soroi_store`RuntimeId
-  running : map ExecRef to soroi_store`RuntimeId
-inv mk_Closures(os, cs, rn) ==
-  cs subset os and rng rn subset os \ cs
-init s == s = mk_Closures({}, {}, {|->})
+-- 哪些订单项已关闭锁库窗口（已释放或已扣减），以及当前未释放的锁库属于哪个订单项。
+state Reservations of
+  released : set of checkout_ledger`ItemId
+  held     : map HoldId to checkout_ledger`ItemId
+inv mk_Reservations(rs, hs) ==
+  rng hs inter rs = {}
+init s == s = mk_Reservations({}, {|->})
 end
 ```
 
 **隐式操作（端口）。** 只写 `ext`、`pre` 与 `post`。`ext rd` 列只读的分量，`ext wr` 列要写的分量；没列进 `ext wr` 的分量调用前后不变。`post` 里 `x~` 是调用前的值。`ext wr` 里的分量，每个 `or` 分支都要写出它这一支怎样变，没变就写 `x = x~`，否则那一支允许它变成任意值：
 
 ```vdm
-  -- REQ-24：关闭记下之后拒绝该运行项的 launch；被接纳的执行记入 running。
-  launch(rt : soroi_store`RuntimeId, x : ExecRef) r : ExecRef | Rejected
-  ext rd opened, closed
-      wr running
-  pre rt in set opened and x not in set dom running
-  post (rt in set closed => r = <Rejected>) and
-       ((r = x and running = running~ munion {x |-> rt}) or
-        (r = <Rejected> and running = running~));
+  -- REQ-6：已记入 released 的订单项一律拒绝后续 reserve；被接纳的锁库记入 held。
+  reserve(it : checkout_ledger`ItemId, h : HoldId) r : HoldId | Rejected
+  ext rd released
+      wr held
+  pre h not in set dom held
+  post (it in set released => r = <Rejected>) and
+       ((r = h and it not in set released and held = held~ munion {h |-> it}) or
+        (r = <Rejected> and held = held~));
 ```
 
 **函数。** 不读写反馈线的定义写成函数，不写成隐式操作。显式体只在两个独立实现面对同一输入必须得出同一结果、且这个结果本身就是承诺时才写；允许多个合格结果、或不想绑定算法时，只写签名与 `post`。不在规格里实现排序、比较、遍历这类标准算法：写出它要满足的性质，或者干脆不展开。显式体不写局部变量（`dcl`）、赋值（`:=`）与循环。
@@ -141,7 +141,7 @@ end
 
 1. **身份只比较相等。** 类型保持 `token`，约束写成身份之间的等式或映射。
 2. **判定写成不展开的函数，放进谓词。** 条件的内容未定或不归本系统定时，写一个体为 `is not yet specified` 的判定函数，在 `pre`/`post` 里调用它。
-3. **事实写成身份之间的映射与集合。** 要记住的只是“哪些运行已写下 halt”“运行项属于哪个运行”时，用 `map RunId to Trigger`、`map RuntimeId to RunId`，不给实体建带状态字段的记录。
+3. **事实写成身份之间的映射与集合。** 要记住的只是“哪些订单已写下取消锚点”“订单项属于哪个订单”时，用 `map OrderId to Trigger`、`map ItemId to OrderId`，不给实体建带状态字段的记录。
 4. **结局只列调用方要区分的分支。** 结果写成 quote 并类型，只列合法调用方会分别处理的几支；调用方不分支的结果返回 `()`。违反 `pre` 的调用不列成结局。阶段还不支持的失败分支不预先列出。
 5. **端口与外部依赖只留签名。** 效果还没有约束的端口、外部系统提供的端口，写签名加 `== is not yet specified`，不为它预建 `state`。
 6. **数值写进 `values`。** 时限、次数写成常量；它们在什么时刻起作用归接线。
@@ -158,12 +158,12 @@ end
 **用 `ssot eval` 求违反实例**，在原样规格里求值：
 
 ```sh
-# 反馈线的不变式：一个运行项属于一个不存在的运行。构造这个状态本身就被拒绝（VDMJ 报 4079）
-ssot eval <design> soroi_store \
-  'mk_Records({}, {mk_token("t1") |-> mk_token("r1")}, {|->}, {|->})'
-# 端口的前置条件：同一个运行项的结束写第二次，求得 false
-ssot eval <design> soroi_store \
-  'pre_writeEnd(mk_token("t1"), <Settled>, mk_Records({mk_token("r1")}, {mk_token("t1") |-> mk_token("r1")}, {mk_token("t1") |-> <Settled>}, {|->}))'
+# 反馈线的不变式：一个订单项属于一个不存在的订单。构造这个状态本身就被拒绝（VDMJ 报 4079）
+ssot eval <design> checkout_ledger \
+  'mk_Records({}, {mk_token("i1") |-> mk_token("o1")}, {|->}, {|->})'
+# 端口的前置条件：同一个订单项的结算结局写第二次，求得 false
+ssot eval <design> checkout_ledger \
+  'pre_writeOutcome(mk_token("i1"), <Fulfilled>, mk_Records({mk_token("o1")}, {mk_token("i1") |-> mk_token("o1")}, {mk_token("i1") |-> <Fulfilled>}, {|->}))'
 ```
 
 `pre_op(实参, 前状态)`、`post_op(实参, 结果, 前状态, 后状态)` 同样可以求。表达式求得 `false` 是正常的值，要自己判断它是不是所研究性质的反例。不透明身份用 `--bind name=<模块>:<表达式>:<类型模块>:<类型名>` 在定义模块里构造。不要为了写得出实例而给身份加 `struct` 导出或搬家。

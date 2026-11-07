@@ -317,7 +317,7 @@ export async function compileBehavior(
         if (owner === "contract" && def?.name && generated.has(def.name)) modules.add(def.name);
         else if (owner && owner !== "contract" && owner !== "Vdm" && generated.has(owner)) modules.add(owner);
       }
-      // `match lastCall { | soroi_workspace(op) => … }` 编译成 matchVariant，变体标签是字符串，不经名字解析。
+      // `match lastCall { | checkout_inventory(op) => … }` 编译成 matchVariant，变体标签是字符串，不经名字解析。
       if (x.kind === "app" && x.opcode === "matchVariant" && Array.isArray(x.args)) {
         for (const a of x.args) {
           if (a !== null && typeof a === "object" && !Array.isArray(a) && a.kind === "str" && typeof a.value === "string" && a.value !== "contract" && generated.has(a.value)) modules.add(a.value);

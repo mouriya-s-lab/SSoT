@@ -185,7 +185,7 @@ const DEADLINE_MS = 300_000;
  * Vdm.java 编译出的 class 目录。它是派生副本：源头是 Vdm.java 与 VDMJ、QuickCheck 两个 jar，目录名是三者内容的 sha256，
  * 任何一个变了就落到另一个目录，旧目录不再被读，所以不会用到过期的 class。缺了才用 javac 编译到临时目录再整体改名进位；
  * 并发的 check 同时编译时，改名失败的一方删掉自己的临时目录，用已经进位的那份（内容相同）。
- * 省掉的是源文件模式每次调用约 0.65s 的编译（soroi：1.2s → 0.6s）。同一进程只算一次。
+ * 省掉的是源文件模式每次调用约 0.65s 的编译（checkout：1.2s → 0.6s）。同一进程只算一次。
  */
 let classes: Promise<string> | null = null;
 

@@ -1,135 +1,148 @@
 # SSoT
 
-软件工程中的设计危机通常表现为两个同样失效的极端。一端是自然语言设计文档：架构拓扑、数据表字段、局部重试策略与接口承诺混杂在同一篇散文里，既无法被编译器检验，也无法阻止实现细节渗透，代码一旦演进便沦为过时的注释。另一端是前置的全量形式化建模：在系统动工前用状态机语言完整刻画全局行为并证明安全性质，却违背了工程演进的基本事实——任何形式化验证都以验证对象的稳定为前提，而在业务探索期与设计早期，模型本身恰恰是最不稳定的假设。
+**English** · [简体中文](README.zh-CN.md)
 
-在系统真正经历运行时检验之前，业务边界尚在调整，并发与故障模式尚未充分暴露。此时若强行将整个系统塞进状态转移模型，所有形式化推导都建立在脆弱的猜测之上；业务认知一旦修正，状态空间与证明便全盘作废。反之，若因早期认知不稳定而彻底放弃形式化约束、退回自然语言，系统边界又会立刻失去机器可检验的准绳。
-
-解开这一死结的切入点，是承认软件系统中**不同层次的认知具有截然不同的半衰期**，并按认知稳定的先后次序，将建模与验证拆解到三种不同的载体上：
-
-最先稳定的是**宏观拓扑与权威归属**——系统由哪些运行单元组成、哪一处是某类事实的唯一存储源头、信任边界落在何处。这些划分是一切形式化契约的宿主，但只能在容器或组件粒度上截断（绝不下探到代码层），且其合理性依赖对领域角色的定性，必须借由层级遮蔽与视觉密度来审视（**LikeC4**）。其次稳定的是**单个底层边界上的消极约束**——一个模块对外暴露哪些端口、守住哪些不可违背的数据不变量。这一层直接替代传统的模块设计文档，但前提是规格语言必须在一阶逻辑谓词之外原生支持“局部留白”，允许对未定的内部结构与可替换的实现机制保持不透明（**VDM-SL**）。最后稳定的才是**跨边界的串并行动态组合**——并发竞争、异步消息乱序与进程崩溃恢复几乎全部发生在盒子与盒子的交界处；只有当单个盒子内部的不变量经过验证站稳之后，才针对确有交错风险的边界接入动态模型，在有界模拟与跨层轨迹回放中检验各盒子的边界规则在串并行组合下是否自洽（**Quint**）。
-
-SSoT（Single Source of Truth）将这三层载体组织为单向生成与验证链。系统中的任何位置默认只停留在架构图上的一个框或一根箭头（默认不可见）。只有当某处存在具体的可证伪隐患、仅凭结构边界与常规编译检查无法定位、且向下建模确实能揭露某类错误的契约或交错时，才向下展开一层；模型的精度则严格受限于使用者声明的项目阶段与已有的运行时观测，不在无观测支撑处超前建模。
-
----
-
-## 一、结构层（LikeC4）：为什么架构图不能按代码审查的方式审核
-
-形式化契约不能脱离宿主单独存在。在写下任何前置条件或不变量之前，必须先界定契约归属于哪一个架构单元。然而，在宏观层面决定“什么应当单独成为一个框”，本质上是一次无法用语法规则预先形式化的本体定性：这个区块究竟是一个独立的操作系统进程（`container`），一个容器内部隐藏在接口之后的功能模块（`component`），还是某类核心事实的持久化权威源头（`#datastore`）？例如，当系统通过外部托管服务的接口来读写某类核心业务记录时，若仅按网络调用的表象将其标为外部系统（`#external`），而非本系统的领域数据存储（`#datastore`），围绕它的权威源头归属、读写方向与容错边界就会全部扭曲。
-
-SSoT 早期曾尝试用类似代码审查的方式审核 LikeC4：让评审者读取 `.c4` 源码、需求清单以及工具导出的 Markdown 文本评审包（`ssot view`）。三次实测失败直接表明架构图无法用代码或文本审查的方式把关，并迫使结构验证全面转向纯视觉盲审。
-
-第一，源码与文本审查会把架构图推向“文字垃圾回收站”。当评审者像审代码一样审阅 `.c4` 文本时，注意力会本能地滑向文字逻辑是否自洽——追问某条引文是否写明了因果推导、某个子元素描述是否列全了权限归属、某根箭头是否附带了方向理由。写作者为了通过审查不断往 `description` 里堆砌引文、需求编号与运行事故统计：在实测案例中，单个元素的 `description` 被撑到 768 字符以上，示例 `soroi.c4` 的 `store` 单个框被挂上 22 个需求编号，甚至出现跳过容器层按流水线步骤切出 84 个组件、再靠 23 条 `callback` 绕过无环检查的畸形模型。这些模型在 `.c4` 源码和文本评审包里看似“条理完备、编译全绿”，文本评审者也给出了“划分合理”的通过结论；但一旦用无头浏览器渲染成真实图形，画布宽度高达 6887px 至 11927px，满屏都是塞满小字、形状颜色完全相同的方框，根本无法作为架构图阅读。
-
-第二，为配合文本审查而发明的机械规则反而会制造错误的架构设计。在早期针对文本评审包的盲评实验中，逐层文本审查不仅漏检了删边突变（删除 `route -> closure`），还产生了高达 `0.413 条/层` 的误报率。当工具链试图用机械规则（如强制父层每条边必须有同向子边落实的 `view.unrealized` 检查）修补文本审查的盲区时，建模代理为了消掉报错，直接硬造出穿透 `Workspace` 契约边界的 `closure -> workspace.executor` 错误依赖——而语法检查与文本规则全部放行。
-
-第三，源码完全掩盖了渲染层的真实信息缺失。废除文本评审包、切换为只给 `ssot render` 导出的 PNG 图片且严禁看 `.c4` 源码的盲评（`RenderReview`）后，第一轮看图就当场抓出了 7 个源码审查完全看不见的缺陷：包括未满足 LikeC4 `--description` 渲染条件导致全部 4 张导出图丢失顶部标题栏、部署图中组件级关系被自动合并成无法辨认的 `[...]` 箭头、`global style` 在部署视图静默失效导致存储桶退化为普通矩形，以及 `Derivation -> Halting` 箭头写上“等待源运行停下”而在画面上直接暴露出跨连接时序混入静态结构。
-
-因此，SSoT 将结构层的验证彻底切开：由确定性的编译器（`ssot check`）守住形式底线——强制仅使用四种 C4 元素（`actor`、`system`、`container`、`component`，不再向代码层下钻）、每个非叶子元素必须具备唯一对应的下钻视图（`struct.views`），并禁止在结构元数据中夹带契约或行为层的标识符（`vocab.slots`）；而结构评审（`ssot-verify-structure`）则严禁查看渲染图之外的任何材料。结构评审只看渲染图、不看源码，依据并非主观审美，而是 LikeC4 的层级遮蔽机制（`view of`）将**信息隐藏与跨层耦合守恒**转化成了直接可见的几何约束：每一层视图隐去下层内部细节，父层框体上的每一根进出箭头在下钻到子层视图时都必须能看出由哪一个直接子元素承接，且高层不得泄漏低层概念。独立评审代理（`ssot:reviewer`）在不接触 `.c4` 源码、诊断与需求文档的条件下按序审阅渲染图，凡是在图上读不懂或视觉密度失衡的地方，一律判定为结构缺陷。
-
----
-
-## 二、盒子层（VDM-SL）：以“可留白的一阶逻辑”替代模块设计文档
-
-当结构图上的某个叶子元素（不继续展开子元素的 `container` 或 `component`）通过深入三问、决定标记 `#contract` 向下建模时，它所承担的是对传统模块设计文档的替代。但无论是自然语言文档、领域驱动设计（DDD）辅助工具、同属一阶与关系逻辑的 Z 与 Alloy，还是以证明为中心的验证工具，在处理“模块边界该写什么、不该写什么”以及如何接入单向生成与回放链时都会遇到掣肘。
-
-模块内部绝大多数代码机制，仅仅是为了维持某条外部可观察的不变量而存在的手段。例如，两个模块经由缓冲通道交接任务时，为了防止并发读写破坏通道内的数据形态，实现层可以在写入端加互斥锁、在读取端加锁，或采用无锁原子队列。但同步原语本身绝不应进入设计规格：只要通道两端观察到的输入输出关系不变，锁的形态与位置在接口不变时随时可以替换；在设计模型里刻画互斥锁并证明其互斥性，既是在重复验证早已成熟的标准范式，又会将特定的实现手段固化为契约偏差（implementation bias）。设计唯一应当锁死的，是通道端口对外承诺的结果关系与数据不变量。
-
-| 载体类型 | 作为模块边界规格的局限 |
-|---|---|
-| 自然语言设计文档 | 无语法边界，极易混入锁、重试、缓存与临时字段等实现手段；无法做类型检查或反例求值，随代码演进静默失效 |
-| DDD 辅助工具 / Schema DSL | 本质是结构化字段清单，迫使设计者在早期展开 Entity 与 Value Object 的存储布局，却缺乏一阶逻辑谓词与集合/映射代数来陈述不变量 |
-| 以证明为中心的验证工具（Dafny / Lean / Event-B） | 留白虽可做到（Dafny 的 `{:axiom}` 与无体方法、Lean 的 `sorry`、Event-B 的前后状态谓词 `x :| P(x, x')` 与未完成的证明义务），但在这些工具中留白是被警告、需逐条审计的例外，工作流以完成证明为终点；早期大量留白的规格会表现为一长串待清除的警告，推着建模者补全证明，进而把同步机制与算法步骤写回规格 |
-| Z（经 ProB / ProZ 执行） | 一阶逻辑与隐式 schema 足以表达盒子，但可执行求值须经由 LaTeX 源提取、Fuzz 类型检查再翻译到 B 的链路，规格须符合固定结构（如必须有 `Init` schema）且不支持泛型定义，难以作为单向生成与回放的求值后端 |
-| Alloy | 关系逻辑与有界分析擅长找反例，但没有带读写帧声明（`ext rd`/`wr`）的隐式操作，也没有 `is not yet specified` 式的留白；记录与 quote 并类型须改写为签名（`sig`）与原子，难以一一对应到 Quint 的静态类型 |
-| **VDM-SL（SSoT 盒子载体）** | **在完整的一阶逻辑谓词（$\forall, \exists$）与集合、序列、映射代数之上，把留白（`token`、`is not yet specified`、隐式操作）与反例搜寻（VDMJ + QuickCheck，`MAYBE` 不报错）作为工具链的默认工作方式** |
-
-SSoT 选用 VDM-SL，正是利用它在“精确数学约束”与“默认留白”之间的平衡。一个 VDM-SL 模块对应结构图上的一个底层叶子盒子：导出的函数与操作是盒子的**端口**，参数与返回值类型是连接端口的**线**，模块的 `state` 则是盒子自身的**反馈线**——将上一次端口调用留下的源头事实传递给下一次调用（例如 `soroi_workspace` 在反馈线上记录 `closed` 集合，唯一原因是 `launch` 端口的后置条件承诺在关闭之后拒绝新执行，而非为了记录生命周期走到了哪一步）。
-
-在项目早期或尚无运行时观测支撑的位置，尚未关心的身份与载荷直接声明为不透明的 `token`，未定约束的端口声明为 `is not yet specified`，不预建任何状态字段；随着运行观测确立，才将证实的底线补入隐式操作的 `ext rd`/`ext wr`、`pre`/`post` 与状态 `inv`，同时工具强制拒绝任何包含局部变量（`dcl`）、赋值（`:=`）或循环的过程式实现体（`contract.body`）。
-
-为了防止留白让规格退化成毫无约束的空壳，SSoT 不要求完成每条证明义务的证明（未决的 `MAYBE` 仅作为评审提示，由 QuickCheck 搜寻到确定反例时才报 `contract.po` 错误），但强制执行两项判据：**充分性**要求规格约束加上外部世界的领域性质（Domain Properties）足以推出所附着的需求（$\text{Spec} \land \text{Domain} \Rightarrow \text{Req}$），且每个 `pre`、`post`、`inv` 都必须能通过 `ssot eval` 在原样规格中代入具体的违反实例求值并被拒绝；**无偏差**则要求反馈线上的每一处状态区分都必须能被一串导出端口调用观察到，任何无法被外部端口区分的阶段枚举、计数器或进度标志都会被当作实现偏差剔除。
-
----
-
-## 三、接线层（Quint + String Diagram）：用类型化反馈接线检验跨边界组合
-
-单个盒子内部的不变量在 VDM-SL 中确立后，系统最隐蔽的故障往往出现在**多个盒子的交界处**：守护进程半途崩溃重启、在途异步请求晚于关闭信号到达、多个过程并发修改同一份持久化事实。
-
-一种常见的并发建模习惯，是为每个实体定义阶段标签、再按标签编写迁移表（$S_1 \to S_2 \to S_3$）。TLA+ 与 Quint 的状态本身是全部变量的一组取值，并不要求这样写；缺陷出在**用阶段标签刻画进度**的写法上，它在跨组件组合时存在结构性问题。对于单一端口返回并类型（如 `ExecRef | Rejected`）后的局部分支，常规条件判断即可表达，无需状态机；而对于真正复杂的跨进程协作，这种写法把每个节点定义为一个枚举标签（如 `Pending | Opening | Running | Closing | Ended`），并围绕“标签如何跃迁”编写转移表。然而，控制流标签只是一个空洞的**类型标识符**——标签本身既不解释系统凭什么到达该位置，也不携带此时已经建立的数据凭据与不变量。更严重的是，分布式与并发系统中的状态分布在不同生命周期的位置上（崩溃即失的进程内存、跨崩溃留存的在途网络消息、持久化的存储源头），强行用阶段标签的笛卡尔积去穷举全局迁移表，只要增加一个正交维度（如进程重启代次 `epoch` 或异步停机触发），迁移规则就会组合爆炸。
-
-剥离人为发明的阶段标签后，一个阶段标签背后真正的类型，实质上是**特定生命周期通道上当前持有的值（由上游端口交出的凭据）及其满足的契约不变量**。基于开放迁移系统的反馈代数（Di Lavore 等，*Span(Graph): a Canonical Feedback Algebra of Open Transition Systems*，arXiv:2010.10069，其引言概括为“Theory of Processes + Feedback = Theory of Stateful Processes”），SSoT 在第三层不按阶段标签编写迁移表，而是采用 **String Diagram（接线图）** 与具备静态类型系统和现代语法的 **Quint**（取代无类型的 TLA+）来组合多个盒子。
-
-在一张 Quint 接线图中，每个 `var` 都是一条具有明确类型与生命周期的延迟线：契约盒子的反馈线直接采用 `.gen/contract.qnt` 从 VDM 生成的状态类型并以 `<别名>::initial` 初始化；进程内部步骤之间的传递线（如 `toOpen: Set[RuntimeId]`、`awaiting: Set[(RuntimeId, ExecRef)]`）与跨崩溃留存的在途请求线（`inflight`）则各自携带对应的领域凭据类型。一串连续处理被写成顺接的步骤盒子（`action`），步骤能否触发不读任何阶段字段，只看其输入线上是否有前一步放上去的值（未调用 `writeStart` 取得 `RuntimeId`，下一步连入参都不存在）。`ssot render` 将模块直接渲染为“线 $\to$ 步骤 $\to$ 线 $\to$ 步骤”的组合图，任何被大量步骤共同读写的伪状态机进度变量都会在图上暴露为异常的汇聚中心；而引入进程崩溃或停机接管时，只需新增一个环境盒子，声明其清空进程内局部线、保留持久化契约反馈线与在途网络线，即可局部组合出故障重入场景。
-
-将 Quint 置于第三层且仅按需启用，对应着工程演进的先后律：在单个盒子的 VDM 不变量尚未站稳之前，跨盒子的并发模型没有稳定的边界可言；当各个底层盒子的 `pre`/`post`/`inv` 确立后，再围绕具体的并发或崩溃担心将相关盒子接成 String Diagram。因为 VDM-SL 的隐式 `post` 是前后状态的数学关系，而 Quint 模拟需要可执行的状态推进步骤（`commit`），`ssot check` 在运行 Quint 有界模拟（验证可观察线上的安全性 `safety`，并通过 `witness*` 覆盖目标证明模型确实走到了关键交错而非空转满足）之后，会将生成的 ITF 轨迹中的每一次契约调用**自动回放到原样 VDM 规格中由 VDMJ 求值**，逐步核验 `pre`、`post`、`inv` 与 `ext rd`/`wr` 帧条件（`replay.*`），使单点契约与跨边界交错在单向链条上严格闭环。
-
-按需启用也意味着 Quint 通常在代码落地、出现运行时观测之后才引入：接线图里的环境盒子（崩溃、乱序、重入）只接观测中真实出现过的情形，使模型检验的是实际业务会遇到的交错。`ssot check` 检验的是模型自身——接线与 VDM 契约是否一致、可观察线上的性质是否成立——并不检查实现代码是否符合模型；模型与代码之间的对应由使用者给出的运行时观测承担：观测与模型不符时，作为新的观测交回 `ssot-judge`，区分是模型漏了情形，还是实现偏离了模型。
-
----
-
-## 四、防污染隔离墙与可组合的 Skill 盒子
-
-将大语言模型引入形式化设计时，首要威胁并非语法错误，而是**上下文污染**。只要模型在上下文中接触到旧设计文档或业务实现代码，就会不可避免地把旧文档里的表结构字段、校验步骤、重试参数，或现有代码里的临时补丁、锁机制与历史缺陷照搬进规格，使设计真源退化为实现细节的复述。
-
-SSoT 在代理工作流上强制实施三道信息隔离。第一是**历史文档代读隔离（`ssot:reader`）**：迁移旧文档时，主会话严禁直接读取原始文档；一切旧资料交由与新设计隔离的 `ssot:reader` 子代理按章节区域代读，仅向外输出剥离了实现机制与数据格式的领域概念备忘（`concepts.md`）和原文明确陈述的需求摘录（`requirements.md`），以受控的信息折损换取设计真源的纯净。第二是**实现代码隔离**：全部建模与评审环节只读设计目录、用户给出的需求原文与运行时观测，严禁读取业务代码、测试或配置文件，切断由错误实现反向污染规格的路径。第三是**无上下文独立盲审（`ssot:reviewer`）**：每个切片完成后，派发全新的 `ssot:reviewer` 子代理执行对应的 `ssot-verify-*` 审查；评审者不接触作者的推理记录与草稿，必须先依据 `ssot render` 导出的图形（C4 视图、VDM 盒子图、Quint 组合图）审视边界与接线，再结合作用域诊断给出独立裁决。
-
-为了适配不同演进阶段只需动用局部能力的特点，SSoT 将整套方法拆解为**核心判据 + 载体规则 + 独立操作盒子**。每个判断与操作 skill 都在头部声明严格的六元组接口（**输入、可读、可改、可运行、输出、上抛**），并在交付前通过 `ssot check <design> --scope <视图> --base <起始提交>` 校验改动边界：凡落在本切片可改范围之外的修改一律撤回；凡在底层建模中发现上游结构缺失或契约端口不足，严禁越权修补，必须通过**上抛**将事实交回上游切片。
-
-这种正交的盒子化架构使 SSoT 既可用于新系统的渐进建模与旧文档净化迁移，也可直接作为存量系统疑难缺陷的**隔离实验场**：当线上某个局部模块反复出现并发失步或状态错乱时，无需通读或迁就既有代码，可以直接将该局部的边界与担心单独抽入 SSoT 建模实验，待不变量与接线组合在模型中彻底理顺后，再用验证清晰的结构直接重构或重写问题模块。重写后的模块是否兑现了模型，仍以运行时观测为准：问题复现即作为新的观测交回 `ssot-judge`。
-
----
-
-## 五、单向验证链与仓库概览
-
-### 三层载体与单向生成链
-
-| 层 | 载体 | 文件 | 回答什么 |
-|---|---|---|---|
-| 结构 | LikeC4 | `design/structure/*.c4` | 按 C4 逐层放大的架构图：人、系统、容器、组件，谁调用谁，部署与信任边界 |
-| 盒子 | VDM-SL | `design/contract/<元素 fqn>.vdmsl` | 带 `#contract` 的底层元素：导出端口、线上的类型、自身反馈线（`state`）与端口上的 `pre`/`post`/`inv` |
-| 接线 | Quint | `design/behavior/<模块名>.qnt` | 围绕一个具体担心把盒子接成 String Diagram：带延迟的线、跨盒子的先后与收束、可观察线上的 `safety` 与 `witness*` 覆盖目标 |
-
-下层只在经过深入判断决定写下时才存在，存在时严格对照上层单向验证：
-
-```text
-LikeC4 ──gen──▶ .gen/structure.json（元素树、视图、带 #contract 的底层元素与模块名）
-VDM 盒子 ──gen──▶ .gen/contract.qnt（类型、Call 变体、状态类型、initial 初态）
-Quint 接线 ──回放──▶ 轨迹中每次契约调用，在原样 VDM 规格中求值检验 pre / post / inv 与 frame
-```
-
-需求清单 `design/requirements.md` 独立于三层载体：每条需求以 `REQ-<编号>` 记录用户原文；一条需求可由结构图直接回答、由某个盒子或接线兑现，也可留给代码实现，仅在确实兑现它的 VDM 定义或 Quint 声明上方附着编号。完整示例见 [`skills/ssot/references/example/`](skills/ssot/references/example/README.md)，方法论与学术文献出处见 [`sources.md`](skills/ssot/references/sources.md)。
-
-### Skill 树
-
-| 层 | Skill | 职责 |
-|---|---|---|
-| 核心 | [`ssot`](skills/ssot/SKILL.md) | 核心总纲：三层定位、默认不可见、深度与精度两条轴、skill 组合协议、命令与诊断准则 |
-| 核心 | [`ssot-judge`](skills/ssot-judge/SKILL.md) | 对一个位置或一份运行观测按深入三问判断停在原处、写盒子还是写接线，并定精度 |
-| 核心 | [`ssot-requirement`](skills/ssot-requirement/SKILL.md) | 编号收录一条需求原文，写出领域性质论证，并在同一次调用内完成深入判断 |
-| 载体 | [`ssot-c4`](skills/ssot-c4/SKILL.md)、[`ssot-vdm`](skills/ssot-vdm/SKILL.md)、[`ssot-quint`](skills/ssot-quint/SKILL.md) | 三种载体各自的写法、惯用法、工具拒绝规则与评审判据 |
-| 写入 | [`ssot-write-level`](skills/ssot-write-level/SKILL.md)、[`ssot-write-deploy`](skills/ssot-write-deploy/SKILL.md)、[`ssot-write-contract`](skills/ssot-write-contract/SKILL.md)、[`ssot-write-behavior`](skills/ssot-write-behavior/SKILL.md) | 编写单个结构层级、部署视图、VDM 盒子或 Quint 接线切片 |
-| 评审 | [`ssot-verify-structure`](skills/ssot-verify-structure/SKILL.md)、[`ssot-verify-contract`](skills/ssot-verify-contract/SKILL.md)、[`ssot-verify-behavior`](skills/ssot-verify-behavior/SKILL.md) | 对单个切片执行盲审（由 [`ssot:reviewer`](skills/ssot/agents/ssot-reviewer.md) 承载） |
-| 迁移 | [`ssot-migrate-read`](skills/ssot-migrate-read/SKILL.md) | 派 [`ssot:reader`](skills/ssot/agents/ssot-reader.md) 代读旧文档区域，过滤实现细节并提取概念与需求 |
-
-### 安装
+## Installation
 
 ```sh
 npx skills add mouriya-s-lab/SSoT --skill ssot ssot-judge ssot-requirement ssot-c4 ssot-vdm ssot-quint ssot-write-level ssot-write-deploy ssot-write-contract ssot-write-behavior ssot-verify-structure ssot-verify-contract ssot-verify-behavior ssot-migrate-read --global --agent codex claude-code --yes
 ```
 
-安装后运行一次 `ssot setup`（首次尚未将 `ssot` 加入 `PATH` 时，执行 `bun ~/.agents/skills/ssot/scripts/ssot.ts setup`），自动配置 VDMJ、QuickCheck、LikeC4、Quint、elkjs 与无头浏览器并将 `ssot` 链入 `~/.local/bin/ssot`；环境要求与目录说明见 [`setup.md`](skills/ssot/references/setup.md)。
+After installing the skills, run `ssot setup` once (before `ssot` is on `PATH`, run `bun ~/.agents/skills/ssot/scripts/ssot.ts setup`; requires `bun` and a Java 21+ JDK). `setup` installs VDMJ, QuickCheck, LikeC4, Quint, elkjs, and a headless browser, and links `ssot` into `~/.local/bin/ssot`. See [`setup.md`](skills/ssot/references/setup.md) for environment requirements and directory layout.
 
-### 命令
+---
 
-| 命令 | 作用 |
+Software engineering design routinely fails at two opposite extremes. At one end lies natural-language design prose: architectural topology, database columns, local retry policies, and interface promises coexist in the same document, unchecked by any compiler and porous to implementation detail, decaying into stale commentary the moment code evolves. At the other end lies upfront full-system formal modeling: specifying global behavior in a state-machine language and proving safety properties before writing code, which contradicts a basic engineering reality—formal verification presupposes a stable target, whereas during domain exploration and early design the model itself is the least stable hypothesis in the system.
+
+Before a system survives runtime contact, domain boundaries shift and concurrency or failure modes remain partially unobserved. Forcing the entire system into a state-transition model at that stage builds formal deductions on fragile guesses; a single revision to domain understanding invalidates both the state space and its proofs. Conversely, abandoning formal constraints for natural language because early understanding is unstable strips system boundaries of any machine-checkable criterion.
+
+Resolving this dilemma requires recognizing that **different layers of knowledge in a software system decay at different half-lives**, and separating modeling and verification across three carriers ordered by when that knowledge stabilizes:
+
+1. **Macro topology and authority ownership stabilize first**—which runtime units compose the system, which unit is the single authoritative store for a class of facts, and where trust boundaries fall. These partitions host all formal contracts, stop strictly at the container or component level (never drilling down to code), and depend on ontological role assignment that must be judged through hierarchical hiding and visual density (**LikeC4**).
+2. **Negative constraints on a single leaf boundary stabilize second**—which ports a module exposes and which data invariants it refuses to violate. This layer replaces traditional module design documents, provided the specification language natively supports *partial elision* alongside first-order logic predicates so unsettled internal structures and replaceable mechanisms remain opaque (**VDM-SL**).
+3. **Cross-boundary serial and parallel composition stabilizes last**—races, out-of-order asynchronous messages, and crash recovery occur almost entirely at the seams between boxes. Only after each individual box's invariants stand firm does SSoT wire boxes with genuine interleaving risk into a dynamic model, using bounded simulation and cross-layer trace replay to verify that boundary contracts hold under concurrent composition (**Quint**).
+
+SSoT (Single Source of Truth) organizes these three carriers into a one-way generation and verification chain. Every location in the system defaults to a single box or arrow on the architecture diagram (invisible by default). A location drills down one layer only when a concrete, falsifiable hazard exists, cannot be localized by structural boundaries and ordinary compiler checks alone, and will expose a faulty contract or interleaving once modeled; model precision is strictly bounded by the project stage declared by the user and by actual runtime observations, never outrunning evidence.
+
+---
+
+## 1. The Structure Layer (LikeC4): Why Architecture Diagrams Cannot Be Reviewed Like Code
+
+Formal contracts cannot exist without a host. Before writing a precondition or invariant, a design must establish which architectural unit owns the contract. Deciding at the macro level what deserves to be a separate box is an ontological judgment that syntax rules cannot pre-formalize: is a given unit an independent operating-system process (`container`), a functional module encapsulated behind an interface inside a container (`component`), or the persistent authoritative source of a class of domain facts (`#datastore`)? When a system reads and writes core domain records through a managed external service, labeling that service `#external` from the surface appearance of network calls rather than `#datastore` distorts authority ownership, read/write direction, and fault boundaries across the entire design.
+
+Early versions of SSoT attempted to review LikeC4 models the way engineers review code: feeding `.c4` source files, requirement lists, and tool-exported Markdown review bundles (`ssot view`) to a reviewer. Three empirical failures demonstrated that architecture diagrams cannot be gated by source or text review, forcing structural verification into pure visual blind review.
+
+First, source and text review turn architecture diagrams into text dumps. When a reviewer reads `.c4` source like code, attention gravitates toward verbal completeness—asking whether a description states causal rationale, whether a child element lists every permission ownership rule, or whether an arrow justifies its direction. To pass review, authors stuffed `description` strings with citations, requirement IDs, and incident statistics: in observed runs, single-element descriptions exceeded 768 characters, a single `store` box in `soroi.c4` accumulated 22 requirement IDs, and one degenerate model skipped the container layer entirely to slice a pipeline into 84 components wired with 23 `callback` edges to bypass acyclicity checks. In `.c4` source and Markdown review bundles, these models looked thorough and compiled cleanly, earning passing verdicts from text reviewers; rendered in a headless browser, they produced canvases 6,887 px to 11,927 px wide filled with identical small-print rectangles that were unreadable as architecture diagrams.
+
+Second, mechanical rules invented to patch text review actively induce bad architecture. In blind mutation experiments on text review bundles, layer-by-layer text inspection missed deleted edges (such as dropping `route -> closure`) while generating `0.413` false positives per layer. When the toolchain added a mechanical rule (`view.unrealized`, requiring every parent edge to be realized by a same-direction child edge) to close that gap, modeling agents silenced the diagnostic by fabricating a bogus `closure -> workspace.executor` dependency that pierced the `Workspace` contract boundary—and both syntax checks and text rules let it pass.
+
+Third, source inspection masks information loss in the rendered artifact. After abolishing text review bundles and switching to `RenderReview`—where the reviewer receives only the PNG images exported by `ssot render` and is forbidden from reading `.c4` source—the very first visual pass caught 7 defects invisible in source review: all 4 exported diagrams had lost their top title bars because LikeC4's `--description` rendering condition was unmet; component-level relationships in deployment views collapsed into unreadable `[...]` arrows; `global style` rules silently failed in deployment views so storage buckets degenerated into plain rectangles; and a `Derivation -> Halting` arrow labeled "wait for source run to stop" exposed cross-connection temporal sequencing mixed into static structure directly on the canvas.
+
+SSoT therefore splits structural verification cleanly in two. The deterministic compiler (`ssot check`) enforces formal invariants: restricting models to the four C4 abstractions (`actor`, `system`, `container`, `component`, never drilling down to code), requiring a unique drill-down view for every non-leaf element (`struct.views`), and rejecting contract- or behavior-layer identifiers inside structural metadata (`vocab.slots`). Structural review (`ssot-verify-structure`), by contrast, is forbidden from inspecting anything other than rendered images. Judging from rendered diagrams alone is not an appeal to subjective aesthetics: LikeC4's hierarchical hiding (`view of`) turns **information hiding and cross-layer coupling conservation** into visible geometric constraints. Each view hides lower-level internals, every incoming or outgoing arrow on a parent box must visibly land on a direct child when drilling into the child view, and high-level views cannot leak low-level concepts. An independent reviewer agent (`ssot:reviewer`) inspects the rendered PNGs in sequence without access to `.c4` source, diagnostics, or requirement documents; anything illegible or visually unbalanced on the canvas fails as a structural defect.
+
+---
+
+## 2. The Box Layer (VDM-SL): Replacing Module Design Docs with First-Order Logic That Supports Partial Elision
+
+When a leaf element on the structure diagram (a `container` or `component` with no child elements) passes the three drill-down questions and is tagged `#contract`, it replaces the traditional module design document. Yet natural-language prose, Domain-Driven Design (DDD) schema tools, relational or set-based languages such as Z and Alloy, and proof-centric verifiers each hit structural limits when deciding what belongs on a module boundary and how to feed a one-way generation and replay chain.
+
+Most code inside a module exists solely to maintain an externally observable invariant. When two modules hand off tasks across a buffered channel, the implementation may guard concurrent access with a writer mutex, a reader mutex, or a lock-free atomic queue. Synchronization primitives themselves do not belong in the design specification: as long as the input/output relation observed at the channel ports holds, locking strategy and placement can be swapped without changing the interface. Modeling a mutex in the design and proving mutual exclusion both re-verifies a standard paradigm and hard-codes an implementation choice as implementation bias. The design should lock down only the result relation and data invariants promised at the ports.
+
+| Carrier Type | Limitations as a Module-Boundary Specification |
 |---|---|
-| `ssot setup` | 安装检查与渲染依赖，将 `ssot` 放入 `PATH` |
-| `ssot gen <design>` | 从结构与契约重新生成 `.gen/structure.json` 与 `.gen/contract.qnt` |
-| `ssot check <design>` | 全量检查：编译三种载体、生成链新鲜度、跨载体规则、模拟、覆盖目标、轨迹回放、证明义务 |
-| `ssot check <design> --scope <视图 id>` | 编译全部内容，但仅在该视图的切片闭包内运行模拟、回放与 QuickCheck，只报告归属该切片的诊断 |
-| `ssot check <design> --scope <视图 id> --base <rev>` | 额外列出 `<rev>` 之后落在该切片可改范围之外的越界改动 |
-| `ssot render <design> [--out <目录>]` | 按从宏观到微观的顺序导出 C4 视图、每个契约模块的盒子图（`box:<模块名>`）与每个 Quint 模块的组合图（`composition:<模块名>`） |
-| `ssot eval <design> <模块> '<表达式>' [--bind …]` | 在原样 VDM 规格中对表达式求值，用于验证违反实例是否被规格拒绝 |
-| `ssot status <design> [--deadline 秒]` | 报告已写下内容中的首个 error，或已标记 `#contract` 但尚无模块的元素；均无时输出“没有前沿” |
+| Natural-language design docs | No syntactic boundary; routinely mixes in locks, retries, caches, and scratch fields; cannot be type-checked or evaluated against counterexamples; silently rots as code evolves |
+| DDD tools / Schema DSLs | Essentially structured field inventories that force early commitment to Entity and Value Object storage layouts while lacking first-order quantifiers and set/map algebra to state invariants |
+| Proof-centric verifiers (Dafny / Lean / Event-B) | Elision is syntactically possible (Dafny `{:axiom}` and bodyless methods, Lean `sorry`, Event-B post-state predicates `x :\| P(x, x')` and discharged proof obligations), but treated as an audited warning on a workflow whose endpoint is a completed proof; early specifications with heavy elision surface as a queue of unresolved warnings that pressure modelers into discharging proofs and writing synchronization mechanisms and algorithmic steps back into the spec |
+| Z (executed via ProB / ProZ) | First-order logic and implicit schemas express boxes well, but executable evaluation requires a pipeline from LaTeX extraction through Fuzz type-checking and translation into B, imposes fixed structural conventions (such as a mandatory `Init` schema), and lacks generic definitions, making it awkward as an evaluation backend for one-way code generation and trace replay |
+| Alloy | Relational logic and bounded analysis excel at counterexample search, but lack implicit operations with read/write frame declarations (`ext rd`/`wr`) and `is not yet specified` elision; records and tagged union types must be encoded as signatures (`sig`) and atoms that do not map 1-to-1 to Quint's static type system |
+| **VDM-SL (SSoT Box Carrier)** | **Combines full first-order logic predicates ($\forall, \exists$) and set/sequence/map algebra with native elision (`token`, `is not yet specified`, implicit operations) and counterexample search (VDMJ + QuickCheck, where `MAYBE` is non-fatal) as the default workflow** |
 
-`ssot check` 退出码：`0` 通过；`1` 存在确证的 error；`3` 无 error 但触发 `resource.deadline`（验证未在时限内跑完，不代表设计被拒绝）。
+SSoT chooses VDM-SL for this balance between mathematical precision and default elision. Each VDM-SL module corresponds to one leaf box on the structure diagram: exported functions and operations are the box's **ports**, parameter and return types are the **wires** attached to those ports, and the module's `state` is the box's own **feedback wire**—carrying authoritative facts left by one port invocation into the next (for example, `soroi_workspace` records a `closed` set on its feedback wire solely because the `launch` port's postcondition promises to reject new executions after closure, not to track a lifecycle stage).
+
+Early in a project or at locations without runtime observations, identities and payloads that do not yet matter are declared as opaque `token` types, unconstrained ports are written `is not yet specified`, and no state fields are pre-allocated. As runtime observations accumulate, confirmed boundaries are tightened into implicit operations with `ext rd`/`ext wr` frames, `pre`/`post` predicates, and state `inv` invariants, while `ssot check` rejects procedural implementation bodies containing local variables (`dcl`), assignments (`:=`), or loops (`contract.body`).
+
+To keep elision from degenerating into vacuous shells, SSoT does not demand discharging every proof obligation (unresolved `MAYBE` obligations remain review hints; only concrete counterexamples found by QuickCheck raise `contract.po` errors), but enforces two strict criteria:
+
+- **Adequacy**: the specification constraints together with external Domain Properties must entail the attached requirement ($\text{Spec} \land \text{Domain} \Rightarrow \text{Req}$), and every `pre`, `post`, and `inv` must reject a concrete violating instance when evaluated directly against the unmodified specification via `ssot eval`.
+- **Zero implementation bias**: every state distinction on the feedback wire must be observable through a sequence of exported port calls; phase enums, counters, or progress flags that cannot be distinguished through external ports are rejected as implementation bias.
+
+---
+
+## 3. The Wiring Layer (Quint + String Diagrams): Verifying Cross-Boundary Composition with Typed Feedback Wiring
+
+Once single-box invariants are established in VDM-SL, the most elusive failures emerge **at the seams between multiple boxes**: a daemon crashes and restarts mid-flight, an in-flight asynchronous request arrives after a close signal, or concurrent processes mutate the same persistent fact.
+
+A common habit in concurrency modeling is to define a phase enum for each entity and write a transition table across phase labels ($S_1 \to S_2 \to S_3$). TLA+ and Quint define system state as a valuation of all variables and do not require phase enums; the defect lies in **encoding progress as phase labels**, which breaks down under cross-component composition. For local branching after a single port returns a union type (such as `ExecRef | Rejected`), ordinary conditional branching suffices without a state machine. For genuine cross-process coordination, phase-label modeling assigns each node an enum tag (`Pending | Opening | Running | Closing | Ended`) and writes transition rules around label jumps. Yet a control-flow label is an empty **type identifier**—it neither explains what entitled the system to reach that point nor carries the data credentials and invariants established along the way. Worse, state in distributed and concurrent systems lives across channels with distinct lifecycles (volatile process memory lost on crash, in-flight network messages surviving process restarts, and persistent authoritative stores). Enumerating a global transition table over the Cartesian product of phase labels causes a combinatorial explosion the moment an orthogonal dimension (such as restart `epoch` or asynchronous shutdown) is added.
+
+Stripping away artificial phase labels reveals that the true type behind any stage is **the value currently held on a specific lifecycle channel (a credential handed out by an upstream port) together with its contract invariants**. Grounded in the feedback algebra of open transition systems (Di Lavore et al., *Span(Graph): a Canonical Feedback Algebra of Open Transition Systems*, arXiv:2010.10069—"Theory of Processes + Feedback = Theory of Stateful Processes"), SSoT's third layer replaces phase-label transition tables with **String Diagrams** expressed in **Quint** (chosen over untyped TLA+ for its static type system and modern syntax).
+
+In a Quint wiring diagram, every `var` is a delay wire with an explicit type and lifecycle: a contract box's feedback wire uses the state type generated from VDM in `.gen/contract.qnt` and initializes to `<alias>::initial`; intra-process handoff wires between sequential steps (such as `toOpen: Set[RuntimeId]` or `awaiting: Set[(RuntimeId, ExecRef)]`) and crash-surviving in-flight wires (`inflight`) each carry their respective domain credential types. Sequential processing is written as a chain of step boxes (`action`) whose enabling condition reads no phase field—a step fires if and only if its input wire holds a value placed there by the preceding step (until `writeStart` produces a `RuntimeId`, the input argument to the next step does not exist). `ssot render` renders the module directly as a `wire -> step -> wire -> step` composition diagram where any pseudo-state-machine progress variable read and written by many steps stands out immediately as an abnormal hub. Introducing a process crash or shutdown takeover requires only adding an environment box that clears volatile intra-process wires while preserving persistent contract feedback wires and in-flight network wires.
+
+Placing Quint at the third layer and enabling it strictly on demand reflects the order in which engineering knowledge stabilizes: before single-box VDM invariants settle, cross-box concurrency models have no stable boundaries to compose. Once leaf-box `pre`/`post`/`inv` contracts are in place, SSoT wires only the boxes involved in a specific concurrency or crash hazard into a String Diagram. Because VDM-SL's implicit `post` is a mathematical relation between pre- and post-states whereas Quint simulation requires executable state transitions (`commit`), `ssot check` runs Quint bounded simulation (checking `safety` invariants on observable wires and verifying `witness*` coverage targets to prove the model actually reaches critical interleavings rather than satisfying safety vacuously) and then **automatically replays every contract call in the generated ITF trace against the unmodified VDM specification in VDMJ**, verifying `pre`, `post`, `inv`, and `ext rd`/`wr` frame conditions (`replay.*`) step by step.
+
+On-demand activation also means Quint is typically introduced after code is running and runtime observations exist: environment boxes in the wiring diagram (crashes, reordering, re-entrancy) model only hazards actually observed in operation. `ssot check` verifies the model itself—that the wiring respects VDM contracts and satisfies properties on observable wires—rather than checking implementation code against the model. Alignment between code and model rests on runtime observations supplied by the user: when runtime behavior diverges from the model, the divergence is fed back to `ssot-judge` as a new observation to determine whether the model omitted a case or the implementation violated the model.
+
+---
+
+## 4. Contamination Firewalls and Composable Skill Boxes
+
+When large language models participate in formal design, the primary failure mode is not syntax error but **context contamination**. Once a model's context window ingests legacy design docs or production code, it inevitably copies database column names, validation steps, and retry parameters from old docs—or temporary workarounds, locking schemes, and historical bugs from existing code—straight into the specification, reducing the single source of truth to a paraphrase of implementation details.
+
+SSoT enforces three information firewalls across its agent workflow:
+
+1. **Delegated reading of legacy docs (`ssot:reader`)**: During migration, the main session is forbidden from reading legacy documents directly. Isolated `ssot:reader` subagents read legacy material section by section and emit only a domain-concept memo stripped of mechanisms and data formats (`concepts.md`) together with verbatim requirement extracts (`requirements.md`), trading controlled information loss for an uncontaminated design source.
+2. **Implementation code isolation**: Every modeling and review step reads only the `design/` directory, verbatim user requirements, and runtime observations—never production code, tests, or configuration files—severing the path by which buggy implementations reverse-contaminate specifications.
+3. **Context-free blind review (`ssot:reviewer`)**: After each slice is written, a fresh `ssot:reviewer` subagent runs the corresponding `ssot-verify-*` skill without access to the author's reasoning trace or drafts, inspecting the diagrams exported by `ssot render` (C4 views, VDM box diagrams, Quint composition diagrams) alongside scoped diagnostics to deliver an independent verdict.
+
+Because different project stages require only subsets of the toolkit, SSoT decomposes the workflow into **core judgment criteria + carrier rules + independent operation boxes**. Every judgment and operation skill declares a strict six-part interface at its header (**Input, Readable, Writable, Runnable, Output, Escalation**) and validates write boundaries before delivery via `ssot check <design> --scope <view> --base <start-rev>`. Any edit outside the slice's writable scope is reverted; any upstream structural gap or missing contract port discovered during lower-layer modeling is never patched in place, but **escalated** as a concrete fact back to the upstream slice.
+
+This orthogonal box architecture lets SSoT serve not only for progressive greenfield modeling and legacy document migration, but also as an **isolated laboratory for intractable bugs in existing systems**. When a production module repeatedly suffers concurrency desynchronization or state corruption, engineers do not need to read or accommodate the legacy codebase: they can extract just that local boundary and hazard into SSoT, work out the invariants and feedback wiring in the model, and rewrite or refactor the module against the verified structure. Whether the rewritten module honors the model is again decided by runtime observations—any recurring failure returns to `ssot-judge` as a new observation.
+
+---
+
+## 5. One-Way Verification Chain and Repository Overview
+
+### Three Carriers and the One-Way Generation Chain
+
+| Layer | Carrier | Files | Question Answered |
+|---|---|---|---|
+| Structure | LikeC4 | `design/structure/*.c4` | C4 zoom-in architecture views: actors, systems, containers, components, call direction, deployment, and trust boundaries |
+| Box | VDM-SL | `design/contract/<element-fqn>.vdmsl` | Leaf elements tagged `#contract`: exported ports, wire types, feedback wire (`state`), and port `pre`/`post`/`inv` constraints |
+| Wiring | Quint | `design/behavior/<module>.qnt` | String Diagram wiring around a specific hazard: delay wires, cross-box ordering and convergence, `safety` properties on observable wires, and `witness*` coverage targets |
+
+Lower layers exist only when justified by the three drill-down questions, and are verified strictly one-way against upper layers:
+
+```text
+LikeC4 ──gen──▶ .gen/structure.json (element tree, views, #contract leaves and module names)
+VDM Box ──gen──▶ .gen/contract.qnt (types, Call variants, state types, initial state)
+Quint Wiring ──replay──▶ Every contract call in simulated traces evaluated in VDMJ against unmodified VDM pre / post / inv and frame conditions
+```
+
+The requirement list `design/requirements.md` sits outside the three carriers: each entry records the user's verbatim text under `REQ-<id>`. A requirement may be answered directly by the structure diagram, fulfilled by a VDM box or Quint wiring module, or left to implementation code; requirement IDs are attached only above the VDM definitions or Quint declarations that actually fulfill them. See [`skills/ssot/references/example/`](skills/ssot/references/example/README.md) for a complete worked example and [`sources.md`](skills/ssot/references/sources.md) for methodological and academic sources.
+
+### Skill Tree
+
+| Layer | Skill | Role |
+|---|---|---|
+| Core | [`ssot`](skills/ssot/SKILL.md) | Core charter: three-layer positioning, invisible-by-default rule, depth and precision axes, skill composition protocol, CLI commands, and diagnostic rules |
+| Core | [`ssot-judge`](skills/ssot-judge/SKILL.md) | Applies the three drill-down questions to a location or runtime observation to decide whether to stop, write a box, or write wiring, and sets precision |
+| Core | [`ssot-requirement`](skills/ssot-requirement/SKILL.md) | Records a verbatim requirement with an ID, writes the domain-property adequacy argument, and performs the drill-down judgment in the same call |
+| Carrier | [`ssot-c4`](skills/ssot-c4/SKILL.md), [`ssot-vdm`](skills/ssot-vdm/SKILL.md), [`ssot-quint`](skills/ssot-quint/SKILL.md) | Syntax, idioms, tool-enforced rejections, and review criteria for each of the three carriers |
+| Write | [`ssot-write-level`](skills/ssot-write-level/SKILL.md), [`ssot-write-deploy`](skills/ssot-write-deploy/SKILL.md), [`ssot-write-contract`](skills/ssot-write-contract/SKILL.md), [`ssot-write-behavior`](skills/ssot-write-behavior/SKILL.md) | Writes a single structure level, deployment view, VDM box, or Quint wiring slice |
+| Verify | [`ssot-verify-structure`](skills/ssot-verify-structure/SKILL.md), [`ssot-verify-contract`](skills/ssot-verify-contract/SKILL.md), [`ssot-verify-behavior`](skills/ssot-verify-behavior/SKILL.md) | Runs blind review on a single slice (executed by [`ssot:reviewer`](skills/ssot/agents/ssot-reviewer.md)) |
+| Migrate | [`ssot-migrate-read`](skills/ssot-migrate-read/SKILL.md) | Dispatches [`ssot:reader`](skills/ssot/agents/ssot-reader.md) to read a section of legacy documentation, stripping implementation details and extracting domain concepts and requirements |
+
+### Commands
+
+| Command | Purpose |
+|---|---|
+| `ssot setup` | Installs verification and rendering dependencies and links `ssot` into `PATH` |
+| `ssot gen <design>` | Regenerates `.gen/structure.json` and `.gen/contract.qnt` from structure and contract sources |
+| `ssot check <design>` | Full check: compiles all three carriers, verifies `.gen/` freshness, cross-carrier rules, bounded simulation, coverage targets, trace replay, and proof obligations |
+| `ssot check <design> --scope <view-id>` | Compiles the full design but runs simulation, trace replay, and QuickCheck only within the slice closure of `<view-id>`, reporting only diagnostics owned by that slice |
+| `ssot check <design> --scope <view-id> --base <rev>` | Additionally lists out-of-scope file or element modifications since `<rev>` |
+| `ssot render <design> [--out <dir>]` | Exports PNG diagrams from macro to micro: C4 views, box diagrams for each contract module (`box:<module>`), and composition diagrams for each Quint module (`composition:<module>`) |
+| `ssot eval <design> <module> '<expr>' [--bind …]` | Evaluates a VDM expression against the unmodified specification to verify that concrete violating instances are rejected |
+| `ssot status <design> [--deadline <sec>]` | Reports the first confirmed error in written artifacts or any `#contract` leaf still missing a VDM module; prints `没有前沿` (no frontier) when none remain |
+
+`ssot check` exit codes: `0` pass; `1` confirmed error; `3` no errors but `resource.deadline` was exceeded (verification did not finish within the time budget, which does not reject the design).

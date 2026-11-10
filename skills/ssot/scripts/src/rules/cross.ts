@@ -181,6 +181,11 @@ export function callRules(behavior: readonly QuintModule[], callModules: readonl
   const runnable = behavior.filter(isRunnable);
   if (behavior.length > 0 && runnable.length === 0)
     out.push(diag("behavior.call", global, null, "行为部分没有可运行模块（同时声明 init 与 step 两个 action）"));
+  // 环境假设写成行为一侧的盒子与步骤（崩溃、在途、晚到回复），不写成 assume：assume 不进模拟，也不进组合图。
+  for (const q of behavior)
+    for (const d of q.decls)
+      if (d.kind === "assume")
+        out.push(diag("behavior.assume", global, d.at, `${q.name} 声明了 assume ${d.name}；环境假设要写成行为一侧的步骤或线，不写成 assume`));
   for (const q of runnable) {
     const at = q.decls.find((d) => d.name === "init")?.at ?? null;
     const vars = q.decls.filter((d) => d.isCallVar);
@@ -188,6 +193,9 @@ export function callRules(behavior: readonly QuintModule[], callModules: readonl
       out.push(diag("behavior.call", global, at, `可运行模块 ${q.name} 必须恰有一个类型为 contract::Call 的状态变量，实际 ${vars.length} 个`));
     if (!q.decls.some((d) => d.name === "safety" && (d.kind === "val" || d.kind === "def")))
       out.push(diag("behavior.call", global, at, `可运行模块 ${q.name} 缺少 val safety`));
+    // 与 behavior.ts 的 coverWitnesses 同一判据：名字以 witness 开头的 val/def。
+    if (!q.decls.some((d) => (d.kind === "val" || d.kind === "def") && d.name.startsWith("witness")))
+      out.push(diag("behavior.call", global, at, `可运行模块 ${q.name} 没有覆盖目标（val witness…）；一个什么都不做的模型也满足 safety`));
   }
   return out;
 }

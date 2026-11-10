@@ -29,7 +29,15 @@ export const mutations: readonly Mutation[] = [
   },
   {
     id: "hints-sampled", expect: "hint.sampled", description: "恒真 pre 的采样作为提示", regen: true, expectPass: true,
-    edits: [{ file: "contract/shop.api.vdmsl", find: "pre amount > 0", replace: "pre amount >= 0" }], outputIncludes: ["/hint.sampled]"],
+    edits: [{ file: "contract/shop.api.vdmsl", find: "pre amount > 0", replace: "pre amount >= 0" }], outputIncludes: ["pre_place 的采样结果全真"],
+  },
+  {
+    id: "hints-sampled-post", expect: "hint.sampled", description: "恒真 post 的采样作为提示", regen: true, expectPass: true,
+    edits: [{ file: "contract/shop.ledger.vdmsl", find: "  post entries = entries~ munion {o |-> amount};", replace: "  post true;" }], outputIncludes: ["post_record 的采样结果全真"],
+  },
+  {
+    id: "hints-sampled-state-inv", expect: "hint.sampled", description: "恒真状态 inv 的采样作为提示", regen: true, expectPass: true,
+    edits: [{ file: "contract/shop.ledger.vdmsl", find: "inv mk_Ledger(es, cs) == cs subset dom es", replace: "inv mk_Ledger(-, -) == true" }], outputIncludes: ["inv_Ledger 的采样结果全真"],
   },
   {
     id: "hints-state-unused", expect: "hint.state-unused", description: "没有操作写入也没有读取的状态字段仅提示", regen: true, expectPass: true,
@@ -54,11 +62,11 @@ function typeDef(type: VdmType = nat, name = "Thing"): Extract<VdmDefinition, { 
 }
 
 function operation(overrides: Partial<Extract<VdmDefinition, { category: "operation" }>> = {}): Extract<VdmDefinition, { category: "operation" }> {
-  return { category: "operation", kind: "implicit", name: "work", location, params: [], result: { name: null, type: { kind: "void" } }, hasPre: false, hasPost: true, imperative: [], preSample: null, ext: { rd: [], wr: ["count"] }, reads: ["count"], writes: ["count"], ...overrides };
+  return { category: "operation", kind: "implicit", name: "work", location, params: [], result: { name: null, type: { kind: "void" } }, hasPre: false, hasPost: true, imperative: [], preSample: null, postSample: null, ext: { rd: [], wr: ["count"] }, reads: ["count"], writes: ["count"], ...overrides };
 }
 
 function state(invReads: readonly string[] = []): Extract<VdmDefinition, { category: "state" }> {
-  return { category: "state", name: "State", location, fields: [{ name: "count", type: nat }], hasInvariant: invReads.length > 0, hasInit: true, initial: null, invReads };
+  return { category: "state", name: "State", location, fields: [{ name: "count", type: nat }], hasInvariant: invReads.length > 0, hasInit: true, initial: null, invReads, invSample: null };
 }
 
 function module(definitions: readonly VdmDefinition[], overrides: Partial<VdmModule> = {}): VdmModule {
@@ -144,6 +152,8 @@ export function verifyProjections(): number {
     check(`sampled-pre-${id}`, "hint.sampled", count, [module([operation({ preSample: sample })])]);
     check(`sampled-inv-${id}`, "hint.sampled", count, [module([{ ...typeDef(), invSample: sample }])]);
     check(`sampled-function-${id}`, "hint.sampled", count, [module([{ ...operation({ preSample: sample }), category: "function" }])]);
+    check(`sampled-post-${id}`, "hint.sampled", count, [module([operation({ postSample: sample })])]);
+    check(`sampled-state-inv-${id}`, "hint.sampled", count, [module([{ ...state(), invSample: sample }, operation()])]);
   }
   check("state-unwritten", "hint.state-unused", 1, [module([state(), operation({ writes: [] })])]);
   check("state-unread", "hint.state-unused", 1, [module([state(), operation({ reads: [] })])]);

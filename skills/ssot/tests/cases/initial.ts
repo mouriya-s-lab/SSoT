@@ -9,6 +9,7 @@ const flow = (initial: string, extra = ""): string => `module flow {
   action init = all { lastCall' = NoCall, ledger' = ${initial} }
   action step = all { lastCall' = NoCall, ledger' = ledger }
   val safety = true
+  val witnessStart = ledger == L::initial
 }
 `;
 

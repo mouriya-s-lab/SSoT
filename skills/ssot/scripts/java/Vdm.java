@@ -388,7 +388,7 @@ public class Vdm {
     }
     else if(d instanceof TCStateDefinition z) {
       put(x,"category",s("state")); put(x,"fields",fields(z.fields)); put(x,"hasInvariant",b(z.invExpression!=null)); put(x,"hasInit",b(z.initExpression!=null));
-      put(x,"invReads",invariantReads(z)); put(x,"initial",new Nil());
+      put(x,"invReads",invariantReads(z)); put(x,"invSample",sample(z.invdef,interpreter,true)); put(x,"initial",new Nil());
       if(interpreter!=null) try {
         interpreter.setDefaultName(z.name.getModule());
         put(x,"initial",initialValue(interpreter.getStateContext().lookup(z.name)));
@@ -400,30 +400,30 @@ public class Vdm {
     else if(d instanceof TCImplicitOperationDefinition z) {
       callable(x,"operation","implicit",implicitParams(z.parameterPatterns),z.result==null?result(null,z.type.result):param(z.result.pattern,z.result.type),z.precondition!=null,z.postcondition!=null);
       put(x,"preType",z.predef==null?new Nil():type(z.predef.type,false)); put(x,"postType",z.postdef==null?new Nil():type(z.postdef.type,false));
-      operation(x,z.body,z.postcondition,z.externals,z.name.getModule(),z.stateDefinition); put(x,"preSample",sample(z.predef,interpreter,false));
+      operation(x,z.body,z.postcondition,z.externals,z.name.getModule(),z.stateDefinition); put(x,"preSample",sample(z.predef,interpreter,false)); put(x,"postSample",sample(z.postdef,interpreter,false));
     }
     else if(d instanceof TCExplicitOperationDefinition z) {
       callable(x,"operation","explicit",explicitParams(z.parameterPatterns,z.type.parameters),result("RESULT",z.type.result),z.precondition!=null,z.postcondition!=null);
       put(x,"preType",z.predef==null?new Nil():type(z.predef.type,false)); put(x,"postType",z.postdef==null?new Nil():type(z.postdef.type,false));
-      operation(x,z.body,z.postcondition,null,z.name.getModule(),z.stateDefinition); put(x,"preSample",sample(z.predef,interpreter,false));
+      operation(x,z.body,z.postcondition,null,z.name.getModule(),z.stateDefinition); put(x,"preSample",sample(z.predef,interpreter,false)); put(x,"postSample",sample(z.postdef,interpreter,false));
     }
     else if(d instanceof TCImplicitFunctionDefinition z) {
       callable(x,"function","implicit",implicitParams(z.parameterPatterns),param(z.result.pattern,z.result.type),z.precondition!=null,z.postcondition!=null);
-      put(x,"preSample",sample(z.predef,interpreter,false));
+      put(x,"preSample",sample(z.predef,interpreter,false)); put(x,"postSample",sample(z.postdef,interpreter,false));
     }
     else if(d instanceof TCExplicitFunctionDefinition z) {
       List<J> groups=new ArrayList<>(); TCFunctionType ft=z.type;
       for(int i=0;i<z.paramPatternList.size();i++) { groups.add(explicitParams(z.paramPatternList.get(i),ft.parameters)); if(i+1<z.paramPatternList.size()) ft=(TCFunctionType)ft.result; }
       List<J> flat=new ArrayList<>(); for(J group:groups) flat.addAll(((Arr)group).items);
       callable(x,"function","explicit",new Arr(flat),result("RESULT",ft.result),z.precondition!=null,z.postcondition!=null); put(x,"paramGroups",new Arr(groups));
-      put(x,"preSample",sample(z.predef,interpreter,false));
+      put(x,"preSample",sample(z.predef,interpreter,false)); put(x,"postSample",sample(z.postdef,interpreter,false));
     }
     else { put(x,"category",s(d.kind())); put(x,"nativeClass",s(d.getClass().getName())); }
     return x;
   }
   static void callable(Obj x,String category,String kind,J params,J result,boolean pre,boolean post) {
     put(x,"category",s(category)); put(x,"kind",s(kind)); put(x,"params",params); put(x,"result",result); put(x,"hasPre",b(pre)); put(x,"hasPost",b(post));
-    put(x,"imperative",new Arr(List.of())); put(x,"preSample",new Nil()); put(x,"ext",new Nil());
+    put(x,"imperative",new Arr(List.of())); put(x,"preSample",new Nil()); put(x,"postSample",new Nil()); put(x,"ext",new Nil());
     put(x,"reads",new Arr(List.of())); put(x,"writes",new Arr(List.of()));
   }
   static J module(TCModule m,ModuleInterpreter interpreter,List<J> messages) {

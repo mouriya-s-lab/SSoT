@@ -69,6 +69,8 @@ interface VdmCallable<Category extends "operation" | "function"> {
   readonly imperative: readonly VdmLocation[];
   /** pre 的采样计数。 */
   readonly preSample: VdmSample | null;
+  /** post 的采样计数。 */
+  readonly postSample: VdmSample | null;
   /** 只对操作：ext 子句（rd、wr 的状态分量名）；没有 ext 子句时为 null。函数恒为 null。 */
   readonly ext: { readonly rd: readonly string[]; readonly wr: readonly string[] } | null;
   /** 只对操作：体或 post 里读、写到的状态分量名（由 AST 求出，不解析文本）。函数恒为空。 */
@@ -86,6 +88,8 @@ export type VdmDefinition =
       readonly hasInvariant: boolean;
       readonly hasInit: boolean;
       readonly invReads: readonly string[];
+      /** 状态 inv 的采样计数。 */
+      readonly invSample: VdmSample | null;
       /** init 执行后的状态值（VDMJ 求得）；求不出时为 null，并由 compile.vdm 报原因。 */
       readonly initial: VdmValue | null;
     }

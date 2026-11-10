@@ -19,6 +19,7 @@ export const RULES = {
   "gen.fresh": "gen",
   "behavior.names": "quint",
   "behavior.call": "quint",
+  "behavior.assume": "quint", // 行为模块声明了 assume（error）
   "behavior.run": "quint",
   "replay.pre": "quint",
   "replay.post": "quint",
@@ -35,7 +36,7 @@ export const RULES = {
   "hint.single-business": "vdm", // 架构定义只被一个业务模块引用（info）
   "hint.struct-unread": "vdm", // struct 导出没有任何 importer 读字段（info）
   "hint.string": "vdm", // 导出类型里出现 seq of char（info）
-  "hint.sampled": "vdm", // pre 或 inv 在采样中全真或全假（info）
+  "hint.sampled": "vdm", // pre、post、类型 inv 或状态 inv 在采样中全真或全假（info）
   "hint.state-unused": "vdm", // 状态分量从未被写或从未被读（info）
   "hint.no-ext": "vdm", // 没有 ext 子句的操作（info）
 } as const;

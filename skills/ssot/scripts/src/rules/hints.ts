@@ -106,12 +106,14 @@ export function hintRules(structure: Structure, project: VdmProject): Diagnostic
         case "operation":
         case "function":
           out.push(...sampled(d.preSample, `pre_${d.name}`, subject, d));
+          out.push(...sampled(d.postSample, `post_${d.name}`, subject, d));
           if (d.imperative.length > 0)
             out.push(diag("contract.body", subject, vdmPosition(d.imperative[0]!), `${m.name}\`${d.name} 的显式体含局部可变变量、赋值或循环`));
           if (d.category === "operation" && d.kind === "implicit" && d.ext === null)
             out.push(diag("hint.no-ext", subject, vdmPosition(d.location), `${m.name}\`${d.name} 是没有 ext 子句的隐式操作`, "info"));
           break;
         case "state": {
+          out.push(...sampled(d.invSample, `inv_${d.name}`, subject, d));
           const operations = m.definitions.filter((def) => def.category === "operation");
           const reads = new Set(operations.flatMap((op) => op.reads));
           const writes = new Set(operations.flatMap((op) => op.writes));

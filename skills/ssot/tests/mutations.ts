@@ -236,6 +236,21 @@ export const mutations: readonly Mutation[] = [
     regen: false,
   },
   {
+    id: "behavior-call-no-witness",
+    expect: "behavior.call",
+    description: "可运行模块没有覆盖目标：空转的模型也满足 safety，check 失败",
+    edits: [{ file: FLOW, find: "  val witnessBothClosed = ledger.closed.size() == 2", replace: "" }],
+    regen: false,
+    outputIncludes: ["没有覆盖目标"],
+  },
+  {
+    id: "behavior-assume",
+    expect: "behavior.assume",
+    description: "行为模块用 assume 写环境假设",
+    edits: [{ file: FLOW, find: "  pure val ORDERS = Set(\"o1\", \"o2\")", replace: "  pure val ORDERS = Set(\"o1\", \"o2\")\n  assume TwoOrders = ORDERS.size() == 2" }],
+    regen: false,
+  },
+  {
     id: "behavior-run",
     expect: "behavior.run",
     description: "关账不再要求已记账，safety 被违反",

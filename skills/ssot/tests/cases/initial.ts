@@ -5,11 +5,12 @@ const flow = (initial: string, extra = ""): string => `module flow {
   import shop_ledger as L from "../.gen/contract"
   var lastCall: Call
   var ledger: L::Ledger
+  var stepped: bool
   ${extra}
-  action init = all { lastCall' = NoCall, ledger' = ${initial} }
-  action step = all { lastCall' = NoCall, ledger' = ledger }
+  action init = all { lastCall' = NoCall, ledger' = ${initial}, stepped' = false }
+  action step = all { lastCall' = NoCall, ledger' = ledger, stepped' = true }
   val safety = true
-  val witnessStart = ledger == L::initial
+  val witnessStepped = stepped
 }
 `;
 

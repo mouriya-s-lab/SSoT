@@ -244,6 +244,22 @@ export const mutations: readonly Mutation[] = [
     outputIncludes: ["没有覆盖目标"],
   },
   {
+    id: "behavior-call-witness-init",
+    expect: "behavior.call",
+    description: "覆盖目标在 init 初态已成立，未经过任何 step：空转的模型不能以此过关",
+    edits: [{ file: FLOW, find: "  val witnessBothClosed = ledger.closed.size() == 2", replace: "  val witnessBothClosed = ledger.closed.size() == 0" }],
+    regen: false,
+    outputIncludes: ["在 init 初态已成立，未经过任何 step"],
+  },
+  {
+    id: "behavior-call-witness-pure",
+    expect: "behavior.call",
+    description: "覆盖目标写成不依赖状态的 pure val，直接按 behavior.call 拒绝",
+    edits: [{ file: FLOW, find: "  val witnessBothClosed = ledger.closed.size() == 2", replace: "  pure val witnessBothClosed = true" }],
+    regen: false,
+    outputIncludes: ["必须是无参状态谓词 val"],
+  },
+  {
     id: "behavior-assume",
     expect: "behavior.assume",
     description: "行为模块用 assume 写环境假设",

@@ -191,10 +191,16 @@ export function callRules(behavior: readonly QuintModule[], callModules: readonl
     const vars = q.decls.filter((d) => d.isCallVar);
     if (callModules.length > 0 && vars.length !== 1)
       out.push(diag("behavior.call", global, at, `可运行模块 ${q.name} 必须恰有一个类型为 contract::Call 的状态变量，实际 ${vars.length} 个`));
-    if (!q.decls.some((d) => d.name === "safety" && (d.kind === "val" || d.kind === "def")))
-      out.push(diag("behavior.call", global, at, `可运行模块 ${q.name} 缺少 val safety`));
-    // 与 behavior.ts 的 coverWitnesses 同一判据：名字以 witness 开头的 val/def。
-    if (!q.decls.some((d) => (d.kind === "val" || d.kind === "def") && d.name.startsWith("witness")))
+    const safety = q.decls.find((d) => d.name === "safety");
+    if (!safety) out.push(diag("behavior.call", global, at, `可运行模块 ${q.name} 缺少 val safety`));
+    else if (safety.kind !== "val")
+      out.push(diag("behavior.call", global, safety.at, `可运行模块 ${q.name} 的 safety 必须是无参状态谓词 val，实际是 ${safety.kind}`));
+    // 与 behavior.ts 的 coverWitnesses 同一判据：名字以 witness 开头的无参状态谓词 val。
+    const witnesses = q.decls.filter((d) => d.name.startsWith("witness"));
+    for (const w of witnesses)
+      if (w.kind !== "val")
+        out.push(diag("behavior.call", global, w.at, `可运行模块 ${q.name} 的覆盖目标 ${w.name} 必须是无参状态谓词 val，实际是 ${w.kind}`));
+    if (!witnesses.some((d) => d.kind === "val"))
       out.push(diag("behavior.call", global, at, `可运行模块 ${q.name} 没有覆盖目标（val witness…）；一个什么都不做的模型也满足 safety`));
   }
   return out;

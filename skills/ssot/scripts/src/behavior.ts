@@ -46,7 +46,7 @@ function relatedToScope(q: QuintModule, witness: QuintDecl, modules: ReadonlySet
  * 而且在 B2 的契约上被 Quint 0.33.1 的展平器缺陷挡住。
  */
 export async function coverWitnesses(file: string, q: QuintModule, outDir: string, opts: CoverOptions): Promise<Coverage> {
-  const witnesses = q.decls.filter((d) => (d.kind === "val" || d.kind === "def") && d.name.startsWith("witness") && relatedToScope(q, d, opts.callModules));
+  const witnesses = q.decls.filter((d) => d.kind === "val" && d.name.startsWith("witness") && relatedToScope(q, d, opts.callModules));
   const plans = witnesses.map((witness) => planWitness(q, witness, opts.steps));
   // 各目标的搜索互不依赖（各自的进程、seed 与输出目录），并发运行，并发数由 quint 的进程池限定。进程池按调用先后放行，
   // 所以步数上限大的先启动：最慢的搜索不排在短搜索后面。结果仍按声明次序汇总，输出与回放次序不随启动或完成先后变化。
@@ -116,7 +116,10 @@ async function searchWitness(file: string, q: QuintModule, plan: { readonly witn
     return { kind: "missed", diagnostic: diag("resource.deadline", global, at, `${q.name} 的覆盖目标 ${w} 搜索超过截止 ${opts.deadlineMs / 1000}s 被终止；验证未完成（${ms}ms）`, "warning") };
   const out = await readJson<{ status?: string; errors: QuintError[] }>(res);
   const files = out.status === "violation" ? readdirSync(dir).filter((f) => f.endsWith(".itf.json")) : [];
-  const found = (await Promise.all(files.map((f) => readTrace(join(dir, f))))).find((t) => t.status === "violation");
+  const violations = (await Promise.all(files.map((f) => readTrace(join(dir, f))))).filter((t) => t.status === "violation");
+  if (violations.some((t) => t.states.length < 2))
+    return { kind: "missed", diagnostic: diag("behavior.call", global, at, `覆盖目标 ${w} 在 init 初态已成立，未经过任何 step；覆盖目标必须经状态推进到达`) };
+  const found = violations.find((t) => t.states.length >= 2);
   return found
     ? { kind: "reached", trace: found, ms }
     : { kind: "missed", diagnostic: diag("replay.incomplete", global, at, `验证不完整：覆盖目标 ${w} 在定向模拟 ${opts.samples} 次 × ${steps} 步内没有到达（${out.status}，${ms}ms）`) };

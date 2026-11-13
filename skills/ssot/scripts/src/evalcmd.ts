@@ -34,6 +34,10 @@ export async function evalCommand(front: EvalFront, args: readonly string[]): Pr
       console.log(JSON.stringify({ kind: "compileError", diagnostics: errors }, null, 2));
       return 1;
     }
+    if (!front.project.modules.some((m) => m.name === module)) {
+      console.log(JSON.stringify({ module, expression: expr, kind: "invalidExpression", message: `Unknown module: ${module}` }, null, 2));
+      return 2;
+    }
     const results = await evaluate(front.vdmFiles, [{ module, expr, binds }]);
     const result = results[0];
     if (!result) throw new Error("VDMJ returned no evaluation result");
@@ -41,6 +45,7 @@ export async function evalCommand(front: EvalFront, args: readonly string[]): Pr
     switch (result.kind) {
       case "value": return 0;
       case "error": return 1;
+      case "invalidExpression": return 2;
       default: return assertNever(result.kind);
     }
   } catch (error: unknown) {

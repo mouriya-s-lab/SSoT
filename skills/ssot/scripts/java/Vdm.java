@@ -506,9 +506,14 @@ public class Vdm {
    * a property of the specification text, not of a concrete value, so qualified type names resolve against every module.
    */
   static TCDefinitionList allTypes=new TCDefinitionList();
-  /** Parse, typecheck (throwing) and evaluate `source` in `module`, with `binds` declared as typed local names. */
+  static class InvalidExpressionException extends Exception {
+    final Exception cause;
+    InvalidExpressionException(Exception cause) { super(cause.getMessage(),cause); this.cause=cause; }
+  }
+  /** Parse, typecheck (throwing InvalidExpressionException) and evaluate `source` in `module`, with `binds` declared as typed local names. */
   static Value checked(ModuleInterpreter it, String module, String source, List<Bind> binds, Map<String,Value> values) throws Exception {
-    it.setDefaultName(module);
+    try { it.setDefaultName(module); }
+    catch(Exception e) { throw new InvalidExpressionException(e); }
     Environment env=new FlatEnvironment(allTypes,it.getGlobalEnvironment());
     StateContext ctx=new StateContext(LexLocation.ANY,"ssot replay",it.getInitialContext(),it.getStateContext());
     ctx.setThreadState(null);
@@ -516,23 +521,28 @@ public class Vdm {
     for(Bind b:binds) {
       TCNameToken name=new TCNameToken(LexLocation.ANY,module,b.name());
       TCDefinition td=env.findType(new TCNameToken(LexLocation.ANY,b.typeModule(),b.typeName()),module);
-      if(td==null) throw new IllegalArgumentException("Type "+b.typeModule()+"`"+b.typeName()+" is not visible in module "+module);
+      if(td==null) throw new InvalidExpressionException(new IllegalArgumentException("Type "+b.typeModule()+"`"+b.typeName()+" is not visible in module "+module));
       TCType type=td.getType();
       defs.add(new TCLocalDefinition(LexLocation.ANY,name,type));
       ctx.put(name,values.get(b.name()).convertTo(type,ctx));
     }
     if(!defs.isEmpty()) env=new FlatEnvironment(defs,env);
+    INExpression executable;
     LexTokenReader lexer=new LexTokenReader(source,Dialect.VDM_SL);
     ExpressionReader reader=new ExpressionReader(lexer);
     try {
       reader.setCurrentModule(module);
-      TCExpression expression=ClassMapper.getInstance(TCNode.MAPPINGS).convertLocal(reader.readExpression());
+      var parsed=reader.readExpression();
+      if(reader.getErrorCount()>0) throw new VDMErrorsException(reader.getErrors());
       if(!lexer.getLast().is(Token.EOF)) throw new IllegalArgumentException("Trailing expression input");
+      TCExpression expression=ClassMapper.getInstance(TCNode.MAPPINGS).convertLocal(parsed);
       it.typeCheck(expression,env);
-      INExpression executable=ClassMapper.getInstance(INNode.MAPPINGS).convertLocal(expression);
-      ctx.threadState.init();
-      return executable.eval(ctx);
+      executable=ClassMapper.getInstance(INNode.MAPPINGS).convertLocal(expression);
+    } catch(Exception e) {
+      throw e instanceof InvalidExpressionException ? e : new InvalidExpressionException(e);
     } finally { reader.close(); }
+    ctx.threadState.init();
+    return executable.eval(ctx);
   }
   static double ms(long start) { return (System.nanoTime()-start)/1_000_000.0; }
   /** Modules whose predicates are sampled and whose obligations QuickCheck checks; null means every module. */
@@ -642,6 +652,10 @@ public class Vdm {
           }
           Value v=checked(interpreter,item[0],item[1],binds,values);
           put(x,"kind",s("value")); put(x,"text",s(v.toString())); put(x,"value",value(v));
+        }
+        catch(InvalidExpressionException e) {
+          Obj err=(Obj)error(e.cause); put(err,"kind",s("invalidExpression"));
+          x.fields.putAll(err.fields);
         }
         catch(Exception e) { x.fields.putAll(((Obj)error(e)).fields); }
         put(x,"ms",n(ms(one))); results.add(x);

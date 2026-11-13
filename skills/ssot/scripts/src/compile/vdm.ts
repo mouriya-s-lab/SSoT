@@ -174,7 +174,7 @@ export type ObligationsResult =
 export interface EvalResult {
   readonly module: string;
   readonly expression: string;
-  readonly kind: "value" | "error";
+  readonly kind: "value" | "error" | "invalidExpression";
   readonly text?: string;
   readonly value?: { readonly kind: string; readonly value?: unknown };
   readonly message?: string;

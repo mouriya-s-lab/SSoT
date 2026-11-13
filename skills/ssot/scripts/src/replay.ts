@@ -529,13 +529,13 @@ export async function replay(input: ReplayInput): Promise<ReplayOutcome> {
 
   type Verdict = { readonly rule: RuleId; readonly why: string; readonly error: boolean } | "holds";
   const boolVerdict = (e: EvalResult, label: string, falseRule: RuleId, falseWhy: string): Verdict => {
-    if (e.kind === "error") return { rule: errorRule(e), why: `${label}：VDMJ ${e.number ?? "?"}: ${e.message}`, error: true };
+    if (e.kind === "error" || e.kind === "invalidExpression") return { rule: errorRule(e), why: `${label}：VDMJ ${e.number ?? "?"}: ${e.message}`, error: true };
     if (e.value?.kind === "bool" && typeof e.value.value === "boolean") return e.value.value ? "holds" : { rule: falseRule, why: falseWhy, error: false };
     return { rule: "replay.eval", why: `${label} 的值不是 bool：${e.text}`, error: true };
   };
   const frameVerdict = (s: Step, f: NonNullable<Step["frame"]>): Verdict => {
     const e = byKey.get(keyOf(s.module, f.r))!;
-    if (e.kind === "error") return { rule: errorRule(e), why: `frame_${s.op.name}：VDMJ ${e.number ?? "?"}: ${e.message}`, error: true };
+    if (e.kind === "error" || e.kind === "invalidExpression") return { rule: errorRule(e), why: `frame_${s.op.name}：VDMJ ${e.number ?? "?"}: ${e.message}`, error: true };
     const eq = boolItems(e.value);
     if (eq === null || eq.length !== f.fields.length) return { rule: "replay.eval", why: `frame_${s.op.name} 的值不是 ${f.fields.length} 个 bool 的序列：${e.text}`, error: true };
     const changed = f.fields.filter((_, i) => !eq[i]);

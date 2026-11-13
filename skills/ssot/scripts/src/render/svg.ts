@@ -29,7 +29,7 @@ function text(x: number, y: number, lines: readonly string[], anchor: "start" | 
 }
 function frame(title: string, subtitle: string, width: number, height: number, body: string, legend: string): DiagramSvg {
   const w = Math.ceil(Math.max(width, 860)), h = Math.ceil(height);
-  return { width: w, height: h, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" font-family="Arial, sans-serif" font-size="14"><defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse"><path d="M0,0 L9,4.5 L0,9 z" fill="${MUTED}"/></marker></defs><rect width="100%" height="100%" fill="#fff"/>${text(28, 34, [title], "start", 21, "bold")}${text(28, 59, [subtitle], "start", 14)}${body}<line x1="28" x2="${w - 28}" y1="${h - 65}" y2="${h - 65}" stroke="#dde1e5"/>${legend}</svg>` };
+  return { width: w, height: h, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" font-family="Arial, sans-serif" font-size="14"><defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse"><path d="M0,0 L9,4.5 L0,9 z" fill="${MUTED}"/></marker><marker id="contract-arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse"><path d="M0,0 L9,4.5 L0,9 z" fill="${CONTRACT}"/></marker></defs><rect width="100%" height="100%" fill="#fff"/>${text(28, 34, [title], "start", 21, "bold")}${text(28, 59, [subtitle], "start", 14)}${body}<line x1="28" x2="${w - 28}" y1="${h - 65}" y2="${h - 65}" stroke="#dde1e5"/>${legend}</svg>` };
 }
 function edgePath(edge: ElkExtendedEdge, kind: CompositionEdge["kind"] | "port"): string {
   let style: string;
@@ -37,6 +37,7 @@ function edgePath(edge: ElkExtendedEdge, kind: CompositionEdge["kind"] | "port")
     case "take": case "put": case "port": style = `stroke="${MUTED}" marker-end="url(#arrow)"`; break;
     case "update": style = `stroke="${MUTED}" marker-start="url(#arrow)" marker-end="url(#arrow)"`; break;
     case "call": style = `stroke="${MUTED}" stroke-dasharray="8 4" marker-end="url(#arrow)"`; break;
+    case "read": style = `stroke="${CONTRACT}" stroke-dasharray="3 3" marker-end="url(#contract-arrow)"`; break;
     default: return assertNever(kind);
   }
   if (!edge.sections?.length) throw new Error(`ELK 没有布置连线 ${edge.id}`);
@@ -110,6 +111,7 @@ export async function compositionSvg(diagram: CompositionDiagram): Promise<Diagr
       case "take": case "update": return [key("wire", edge.wire), key("step", edge.step)];
       case "put": return [key("step", edge.step), key("wire", edge.wire)];
       case "call": return [key("step", edge.step), key("contract", edge.contract)];
+      case "read": return [key("contract", edge.contract), key("step", edge.step)];
       default: return assertNever(edge);
     }
   };
@@ -154,8 +156,8 @@ export async function compositionSvg(diagram: CompositionDiagram): Promise<Diagr
   if (diagram.nodes.length === 0) body += text(20, 30, ["No steps, wires or contract calls"]);
   body += "</g>";
   const height = Math.max(laid.height + 210, 330);
-  const legend = `<rect x="28" y="${height - 48}" width="20" height="16" rx="4" fill="#eef4fa" stroke="${BEHAVIOR}"/>${text(58, height - 34, ["Step · action in step"], "start", 12)}<rect x="230" y="${height - 48}" width="26" height="16" rx="8" fill="#fff" stroke="${MUTED}"/>${text(266, height - 34, ["Wire · var : type"], "start", 12)}<rect x="420" y="${height - 48}" width="20" height="16" fill="#f2eff8" stroke="${CONTRACT}" stroke-dasharray="4 2"/>${text(450, height - 34, ["Contract box"], "start", 12)}<path d="M560,${height - 40} h35" stroke="${MUTED}" marker-end="url(#arrow)"/>${text(605, height - 34, ["Take / Put"], "start", 12)}<path d="M690,${height - 40} h35" stroke="${MUTED}" marker-start="url(#arrow)" marker-end="url(#arrow)"/>${text(735, height - 34, ["Update · reads and writes"], "start", 12)}<path d="M930,${height - 40} h35" stroke="${MUTED}" stroke-dasharray="8 4" marker-end="url(#arrow)"/>${text(975, height - 34, ["Call · operations"], "start", 12)}`;
-  return frame(`Composition · ${diagram.module}`, "Steps as boxes, behavior variables as wires, generated contract calls", Math.max(laid.width + 56, 1220), height, body, legend);
+  const legend = `<rect x="28" y="${height - 48}" width="20" height="16" rx="4" fill="#eef4fa" stroke="${BEHAVIOR}"/>${text(58, height - 34, ["Step · action in step"], "start", 12)}<rect x="230" y="${height - 48}" width="26" height="16" rx="8" fill="#fff" stroke="${MUTED}"/>${text(266, height - 34, ["Wire · var : type"], "start", 12)}<rect x="420" y="${height - 48}" width="20" height="16" fill="#f2eff8" stroke="${CONTRACT}" stroke-dasharray="4 2"/>${text(450, height - 34, ["Contract box"], "start", 12)}<path d="M560,${height - 40} h35" stroke="${MUTED}" marker-end="url(#arrow)"/>${text(605, height - 34, ["Take / Put"], "start", 12)}<path d="M690,${height - 40} h35" stroke="${MUTED}" marker-start="url(#arrow)" marker-end="url(#arrow)"/>${text(735, height - 34, ["Update · reads and writes"], "start", 12)}<path d="M930,${height - 40} h35" stroke="${MUTED}" stroke-dasharray="8 4" marker-end="url(#arrow)"/>${text(975, height - 34, ["Call · operations"], "start", 12)}<path d="M1125,${height - 40} h35" stroke="${CONTRACT}" stroke-dasharray="3 3" marker-end="url(#contract-arrow)"/>${text(1170, height - 34, ["Read · feedback"], "start", 12)}`;
+  return frame(`Composition · ${diagram.module}`, "Steps as boxes, behavior variables as wires, generated contract calls", Math.max(laid.width + 56, 1340), height, body, legend);
 }
 
 export async function screenshotSvg(browser: Browser, image: DiagramSvg, path: string): Promise<void> {

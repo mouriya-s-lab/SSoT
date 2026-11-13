@@ -11,7 +11,8 @@ export type CompositionEdge =
   | { readonly kind: "put"; readonly step: string; readonly wire: string }
   | { readonly kind: "take"; readonly wire: string; readonly step: string }
   | { readonly kind: "update"; readonly wire: string; readonly step: string }
-  | { readonly kind: "call"; readonly step: string; readonly contract: string; readonly operations: readonly string[] };
+  | { readonly kind: "call"; readonly step: string; readonly contract: string; readonly operations: readonly string[] }
+  | { readonly kind: "read"; readonly contract: string; readonly step: string };
 export interface CompositionDiagram {
   readonly module: string;
   readonly nodes: readonly CompositionNode[];
@@ -118,8 +119,12 @@ export function projectComposition(input: unknown, module: QuintModule, project:
   const self = ir.modules.find((entry) => entry.name === module.name);
   if (!self) throw new Error(`Quint 图投影缺少模块 ${module.name}`);
   const states = new Map(project.modules.flatMap((entry) => entry.definitions.flatMap((def) => def.category === "state" ? [[entry.name, def.name] as const] : [])));
-  const excluded = new Set(module.decls.filter((decl) => decl.kind === "var" && (decl.isCallVar || (decl.varType !== null && states.get(decl.varType.module) === decl.varType.name))).map((decl) => decl.name));
-  const vars = new Map(self.declarations.flatMap((def) => def.kind === "var" && !excluded.has(def.name) ? [[def.id, def] as const] : []));
+  const stateModules = new Map(module.decls.flatMap((decl) => decl.kind === "var" && decl.varType !== null && states.get(decl.varType.module) === decl.varType.name ? [[decl.name, decl.varType.module] as const] : []));
+  const callVarNames = new Set(module.decls.filter((decl) => decl.kind === "var" && decl.isCallVar).map((decl) => decl.name));
+  const contractVars = new Map(self.declarations.flatMap((def) => def.kind === "var" && stateModules.has(def.name) ? [[def.id, stateModules.get(def.name)!] as const] : []));
+  const callVars = new Map(self.declarations.flatMap((def) => def.kind === "var" && callVarNames.has(def.name) ? [[def.id, def] as const] : []));
+  const vars = new Map(self.declarations.flatMap((def) => def.kind === "var" && !stateModules.has(def.name) && !callVarNames.has(def.name) ? [[def.id, def] as const] : []));
+  const trackableVars = new Map([...vars, ...callVars]);
   const declaredIn = new Map(ir.modules.flatMap((entry) => entry.declarations.map((def) => [def.id, entry.name] as const)));
   const locateNested = (expr: Expr, owner: string): void => {
     switch (expr.kind) {
@@ -194,8 +199,15 @@ export function projectComposition(input: unknown, module: QuintModule, project:
       return "descend";
     });
   }
+  const stepEffects: {
+    readonly step: string;
+    readonly changed: ReadonlySet<string>;
+    readonly reads: ReadonlySet<string>;
+    readonly contractReads: ReadonlySet<string>;
+    readonly calls: ReadonlyMap<string, ReadonlySet<string>>;
+  }[] = [];
   for (const action of [...actions.values()].sort((a, b) => a.name.localeCompare(b.name))) {
-    const changed = new Set<string>(), reads = new Set<string>();
+    const changed = new Set<string>(), reads = new Set<string>(), contractReads = new Set<string>();
     const calls = new Map<string, Set<string>>();
     // Inside `v' = e`, reading v carries the wire's remaining value forward; only reads elsewhere take from the wire.
     let carried: number | null = null;
@@ -206,14 +218,19 @@ export function projectComposition(input: unknown, module: QuintModule, project:
         const target = resolve(dereference({ expr: lhs, bindings }).expr);
         const value = dereference({ expr: rhs, bindings });
         if (target?.kind === "var" && value.expr.kind === "name" && resolve(value.expr)?.id === target.id) return "stop";
-        if (target?.kind === "var" && vars.has(target.id)) changed.add(target.name);
+        if (target?.kind === "var" && trackableVars.has(target.id)) changed.add(target.name);
+        const previous = carried;
         carried = target?.kind === "var" ? target.id : null;
         walk(value, active, visit);
-        carried = null;
+        carried = previous;
         return "stop";
       }
       const def = resolve(expr);
-      if (expr.kind === "name" && def?.kind === "var" && vars.has(def.id) && def.id !== carried) reads.add(def.name);
+      if (expr.kind === "name" && def?.kind === "var" && def.id !== carried) {
+        if (trackableVars.has(def.id)) reads.add(def.name);
+        const owner = contractVars.get(def.id);
+        if (owner !== undefined) contractReads.add(owner);
+      }
       const contract = def ? constructors.get(def.id) : undefined;
       if (contract && expr.kind === "app") {
         const arg = expr.args[0];
@@ -229,18 +246,31 @@ export function projectComposition(input: unknown, module: QuintModule, project:
       return "descend";
     };
     walk({ expr: action.expr, bindings: new Map() }, new Set([action.id]), visit);
-    for (const wire of [...new Set([...reads, ...changed])].sort()) {
-      if (!changed.has(wire)) edges.push({ kind: "take", wire, step: action.name });
-      else if (!reads.has(wire)) edges.push({ kind: "put", step: action.name, wire });
-      else edges.push({ kind: "update", wire, step: action.name });
+    stepEffects.push({ step: action.name, changed, reads, contractReads, calls });
+  }
+  const visibleWires = new Map([
+    ...vars.values(),
+    ...[...callVars.values()].filter((def) => stepEffects.some((effect) => effect.reads.has(def.name))),
+  ].map((def) => [def.name, def] as const));
+  for (const effect of stepEffects) {
+    for (const wire of [...new Set([...effect.reads, ...effect.changed])].filter((name) => visibleWires.has(name)).sort()) {
+      if (!effect.changed.has(wire)) edges.push({ kind: "take", wire, step: effect.step });
+      else if (!effect.reads.has(wire)) edges.push({ kind: "put", step: effect.step, wire });
+      else edges.push({ kind: "update", wire, step: effect.step });
     }
-    for (const [contract, operations] of [...calls].sort(([a], [b]) => a.localeCompare(b))) edges.push({ kind: "call", step: action.name, contract, operations: [...operations].sort() });
+    for (const [contract, operations] of [...effect.calls].sort(([a], [b]) => a.localeCompare(b))) {
+      edges.push({ kind: "call", step: effect.step, contract, operations: [...operations].sort() });
+    }
+    for (const contract of [...effect.contractReads].filter((name) => !effect.calls.has(name)).sort()) {
+      contracts.add(contract);
+      edges.push({ kind: "read", contract, step: effect.step });
+    }
   }
   return {
     module: module.name,
     nodes: [
       ...[...actions.values()].map((def) => def.name).sort().map((id): CompositionNode => ({ kind: "step", id })),
-      ...[...vars.values()].sort((a, b) => a.name.localeCompare(b.name)).map((def): CompositionNode => ({ kind: "wire", id: def.name, type: def.type })),
+      ...[...visibleWires.values()].sort((a, b) => a.name.localeCompare(b.name)).map((def): CompositionNode => ({ kind: "wire", id: def.name, type: def.type })),
       ...[...contracts].sort().map((id): CompositionNode => ({ kind: "contract", id })),
     ],
     edges,

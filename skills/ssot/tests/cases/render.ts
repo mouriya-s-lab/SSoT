@@ -7,6 +7,7 @@ import { format, global } from "../../scripts/src/diag";
 import { generateContract } from "../../scripts/src/gen/contract";
 import { projectBox, vdmTypeName } from "../../scripts/src/render/box";
 import { projectComposition } from "../../scripts/src/render/composition";
+import { compositionSvg } from "../../scripts/src/render/svg";
 
 export async function verifyRenderProjections(): Promise<number> {
   const fixture = join(import.meta.dir, "..", "render");
@@ -61,7 +62,63 @@ export async function verifyRenderProjections(): Promise<number> {
         { kind: "update", wire: "right", step: "sync" },
       ],
     });
-    return 10;
+
+    writeFileSync(join(stage, "behavior", "peek.qnt"), `module peek {
+  import contract.* from "../.gen/contract"
+  import shop_worker as Api from "../.gen/contract"
+  var flag: bool
+  var store: Api::Store
+  var last: Call
+  def seenCount: int = store.count
+  action init = all { flag' = false, store' = Api::initial, last' = NoCall }
+  action callAndRead = all {
+    seenCount >= 0,
+    flag' = flag,
+    store' = { ...store, count: store.count + 1 },
+    last' = shop_worker(Api::increment({ n: 1, result: 1 })),
+  }
+  action peekFeedback = all {
+    seenCount > 0,
+    flag' = true,
+    store' = store,
+    last' = NoCall,
+  }
+  action peekCall = all {
+    last != NoCall,
+    flag' = false,
+    store' = store,
+    last' = NoCall,
+  }
+  action step = any { callAndRead, peekFeedback, peekCall }
+}
+`);
+    const peekCompiled = await compileBehavior(join(stage, "behavior", "peek.qnt"), "peek", new Set(["contract", module.name]), join(stage, "work"), (path) => path, { origins: generated.origins, subjectOf: () => global });
+    assert.equal(peekCompiled.kind, "ok", peekCompiled.diagnostics.map(format).join("\n"));
+    if (peekCompiled.kind !== "ok") throw new Error("peek.qnt compilation failed");
+    const peekIr: unknown = await Bun.file(peekCompiled.module.typecheckOut).json();
+    const peekDiagram = projectComposition(peekIr, peekCompiled.module, vdm.project);
+    assert.deepEqual(peekDiagram, {
+      module: "peek",
+      nodes: [
+        { kind: "step", id: "callAndRead" }, { kind: "step", id: "peekCall" }, { kind: "step", id: "peekFeedback" },
+        { kind: "wire", id: "flag", type: "bool" },
+        { kind: "wire", id: "last", type: "Call" },
+        { kind: "contract", id: "shop_worker" },
+      ],
+      edges: [
+        { kind: "put", step: "callAndRead", wire: "last" },
+        { kind: "call", step: "callAndRead", contract: "shop_worker", operations: ["increment"] },
+        { kind: "put", step: "peekCall", wire: "flag" },
+        { kind: "update", wire: "last", step: "peekCall" },
+        { kind: "put", step: "peekFeedback", wire: "flag" },
+        { kind: "put", step: "peekFeedback", wire: "last" },
+        { kind: "read", contract: "shop_worker", step: "peekFeedback" },
+      ],
+    });
+    const renderedSvg = await compositionSvg(peekDiagram);
+    assert.equal(renderedSvg.svg.includes('marker-end="url(#contract-arrow)"'), true);
+    assert.equal(renderedSvg.svg.includes("Read · feedback"), true);
+    return 13;
   } finally {
     rmSync(stage, { recursive: true, force: true });
   }

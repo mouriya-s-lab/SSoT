@@ -5,6 +5,7 @@ import { loadDiagramTools } from "../install";
 import type { BoxDiagram } from "./box";
 import type { C4Diagram, C4DiagramNode, C4NodeKind } from "./c4";
 import type { CompositionDiagram, CompositionEdge, CompositionNode } from "./composition";
+import { type LayerTier, type LayersDiagram, TIER_ORDER } from "./layers";
 
 export interface DiagramSvg { readonly width: number; readonly height: number; readonly svg: string }
 const INK = "#20252b", MUTED = "#59636e", BEHAVIOR = "#2a78d6", CONTRACT = "#eb6834";
@@ -275,7 +276,7 @@ export async function c4Svg(diagram: C4Diagram): Promise<DiagramSvg> {
     ...diagram.nodes.filter((node) => node.parent === container && node.group === null).map(elkNode),
   ];
   function elkNode(node: C4DiagramNode): ElkNode {
-    const partition = node.parent === null ? { "elk.partitioning.partition": node.kind === "person" ? "0" : "1" } : {};
+    const partition: Record<string, string> = node.parent === null ? { "elk.partitioning.partition": node.kind === "person" ? "0" : "1" } : {};
     if (node.boundary) return { id: node.id, layoutOptions: { ...partition, "elk.padding": "[top=52,left=26,bottom=26,right=26]" }, children: childrenOf(node.id) };
     return { id: node.id, width: C4_NODE_WIDTH, height: c4NodeText(node).height, layoutOptions: partition };
   }
@@ -345,6 +346,78 @@ export async function c4Svg(diagram: C4Diagram): Promise<DiagramSvg> {
   if (diagram.groups.length) legendItem(`<rect x="${legendX}" y="${height - 45}" width="22" height="16" rx="3" fill="#eef2f6" stroke="#7d8b99" stroke-dasharray="2 2"/>`, "Group");
   legendItem(`<path d="M${legendX},${height - 37} h22" stroke="#5d6b78" stroke-width="1.6" stroke-dasharray="5 3" marker-end="url(#arrow)"/>`, "Call · initiator → callee");
   return frame(diagram.title, diagram.description, Math.max(laid.width + 56, legendX + 28), height, `<g transform="translate(28,95)">${frames}${edges}${nodes}${labels}</g>`, legend);
+}
+
+const TIER_STYLE: Readonly<Record<LayerTier, { readonly name: string; readonly band: string; readonly fill: string; readonly stroke: string }>> = {
+  business: { name: "Business", band: "#fff7ec", fill: "#fde9cf", stroke: "#c9761f" },
+  architecture: { name: "Architecture", band: "#f2f7fd", fill: "#dfeaf8", stroke: "#2e6faf" },
+  store: { name: "Data store", band: "#f0f8f2", fill: "#dcefe2", stroke: "#2f7d4f" },
+};
+
+export async function layersSvg(diagram: LayersDiagram): Promise<DiagramSvg> {
+  const { ELK } = await loadDiagramTools();
+  const width = 260, height = 74, gutter = 150;
+  const labelLines = diagram.imports.map((i) => sizedWrap(i.names.join(", "), 170, 12));
+  const graph: ElkNode = {
+    id: "root",
+    layoutOptions: {
+      "elk.algorithm": "layered", "elk.direction": "DOWN", "elk.edgeRouting": "ORTHOGONAL", "elk.partitioning.activate": "true",
+      "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX", "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+      "elk.spacing.nodeNode": "48", "elk.layered.spacing.nodeNodeBetweenLayers": "84", "elk.spacing.edgeNode": "24", "elk.spacing.edgeEdge": "14",
+      "elk.edgeLabels.placement": "CENTER", "elk.padding": "[top=26,left=20,bottom=26,right=20]",
+    },
+    children: diagram.modules.map((m) => ({ id: m.module, width, height, layoutOptions: { "elk.partitioning.partition": String(TIER_ORDER.indexOf(m.tier)) } })),
+    edges: diagram.imports.map((i, index) => {
+      const lines = labelLines[index]!;
+      return { id: `import${index}`, sources: [i.from], targets: [i.to], labels: [{ id: `names${index}`, text: lines.join("\n"), width: Math.max(...lines.map((line) => sizedWidth(line, 12))) + 14, height: lines.length * 16 + 8 }] };
+    }),
+  };
+  const laid = await new ELK().layout(graph);
+  if (laid.width === undefined || laid.height === undefined) throw new Error("ELK 没有布置契约分层图");
+  const placed = new Map((laid.children ?? []).map((child) => [child.id, child]));
+  const at = (module: string): Rect => {
+    const n = placed.get(module);
+    if (!n || n.x === undefined || n.y === undefined) throw new Error(`ELK 没有布置模块 ${module}`);
+    return { x: n.x + gutter, y: n.y, width, height };
+  };
+  const totalWidth = laid.width + gutter;
+  let bands = "", edges = "", nodes = "", labels = "";
+  for (const tier of TIER_ORDER) {
+    const members = diagram.modules.filter((m) => m.tier === tier).map((m) => at(m.module));
+    if (members.length === 0) continue;
+    const top = Math.min(...members.map((r) => r.y)) - 18, bottom = Math.max(...members.map((r) => r.y + r.height)) + 18;
+    bands += `<rect x="0" y="${top}" width="${totalWidth}" height="${bottom - top}" rx="8" fill="${TIER_STYLE[tier].band}" stroke="${TIER_STYLE[tier].stroke}" stroke-opacity="0.35"/>`;
+    bands += text(16, top + 26, [TIER_STYLE[tier].name], "start", 14, "bold", TIER_STYLE[tier].stroke);
+  }
+  const shifted = (laid.edges ?? []).map((edge) => ({
+    ...edge,
+    sections: (edge.sections ?? []).map((s) => ({ ...s, startPoint: { x: s.startPoint.x + gutter, y: s.startPoint.y }, endPoint: { x: s.endPoint.x + gutter, y: s.endPoint.y }, bendPoints: s.bendPoints?.map((p) => ({ x: p.x + gutter, y: p.y })) })),
+    labels: (edge.labels ?? []).map((l) => ({ ...l, x: (l.x ?? 0) + gutter })),
+  }));
+  const labelBoxes = placeLabels(shifted, diagram.modules.map((m) => at(m.module)));
+  for (const [index, edge] of shifted.entries()) {
+    for (const points of sectionPoints(edge)) edges += `<path d="${roundedPath(points, 12)}" fill="none" stroke="#5d6b78" stroke-width="1.6" marker-end="url(#arrow)"/>`;
+    for (const r of labelBoxes[index] ?? []) {
+      if (!r) continue;
+      labels += `<rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" rx="4" fill="#ffffff" stroke="#c9d1d9"/>`;
+      labels += text(r.x + r.width / 2, r.y + 16, labelLines[index]!, "middle", 12, "normal", "#2b3640");
+    }
+  }
+  for (const m of diagram.modules) {
+    const r = at(m.module), style = TIER_STYLE[m.tier];
+    nodes += `<rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" rx="8" fill="${style.fill}" stroke="${style.stroke}" stroke-width="1.6"/>`;
+    nodes += text(r.x + r.width / 2, r.y + 28, [m.module], "middle", 14, "bold");
+    nodes += text(r.x + r.width / 2, r.y + 50, [`${m.title} · ${m.element}`], "middle", 12, "normal", MUTED);
+  }
+  if (diagram.modules.length === 0) nodes += text(20, 30, ["No contract modules"]);
+  const height2 = laid.height + 95 + 110;
+  let legendX = 28, legend = "";
+  for (const tier of TIER_ORDER) {
+    legend += `<rect x="${legendX}" y="${height2 - 45}" width="22" height="16" rx="3" fill="${TIER_STYLE[tier].fill}" stroke="${TIER_STYLE[tier].stroke}"/>` + text(legendX + 30, height2 - 32, [TIER_STYLE[tier].name], "start", 12);
+    legendX += 30 + sizedWidth(TIER_STYLE[tier].name, 12) + 34;
+  }
+  legend += `<path d="M${legendX},${height2 - 37} h22" stroke="#5d6b78" stroke-width="1.6" marker-end="url(#arrow)"/>` + text(legendX + 30, height2 - 32, ["Import · importer → imported, names imported"], "start", 12);
+  return frame("Contract layers", "Who imports whose definitions: imported modules sit lower; business above architecture; data stores deepest", totalWidth + 56, height2, `<g transform="translate(28,95)">${bands}${edges}${nodes}${labels}</g>`, legend);
 }
 
 export async function screenshotSvg(browser: Browser, image: DiagramSvg, path: string): Promise<void> {

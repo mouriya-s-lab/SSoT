@@ -140,22 +140,5 @@ views {
     include coreNet.**
     include partnerNet.**
     exclude * -> * where source.kind is component or target.kind is component
-    style coreNet.service {
-      notation 'Container'
-    }
-    style partnerNet.inventory {
-      notation 'Container'
-    }
-    style coreNet.ledger {
-      notation 'Container: Data Store'
-    }
-    style partnerNet.gateway {
-      color muted
-      notation 'External Software System'
-    }
-    style partnerNet {
-      color red
-      notation 'Untrusted partner network'
-    }
   }
 }

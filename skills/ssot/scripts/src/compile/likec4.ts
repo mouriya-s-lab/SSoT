@@ -56,10 +56,10 @@ export interface C4DeploymentLayout {
   readonly edges: readonly C4ViewEdge[];
 }
 
-/** 元素视图里会定下图的样子、因而禁止由作者书写的规则。 */
+/** 视图里会定下图的样子、因而禁止由作者书写的规则。 */
 export type ViewRuleKind = "group" | "rank" | "autoLayout" | "style" | "globalStyle";
 
-/** 作者在源码里写下的一条视图规则；逻辑视图的形状、颜色、图例、分组与纵向顺序由 `ssot render` 计算。 */
+/** 作者在源码里写下的一条视图规则；逻辑视图与部署图的形状、颜色、图例、分组与纵向顺序都由 `ssot render` 计算。 */
 export interface C4ViewRule {
   readonly kind: ViewRuleKind;
   readonly at: Position | null;
@@ -78,7 +78,7 @@ export interface C4View {
   readonly edges: readonly C4ViewEdge[];
   /** 部署视图的部署节点、实例与它们之间的箭头；不是部署视图时为 null。 */
   readonly deployment: C4DeploymentLayout | null;
-  /** 元素视图里作者写下的规则（按源码次序）；部署视图只由 LikeC4 导出，这里为空。 */
+  /** 作者在视图声明里写下的规则（按源码次序），元素视图与部署视图都收。 */
   readonly writtenRules: readonly C4ViewRule[];
   /** false：LikeC4 自动生成的视图（没有源位置）。 */
   readonly declared: boolean;
@@ -133,12 +133,15 @@ const RULE_KINDS: Readonly<Record<string, ViewRuleKind>> = {
   ViewRuleAutoLayout: "autoLayout",
   ViewRuleStyle: "style",
   ViewRuleGlobalStyle: "globalStyle",
+  DeploymentViewRuleStyle: "style",
 };
 
 /** 只挑元素、不改图的样子，不是禁止项。 */
 const HARMLESS_RULE_TYPES: Readonly<Record<string, true>> = {
   ViewRulePredicate: true,
   ViewRuleGlobalPredicateRef: true,
+  DeploymentViewRulePredicate: true,
+  ViewRuleAncestors: true,
 };
 
 function rulePosition(node: UnknownRecord, file: string): Position | null {
@@ -167,7 +170,7 @@ function documentsOf(compiler: unknown): readonly unknown[] {
   return [...(all as Iterable<unknown>)];
 }
 
-/** 元素视图声明里的规则按视图 id 收集；`views` 块里视图之外的样式规则另收一份。 */
+/** 元素视图与部署视图声明里的规则按视图 id 收集；`views` 块里视图之外的样式规则另收一份。 */
 function writtenViewRules(compiler: unknown): { readonly views: ReadonlyMap<string, readonly C4ViewRule[]>; readonly blocks: readonly C4ViewRule[] } {
   const views = new Map<string, readonly C4ViewRule[]>();
   const blocks: C4ViewRule[] = [];
@@ -186,7 +189,7 @@ function writtenViewRules(compiler: unknown): { readonly views: ReadonlyMap<stri
       }
       for (const declaredView of Array.isArray(block?.views) ? block.views : []) {
         const view = asRecord(declaredView);
-        if (view?.$type !== "ElementView" || typeof view.name !== "string") continue;
+        if ((view?.$type !== "ElementView" && view?.$type !== "DeploymentView") || typeof view.name !== "string") continue;
         const body = asRecord(view.body);
         views.set(view.name, (Array.isArray(body?.rules) ? body.rules : []).flatMap((rule) => {
           const mapped = viewRule(rule, file);
@@ -272,9 +275,9 @@ export async function compileLikeC4(dir: string): Promise<C4Result> {
         at,
       };
     });
-    const elementViewIds = new Set(views.filter((v) => v.type === "element").map((v) => v.id));
+    const viewIds = new Set(views.map((v) => v.id));
     for (const id of written.views.keys())
-      if (!elementViewIds.has(id)) throw new Error(`LikeC4 的视图声明 ${id} 没有对应的元素视图`);
+      if (!viewIds.has(id)) throw new Error(`LikeC4 的视图声明 ${id} 没有对应的视图`);
     const spec = model.specification;
     return {
       kind: "ok",

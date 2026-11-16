@@ -13,7 +13,7 @@ import {
   within,
 } from "../model";
 
-/** 元素视图里禁止书写的规则，按写法称呼。 */
+/** 视图里禁止书写的规则，按写法称呼。 */
 const RULE_NAMES: Readonly<Record<ViewRuleKind, string>> = {
   group: "group",
   rank: "rank",
@@ -136,6 +136,8 @@ function views(s: Structure): Diagnostic[] {
   for (const v of s.views) {
     switch (v.type) {
       case "deployment":
+        for (const rule of v.writtenRules)
+          out.push(diag("struct.views", view(v.id), rule.at ?? v.at, `部署视图不写 ${RULE_NAMES[rule.kind]} 规则：部署视图由 ssot render 从模型绘制，实例的记法来自元素种类，节点颜色与图例来自节点标签`));
         continue;
       case "dynamic":
         out.push(diag("struct.views", view(v.id), v.at, "动态视图表达时序，时序属于 Quint，LikeC4 里不允许"));
@@ -171,7 +173,7 @@ function views(s: Structure): Diagnostic[] {
     if (vs.length > 1) out.push(diag("struct.views", element(e.fqn), e.at, `${e.fqn} 有多个 view of：${vs.join(", ")}`));
   }
   for (const rule of s.viewBlockRules)
-    out.push(diag("struct.views", global, rule.at, `views 块里不写 ${RULE_NAMES[rule.kind]} 规则：逻辑视图由 ssot render 绘制，部署视图在视图里按节点路径写样式与 notation`));
+    out.push(diag("struct.views", global, rule.at, `views 块里不写 ${RULE_NAMES[rule.kind]} 规则：逻辑视图与部署视图都由 ssot render 从模型绘制`));
   return out;
 }
 

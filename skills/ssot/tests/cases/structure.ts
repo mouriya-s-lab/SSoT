@@ -9,6 +9,7 @@ const API = "contract/shop.api.vdmsl";
 const LEDGER = "contract/shop.ledger.vdmsl";
 const top = "  user = actor 'User'";
 const view = "  view shopLayer of shop {";
+const deployed = "  deployment view deployed {\n    include coreNet.**";
 
 export const mutations: readonly Mutation[] = [
   {
@@ -114,6 +115,16 @@ export const mutations: readonly Mutation[] = [
     id: "struct-views-block-style", expect: "struct.views", description: "views 块里不写样式规则", regen: true,
     edits: [{ file: C4, find: "views {\n", replace: "views {\n  style * { color red }\n" }],
     outputIncludes: ["views 块里不写 样式（style）"],
+  },
+  {
+    id: "struct-views-deployment-style", expect: "struct.views", description: "部署视图的样式由 ssot render 从模型绘制", regen: true,
+    edits: [{ file: C4, find: deployed, replace: `${deployed}\n    style coreNet.api { color red }` }],
+    outputIncludes: ["部署视图不写 样式（style）"],
+  },
+  {
+    id: "struct-views-deployment-autolayout", expect: "struct.views", description: "部署视图不写 autoLayout", regen: true,
+    edits: [{ file: C4, find: deployed, replace: `${deployed}\n    autoLayout TopBottom` }],
+    outputIncludes: ["部署视图不写 autoLayout"],
   },
   {
     id: "contract-module-nonleaf", expect: "contract.module", description: "非叶 system 不得标记 #contract", regen: true,

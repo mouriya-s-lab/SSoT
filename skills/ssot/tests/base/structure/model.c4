@@ -4,6 +4,7 @@ specification {
   element container { notation 'Container' }
   element store { notation 'Container: Data Store' style { shape storage } }
   element component { notation 'Component' }
+  deploymentNode host
   tag contract
   tag business
   tag external
@@ -42,11 +43,22 @@ model {
   user -> shop.api '下单'
 }
 
+deployment {
+  host coreNet 'Core network' {
+    description '运行 API 与账本数据库的核心内网'
+    instanceOf shop.api
+    instanceOf shop.ledger
+  }
+}
+
 views {
   view index {
     include *
   }
   view shopLayer of shop {
     include *
+  }
+  deployment view deployed {
+    include coreNet.**
   }
 }

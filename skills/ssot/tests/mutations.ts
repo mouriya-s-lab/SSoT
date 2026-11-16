@@ -127,6 +127,7 @@ export const mutations: readonly Mutation[] = [
     edits: [
       { file: C4, find: "ledger = container 'Ledger'", replace: "led_ger = container 'Ledger'" },
       { file: C4, find: "api -> ledger '记下订单金额'", replace: "api -> led_ger '记下订单金额'" },
+      { file: C4, find: "instanceOf shop.ledger", replace: "instanceOf shop.led_ger" },
     ],
     regen: false,
   },

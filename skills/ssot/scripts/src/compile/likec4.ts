@@ -250,10 +250,21 @@ export async function compileLikeC4(dir: string): Promise<C4Result> {
         nodes: [...v.nodes()].flatMap((n) => (n.element ? [n.element.id] : [])),
         edges: [...v.edges()].flatMap((e) => (e.source.element && e.target.element ? [{ source: e.source.element.id, target: e.target.element.id, label: e.label ?? null, relations: [...e.$edge.relations] }] : [])),
         deployment: v.isDeploymentView() ? {
-          placements: [...v.nodes()].map((n): C4DeploymentPlacement => {
-            const common = { id: n.id, title: n.title, parent: n.parent?.id ?? null, tags: [...n.tags], description: n.description.text ?? "", technology: n.technology ?? null };
-            return n.element ? { kind: "instance", element: n.element.id, ...common } : { kind: "node", nodeKind: n.kind, ...common };
-          }),
+          placements: (() => {
+            // LikeC4 把只装一个实例的部署节点折叠掉，图上只剩实例；信任边界就画在这种节点上，所以按部署模型补回实例的祖先节点。
+            const placements: C4DeploymentPlacement[] = [...v.nodes()].map((n): C4DeploymentPlacement => {
+              const common = { id: n.id, title: n.title, parent: n.deployment?.parent?.id ?? null, tags: [...n.tags], description: n.description.text ?? "", technology: n.technology ?? null };
+              return n.element ? { kind: "instance", element: n.element.id, ...common } : { kind: "node", nodeKind: n.kind, ...common };
+            });
+            const shown = new Set(placements.map((p) => p.id));
+            for (const n of [...v.nodes()]) {
+              for (let p = n.deployment?.parent ?? null; p !== null && !shown.has(p.id); p = p.parent) {
+                shown.add(p.id);
+                placements.push({ kind: "node", id: p.id, title: p.title, nodeKind: p.kind, parent: p.parent?.id ?? null, tags: [...p.tags], description: p.description.text ?? "", technology: p.technology ?? null });
+              }
+            }
+            return placements;
+          })(),
           edges: [...v.edges()].map((e) => ({ source: e.source.id, target: e.target.id, label: e.label ?? null, relations: [...e.$edge.relations] })),
         } : null,
         writtenRules: written.views.get(v.id) ?? [],

@@ -9,7 +9,7 @@ import { projectBox, vdmTypeName } from "../../scripts/src/render/box";
 import { projectComposition } from "../../scripts/src/render/composition";
 import { compileLikeC4 } from "../../scripts/src/compile/likec4";
 import { elementOfModule } from "../../scripts/src/model";
-import { projectC4View } from "../../scripts/src/render/c4";
+import { projectC4View, projectDeploymentView } from "../../scripts/src/render/c4";
 import { projectLayers } from "../../scripts/src/render/layers";
 
 const C4_FIXTURE = `specification {
@@ -21,6 +21,8 @@ const C4_FIXTURE = `specification {
   tag contract
   tag business
   tag external
+  tag untrusted
+  deploymentNode host
 }
 model {
   user = actor 'User'
@@ -39,9 +41,24 @@ model {
   }
   user -> shop.web 'browses'
 }
+deployment {
+  host core 'Core' {
+    instanceOf shop.api
+    instanceOf shop.ledger
+  }
+  host partner 'Partner' {
+    #untrusted
+    description 'outside the trust boundary'
+    instanceOf pay
+  }
+}
 views {
   view index { include * }
   view shopView of shop { include * }
+  deployment view deployed {
+    include core.**
+    include partner.**
+  }
 }
 `;
 
@@ -76,6 +93,15 @@ async function verifyC4AndLayerProjections(stage: string, fixture: string): Prom
   assert.deepEqual(Object.keys(index.nodes).sort(), ["pay", "shop", "user"]);
   assert.equal(index.nodes["shop"]!.boundary, false);
   assert.deepEqual(index.groups, []);
+  const deployed = projectDeploymentView(c4.structure, view("deployed"));
+  assert.deepEqual(Object.fromEntries(deployed.nodes.map((n) => [n.id, { element: n.element, kind: n.kind, technology: n.technology, tags: n.tags, parent: n.parent, boundary: n.boundary }])), {
+    core: { element: null, kind: "deploymentNode", technology: "host", tags: [], parent: null, boundary: true },
+    "core.api": { element: "shop.api", kind: "container", technology: "HTTP", tags: [], parent: "core", boundary: false },
+    "core.ledger": { element: "shop.ledger", kind: "store", technology: null, tags: [], parent: "core", boundary: false },
+    partner: { element: null, kind: "deploymentNode", technology: "host", tags: ["untrusted"], parent: null, boundary: true },
+    "partner.pay": { element: "pay", kind: "external", technology: null, tags: [], parent: "partner", boundary: false },
+  });
+  assert.deepEqual(deployed.edges.map((e) => `${e.source} -> ${e.target} ${e.label}`).sort(), ["core.api -> core.ledger writes", "core.api -> partner.pay charges"]);
 
   const contracts = await compileVdm(["shop.api.vdmsl", "shop.ledger.vdmsl"].map((f) => join(fixture, "..", "base", "contract", f)), () => global, new Set());
   assert.equal(contracts.kind, "ok", contracts.diagnostics.map(format).join("\n"));
@@ -195,7 +221,7 @@ export async function verifyRenderProjections(): Promise<number> {
         { kind: "read", contract: "shop_worker", step: "peekFeedback" },
       ],
     });
-    return 19;
+    return 21;
   } finally {
     rmSync(stage, { recursive: true, force: true });
   }

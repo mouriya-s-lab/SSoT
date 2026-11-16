@@ -58,15 +58,15 @@ const nat: VdmType = { kind: "nat" };
 const text: VdmType = { kind: "seq", element: { kind: "char" } };
 
 function typeDef(type: VdmType = nat, name = "Thing"): Extract<VdmDefinition, { category: "type" }> {
-  return { category: "type", name, location, type, hasInvariant: false, invSample: null };
+  return { category: "type", name, location, type, inv: null, invSample: null };
 }
 
 function operation(overrides: Partial<Extract<VdmDefinition, { category: "operation" }>> = {}): Extract<VdmDefinition, { category: "operation" }> {
-  return { category: "operation", kind: "implicit", name: "work", location, params: [], result: { name: null, type: { kind: "void" } }, hasPre: false, hasPost: true, imperative: [], preSample: null, postSample: null, ext: { rd: [], wr: ["count"] }, reads: ["count"], writes: ["count"], ...overrides };
+  return { category: "operation", kind: "implicit", name: "work", location, params: [], result: { name: null, type: { kind: "void" } }, pre: null, post: "count = count~ + 1", imperative: [], preSample: null, postSample: null, ext: { rd: [], wr: ["count"] }, reads: ["count"], writes: ["count"], ...overrides };
 }
 
 function state(invReads: readonly string[] = []): Extract<VdmDefinition, { category: "state" }> {
-  return { category: "state", name: "State", location, fields: [{ name: "count", type: nat }], hasInvariant: invReads.length > 0, hasInit: true, initial: null, invReads, invSample: null };
+  return { category: "state", name: "State", location, fields: [{ name: "count", type: nat }], inv: invReads.length > 0 ? { pattern: "mk_State(count)", expression: "(count > 0)" } : null, init: { pattern: "s", expression: "(s = mk_State(0))" }, initial: null, invReads, invSample: null };
 }
 
 function module(definitions: readonly VdmDefinition[], overrides: Partial<VdmModule> = {}): VdmModule {

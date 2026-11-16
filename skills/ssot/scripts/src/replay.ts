@@ -491,8 +491,8 @@ export async function replay(input: ReplayInput): Promise<ReplayOutcome> {
         steps.push({
           module: m,
           op,
-          pre: op.hasPre ? { expr: `pre_${op.name}(${[...args, ...before].join(", ")})`, binds } : null,
-          post: op.hasPost ? { expr: `post_${op.name}(${[...args, ...res, ...before, ...after].join(", ")})`, binds } : null,
+          pre: op.pre !== null ? { expr: `pre_${op.name}(${[...args, ...before].join(", ")})`, binds } : null,
+          post: op.post !== null ? { expr: `post_${op.name}(${[...args, ...res, ...before, ...after].join(", ")})`, binds } : null,
           frame:
             frameFields.length === 0
               ? null

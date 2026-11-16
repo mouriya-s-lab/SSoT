@@ -100,8 +100,7 @@
 </div>
 <script>
 "use strict";
-const KIND_TITLES = { view: "C4 视图", deployment: "部署", layers: "契约", box: "契约", composition: "行为组合" };
-const KIND_ORDER = ["view", "deployment", "layers", "box", "composition"];
+const KIND_TITLES = { view: "C4 视图", deployment: "部署", layers: "契约", box: "契约", types: "契约", access: "契约", composition: "行为组合" };
 const $ = (id) => document.getElementById(id);
 const canvas = $("canvas"), stage = $("stage"), details = $("details"), tip = $("tip");
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);

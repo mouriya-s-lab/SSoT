@@ -2,7 +2,10 @@ import type { ElkExtendedEdge, ElkNode, ElkPort } from "elkjs/lib/elk-api";
 import type { Browser } from "playwright-core";
 import { assertNever } from "../diag";
 import { loadDiagramTools } from "../install";
-import type { BoxDiagram } from "./box";
+import type { POStatus, VdmSample } from "../compile/vdm";
+import type { Access, AccessRow, AccessTable } from "./access";
+import type { BoxDiagram, BoxObligation, BoxPredicate } from "./box";
+import type { TypeNode, TypeShape, TypesDiagram } from "./types";
 import type { C4Diagram, C4DiagramNode, C4NodeKind } from "./c4";
 import type { CompositionDiagram, CompositionNode } from "./composition";
 import { type LayerTier, type LayersDiagram, TIER_ORDER } from "./layers";
@@ -66,16 +69,79 @@ function flowPath(edge: ElkExtendedEdge, kind: "flow" | "update"): string {
     + (edge.junctionPoints ?? []).map((point) => `<circle cx="${point.x}" cy="${point.y}" r="3.5" fill="${MUTED}"/>`).join("");
 }
 
-const BOX_LABEL_GAP = 14;
+/** 证明义务的状态色：可证（绿）、采样没找到反例但未证（黄）、找到反例（红）、未检查（灰）。 */
+const PO_STYLE: Readonly<Record<POStatus, { readonly color: string; readonly name: string }>> = {
+  PROVABLE: { color: "#2e9e5b", name: "provable" },
+  MAYBE: { color: "#d99a1e", name: "maybe" },
+  FAILED: { color: "#d63a3a", name: "failed" },
+  UNPROVED: { color: "#8a96a3", name: "unproved" },
+  UNCHECKED: { color: "#b9c1c9", name: "unchecked" },
+};
+const PO_ORDER: readonly POStatus[] = ["FAILED", "MAYBE", "UNPROVED", "UNCHECKED", "PROVABLE"];
+/** 证明义务的计数，如 `2 maybe · 1 provable`；没有义务时为 `no obligations`。 */
+export function obligationTally(obligations: readonly BoxObligation[]): string {
+  const parts = PO_ORDER.flatMap((s) => { const n = obligations.filter((o) => o.status === s).length; return n > 0 ? [`${n} ${PO_STYLE[s].name}`] : []; });
+  return parts.length > 0 ? parts.join(" · ") : "no obligations";
+}
+/** 采样计数，如 `sampled 128: 122 true, 6 false`。 */
+export const sampleText = (s: VdmSample): string => `sampled ${s.trueCount + s.falseCount}: ${s.trueCount} true, ${s.falseCount} false`;
+const PO_DOT = 13;
+const obligationRowWidth = (obligations: readonly BoxObligation[]): number =>
+  obligations.length * PO_DOT + (obligations.length > 0 ? 6 : 0) + sizedWidth(obligationTally(obligations), 11.5);
+/** 一排状态色点（按义务编号排），每个点悬停显示编号、种类与状态；右端是计数。y 是文字基线。 */
+function obligationRow(x: number, y: number, obligations: readonly BoxObligation[]): string {
+  const sorted = [...obligations].sort((a, b) => a.number - b.number);
+  const dots = sorted.map((o, i) => `<circle cx="${x + 5 + i * PO_DOT}" cy="${y - 4}" r="5" fill="${PO_STYLE[o.status].color}"><title>PO ${o.number} · ${o.kind} · ${o.status}</title></circle>`).join("");
+  return dots + text(x + sorted.length * PO_DOT + (sorted.length > 0 ? 6 : 0), y, [obligationTally(obligations)], "start", 11.5, "normal", MUTED);
+}
+
+/** 契约文字的一行。label 是行首的粗体标签（pre、post…），text 从 indent 处起；mono 时 text 用等宽字体（VDM 表达式）。 */
+interface CodeLine { readonly label: string | null; readonly text: string; readonly size: number; readonly weight: "normal" | "bold"; readonly fill: string; readonly mono: boolean; readonly indent: number }
+const plainLine = (text: string, size: number, weight: "normal" | "bold" = "normal", fill = INK): CodeLine => ({ label: null, text, size, weight, fill, mono: false, indent: 0 });
+const lineLead = (line: CodeLine): number => Math.round(line.size + 7);
+const linesHeight = (lines: readonly CodeLine[]): number => lines.reduce((h, l) => h + lineLead(l), 0);
+/** y 是第一行的顶；逐行按各自的行距往下排。 */
+function codeLines(x: number, y: number, lines: readonly CodeLine[]): string {
+  let svg = "", at = y;
+  for (const line of lines) {
+    at += lineLead(line);
+    if (line.label !== null) svg += text(x, at - 6, [line.label], "start", line.size, "bold", CONTRACT);
+    const t = text(x + line.indent, at - 6, [line.text], "start", line.size, line.weight, line.fill);
+    svg += line.mono ? `<g font-family="Menlo, Consolas, monospace">${t}</g>` : t;
+  }
+  return svg;
+}
+const PREDICATE_LABEL = 54;
+/** pre、post、inv 或 initial：标签与等宽折行的表达式同起一行，有采样时下一行是采样计数。 */
+function predicateBlock(label: string, p: BoxPredicate, width: number): CodeLine[] {
+  return [
+    ...sizedWrap(p.text, width - PREDICATE_LABEL, 12).map((t, i): CodeLine => ({ label: i === 0 ? label : null, text: t, size: 12, weight: "normal", fill: INK, mono: true, indent: PREDICATE_LABEL })),
+    ...(p.sample !== null ? [{ ...plainLine(sampleText(p.sample), 11, "normal", MUTED), indent: PREDICATE_LABEL }] : []),
+  ];
+}
+
+const BOX_LABEL_GAP = 14, BOX_WIDTH = 600, PORT_HEAD = 24, PORT_PAD = 14;
 export async function boxSvg(diagram: BoxDiagram): Promise<DiagramSvg> {
   const { ELK } = await loadDiagramTools();
-  const rowHeight = 64, boxWidth = Math.max(320, ...diagram.ports.map((port) => widthOf(port.name) + 48));
-  const boxHeight = Math.max(100, diagram.ports.length * rowHeight + 30);
+  const boxWidth = Math.max(BOX_WIDTH, ...diagram.ports.map((port) => widthOf(port.name) + 260));
+  const inner = boxWidth - 32;
+  // 每个端口一块：名字与义务一行，ext 一行，pre、post 各自折行与采样计数；连线接在名字那行。
+  const blocks = diagram.ports.map((port) => {
+    const lines: CodeLine[] = [
+      ...(port.ext ? [plainLine(`rd ${port.ext.rd.join(", ") || "—"}  |  wr ${port.ext.wr.join(", ") || "—"}`, 12, "normal", MUTED)] : []),
+      ...(port.pre ? predicateBlock("pre", port.pre, inner) : []),
+      ...(port.post ? predicateBlock("post", port.post, inner) : []),
+    ];
+    return { port, lines, height: PORT_HEAD + linesHeight(lines) + PORT_PAD };
+  });
+  const offsets = blocks.reduce<number[]>((out, b, i) => [...out, i === 0 ? 8 : out[i - 1]! + blocks[i - 1]!.height], []);
+  const anchor = (index: number): number => offsets[index]! + 18;
+  const boxHeight = Math.max(100, blocks.reduce((h, b) => h + b.height, 0) + 16);
   const graph: ElkNode = {
     id: "root", layoutOptions: { "elk.algorithm": "layered", "elk.direction": "RIGHT", "elk.edgeRouting": "ORTHOGONAL", "elk.spacing.nodeNode": "28", "elk.layered.spacing.nodeNodeBetweenLayers": "64", "elk.padding": "[top=12,left=12,bottom=12,right=12]" },
     children: [{ id: "box", width: boxWidth, height: boxHeight, layoutOptions: { "elk.portConstraints": "FIXED_POS" }, ports: diagram.ports.flatMap((_, index) => [
-      { id: `in${index}`, x: 0, y: 35 + index * rowHeight, width: 0, height: 0, layoutOptions: { "elk.port.side": "WEST" } },
-      { id: `out${index}`, x: boxWidth, y: 35 + index * rowHeight, width: 0, height: 0, layoutOptions: { "elk.port.side": "EAST" } },
+      { id: `in${index}`, x: 0, y: anchor(index), width: 0, height: 0, layoutOptions: { "elk.port.side": "WEST" } },
+      { id: `out${index}`, x: boxWidth, y: anchor(index), width: 0, height: 0, layoutOptions: { "elk.port.side": "EAST" } },
     ]) }, ...diagram.ports.flatMap((port, index) => [
       { id: `input${index}`, width: Math.min(300, widthOf(port.inputs.join(" * ") || "()")) + BOX_LABEL_GAP, height: wrap(port.inputs.join(" * ") || "()", 300).length * 19 + 8 },
       { id: `output${index}`, width: Math.min(300, widthOf(port.output)) + BOX_LABEL_GAP, height: wrap(port.output, 300).length * 19 + 8 },
@@ -88,8 +154,16 @@ export async function boxSvg(diagram: BoxDiagram): Promise<DiagramSvg> {
   const laid = await new ELK().layout(graph);
   const box = laid.children?.find((node) => node.id === "box");
   if (!box || box.x === undefined || box.y === undefined || !laid.width || !laid.height) throw new Error(`ELK 没有布置盒子 ${diagram.module}`);
-  const stateLines = diagram.state ? [diagram.state.name, ...diagram.state.fields.flatMap((field) => wrap(field, boxWidth - 80))] : [];
-  const feedbackHeight = stateLines.length * 19 + 35;
+  // 状态画在反馈环上：名字、分量、inv、初值与它的义务。
+  const panelWidth = boxWidth - 72, panelInner = panelWidth - 24;
+  const stateLines: CodeLine[] = diagram.state ? [
+    plainLine(`${diagram.state.name} · state`, 14, "bold"),
+    ...diagram.state.fields.flatMap((field) => sizedWrap(field, panelInner, 13).map((t) => plainLine(t, 13))),
+    ...(diagram.state.inv ? predicateBlock("inv", diagram.state.inv, panelInner) : []),
+    ...(diagram.state.init ? predicateBlock("initial", { text: diagram.state.init.value ?? `? (${diagram.state.init.clause})`, sample: null }, panelInner) : []),
+  ] : [];
+  const panelHeight = diagram.state ? linesHeight(stateLines) + 40 : 0;
+  const feedbackHeight = panelHeight + 25;
   const top = 100 + (diagram.state ? feedbackHeight : 0);
   let body = `<g transform="translate(28,${top})">`;
   // 边按 incoming0, outgoing0, incoming1, … 排列：第 i 条属于第 ⌊i/2⌋ 个端口。
@@ -99,30 +173,45 @@ export async function boxSvg(diagram: BoxDiagram): Promise<DiagramSvg> {
   }
   body += `<rect x="${box.x}" y="${box.y}" width="${boxWidth}" height="${boxHeight}" rx="9" fill="#f2eff8" stroke="${CONTRACT}" stroke-width="2"/>`;
   if (diagram.state) {
-    const x = box.x, y = box.y;
+    const x = box.x, y = box.y, py = y - feedbackHeight - 10;
     body += `<path d="M${x + boxWidth - 24},${y} V${y - feedbackHeight} H${x + 24} V${y}" fill="none" stroke="${MUTED}" stroke-width="1.7" marker-end="url(#arrow)"/>`;
-    body += `<rect x="${x + 36}" y="${y - feedbackHeight - 10}" width="${boxWidth - 72}" height="${stateLines.length * 19 + 12}" fill="#fff"/>`;
-    body += text(x + boxWidth / 2, y - feedbackHeight + 5, stateLines, "middle");
+    body += `<g data-node="${esc(`state:${diagram.state.name}`)}"><rect x="${x + 36}" y="${py}" width="${panelWidth}" height="${panelHeight}" rx="6" fill="#fff" stroke="#d5d9de"/>`;
+    body += codeLines(x + 48, py + 6, stateLines);
+    body += obligationRow(x + 48, py + panelHeight - 12, diagram.state.obligations) + "</g>";
   }
-  diagram.ports.forEach((port, index) => {
-    const y = box.y! + 35 + index * rowHeight;
-    body += `<g data-node="${esc(port.name)}">`;
-    body += text(box.x! + 16, y - 6, [`${port.name}  · ${port.kind === "operation" ? "op" : "fn"}`], "start", 14, "bold");
-    if (port.ext) body += text(box.x! + 16, y + 15, wrap(`rd ${port.ext.rd.join(", ") || "—"}  |  wr ${port.ext.wr.join(", ") || "—"}`, boxWidth - 32), "start", 12);
+  blocks.forEach(({ port, lines, height: blockHeight }, index) => {
+    const blockTop = box.y! + offsets[index]!, y = box.y! + anchor(index);
+    if (index > 0) body += `<line x1="${box.x! + 12}" x2="${box.x! + boxWidth - 12}" y1="${blockTop}" y2="${blockTop}" stroke="#ddd5ea"/>`;
+    // 整块都是这个端口的点击范围。
+    body += `<g data-node="${esc(port.name)}"><rect x="${box.x}" y="${blockTop}" width="${boxWidth}" height="${blockHeight}" fill="transparent"/>`;
+    body += text(box.x! + 16, y + 5, [`${port.name}  · ${port.kind === "operation" ? "op" : "fn"}`], "start", 14, "bold");
+    body += obligationRow(box.x! + boxWidth - 16 - obligationRowWidth(port.obligations), y + 5, port.obligations);
+    body += codeLines(box.x! + 16, blockTop + PORT_HEAD + 4, lines);
     body += `<circle cx="${box.x}" cy="${y}" r="4" fill="${CONTRACT}"/><circle cx="${box.x! + boxWidth}" cy="${y}" r="4" fill="${CONTRACT}"/>`;
     // 参数类型靠右贴着线起点，结果类型隔开箭头尖；两者都与线留出 BOX_LABEL_GAP。
     for (const [id, label, side] of [[`input${index}`, port.inputs.join(" * ") || "()", "input"], [`output${index}`, port.output, "output"]] as const) {
-      const node = laid.children!.find((node) => node.id === id)!, lines = wrap(label, 300);
-      const baseline = node.y! + node.height! / 2 + 5 - (lines.length - 1) * 19 / 2;
-      body += side === "input" ? text(node.x! + node.width! - BOX_LABEL_GAP, baseline, lines, "end") : text(node.x! + BOX_LABEL_GAP, baseline, lines);
+      const node = laid.children!.find((node) => node.id === id)!, wrapped = wrap(label, 300);
+      const baseline = node.y! + node.height! / 2 + 5 - (wrapped.length - 1) * 19 / 2;
+      body += side === "input" ? text(node.x! + node.width! - BOX_LABEL_GAP, baseline, wrapped, "end") : text(node.x! + BOX_LABEL_GAP, baseline, wrapped);
     }
     body += "</g>";
   });
   if (diagram.ports.length === 0) body += text(box.x + boxWidth / 2, box.y + 54, ["No exported operations / functions"], "middle");
   body += "</g>";
-  const height = top + laid.height + 110;
-  const legend = `<circle cx="35" cy="${height - 37}" r="4" fill="${CONTRACT}"/>${text(48, height - 32, ["Port · exported operation / function"], "start", 12)}<path d="M340,${height - 37} h38" stroke="${MUTED}" marker-end="url(#arrow)"/>${text(390, height - 32, ["Wire · parameter / result type"], "start", 12)}<path d="M640,${height - 32} v-14 h30 v14" fill="none" stroke="${MUTED}" marker-end="url(#arrow)"/>${text(685, height - 32, ["Feedback · state"], "start", 12)}`;
-  return frame(`Contract box · ${diagram.module}`, diagram.element, laid.width + 56, height, body, legend);
+  // 图例两行：第一行是盒子的画法，第二行是证明义务的状态色。
+  const height = top + laid.height + 110 + LEGEND_ROW, row = height - 32 - LEGEND_ROW;
+  const legend = `<circle cx="35" cy="${row - 5}" r="4" fill="${CONTRACT}"/>${text(48, row, ["Port · exported operation / function"], "start", 12)}<path d="M300,${row - 5} h38" stroke="${MUTED}" marker-end="url(#arrow)"/>${text(348, row, ["Wire · parameter / result type"], "start", 12)}<path d="M570,${row} v-14 h30 v14" fill="none" stroke="${MUTED}" marker-end="url(#arrow)"/>${text(612, row, ["Feedback · state"], "start", 12)}${poLegend(28, height - 32)}`;
+  return frame(`Contract box · ${diagram.module}`, diagram.element, laid.width + 56, height, body, legend, 2);
+}
+/** 证明义务状态色的图例：每种状态一个色点。 */
+const PO_LEGEND = "Proof obligation:";
+function poLegend(x: number, y: number): string {
+  let svg = text(x, y, [PO_LEGEND], "start", 12), at = x + sizedWidth(PO_LEGEND, 12);
+  for (const s of PO_ORDER) {
+    svg += `<circle cx="${at + 5}" cy="${y - 4}" r="5" fill="${PO_STYLE[s].color}"/>` + text(at + 16, y, [PO_STYLE[s].name], "start", 12);
+    at += 16 + sizedWidth(PO_STYLE[s].name, 12) + 14;
+  }
+  return svg;
 }
 
 type StepCall = { readonly kind: "call" | "read"; readonly text: string };
@@ -734,6 +823,143 @@ export async function layersSvg(diagram: LayersDiagram): Promise<DiagramSvg> {
   }
   legend += `<path d="M${legendX},${height2 - 37} h22" stroke="#5d6b78" stroke-width="1.6" marker-end="url(#arrow)"/>` + text(legendX + 30, height2 - 32, ["Import · importer → imported, names imported"], "start", 12);
   return frame("Contract layers", "Who imports whose definitions: imported modules sit lower; business above architecture; data stores deepest", totalWidth + 56, height2, `<g transform="translate(28,95)">${bands}${edges}${nodes}${labels}</g>`, legend);
+}
+
+type TypeRole = "own" | "state" | "imported";
+const TYPE_STYLE: Readonly<Record<TypeRole, { readonly fill: string; readonly stroke: string; readonly dash: string; readonly name: string }>> = {
+  own: { fill: "#f2eff8", stroke: CONTRACT, dash: "", name: "Type · defined here" },
+  state: { fill: "#fff3ea", stroke: CONTRACT, dash: "", name: "State" },
+  imported: { fill: "#f4f6f8", stroke: "#8a96a3", dash: ' stroke-dasharray="6 4"', name: "Type · from another module" },
+};
+const typeRole = (diagram: TypesDiagram, node: TypeNode): TypeRole => node.module !== diagram.module ? "imported" : node.category === "state" ? "state" : "own";
+/** 框右上角的种类：state、record、union、quote，其余写成 type。 */
+function typeTag(node: TypeNode): string {
+  if (node.category === "state") return "state";
+  switch (node.shape.kind) {
+    case "record": case "union": case "quote": return node.shape.kind;
+    case "alias": return "type";
+    default: return assertNever(node.shape);
+  }
+}
+/** 结构的文字：记录逐字段 `名 : 类型`，并列逐项 `| 选项`，引号类型是值本身，其余 `= 类型式`；折行续在缩进处。 */
+function shapeLines(shape: TypeShape, width: number): CodeLine[] {
+  const code = (entries: readonly string[]): CodeLine[] => entries.flatMap((entry) => sizedWrap(entry, width, 12).map((t, i): CodeLine => ({ label: null, text: t, size: 12, weight: "normal", fill: INK, mono: true, indent: i === 0 ? 0 : 16 })));
+  switch (shape.kind) {
+    case "record": return code(shape.fields.map((f) => `${f.name} : ${f.type}`));
+    case "union": return code(shape.alternatives.map((a) => `| ${a}`));
+    case "quote": return code([shape.value]);
+    case "alias": return code([`= ${shape.type}`]);
+    default: return assertNever(shape);
+  }
+}
+const TYPE_MIN = 220, TYPE_MAX = 440, TYPE_HEAD = 34, TYPE_FROM = 18;
+interface TypeBox { readonly node: TypeNode; readonly role: TypeRole; readonly width: number; readonly lines: readonly CodeLine[]; readonly height: number }
+function typeBox(diagram: TypesDiagram, node: TypeNode): TypeBox {
+  const role = typeRole(diagram, node);
+  const raw = shapeLines(node.shape, Number.POSITIVE_INFINITY);
+  const head = sizedWidth(node.name, 14) + sizedWidth(typeTag(node), 11) + 48;
+  const width = Math.round(Math.min(TYPE_MAX, Math.max(TYPE_MIN, head, ...raw.map((l) => sizedWidth(l.text, 12) + 32), ...(node.inv ? [sizedWidth(node.inv.text, 12) + PREDICATE_LABEL + 32] : []))));
+  const lines = [...shapeLines(node.shape, width - 32), ...(node.inv ? predicateBlock("inv", node.inv, width - 32) : [])];
+  const height = TYPE_HEAD + (role === "imported" ? TYPE_FROM : 0) + linesHeight(lines) + 12 + (node.obligations.length > 0 ? 24 : 0);
+  return { node, role, width, lines, height };
+}
+export async function typesSvg(diagram: TypesDiagram): Promise<DiagramSvg> {
+  const title = `Contract types · ${diagram.module}`;
+  const boxes = diagram.nodes.map((node) => typeBox(diagram, node));
+  const ids = diagram.nodes.map((n) => n.id);
+  const labelLines = diagram.edges.map((e) => e.fields.length > 0 ? sizedWrap(e.fields.join(", "), 170, 12) : null);
+  const graph: ElkNode = {
+    id: "root",
+    layoutOptions: {
+      "elk.algorithm": "layered", "elk.direction": "DOWN", "elk.edgeRouting": "ORTHOGONAL", "elk.layered.thoroughness": "100",
+      "elk.spacing.nodeNode": "48", "elk.layered.spacing.nodeNodeBetweenLayers": "88", "elk.spacing.componentComponent": "72", "elk.padding": "[top=20,left=20,bottom=20,right=20]",
+    },
+    children: boxes.map((b) => ({ id: b.node.id, width: b.width, height: b.height })),
+    edges: diagram.edges.map((e, index) => ({ id: `use${index}`, sources: [e.source], targets: [e.target] })),
+  };
+  const { box, routes } = boxes.length === 0 ? { box: (id: string): Rect => { throw new Error(`没有类型 ${id}`); }, routes: [] } : await bestLayout([graph], (box) => ({
+    boxes: ids.map((id): RouteBox => ({ kind: "node", rect: box(id) })),
+    headers: [],
+    edges: diagram.edges.map((e) => ({ source: ids.indexOf(e.source), target: ids.indexOf(e.target) })),
+  }));
+  const rects = ids.map(box), area = extent(rects, routes);
+  let edges = "", nodes = "", labels = "";
+  const labelBoxes = placeLabels(routes, labelLines.map((l) => l === null ? null : labelSize(l)), rects);
+  for (const [index, points] of routes.entries()) {
+    const model = diagram.edges[index]!, attrs = `data-edge="${index}" data-source="${esc(model.source)}" data-target="${esc(model.target)}"`;
+    const d = roundedPath(points, 12);
+    edges += `<g ${attrs}><path d="${d}" fill="none" stroke="transparent" stroke-width="12"/><path d="${d}" fill="none" stroke="#5d6b78" stroke-width="1.6" marker-end="url(#arrow)"/></g>`;
+    const r = labelBoxes[index], lines = labelLines[index];
+    if (r && lines) labels += `<g ${attrs}><rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" rx="4" fill="#ffffff" stroke="#c9d1d9"/>${text(r.x + r.width / 2, r.y + 16, lines, "middle", 12, "normal", "#2b3640")}</g>`;
+  }
+  for (const b of boxes) {
+    const r = box(b.node.id), style = TYPE_STYLE[b.role];
+    nodes += `<g data-node="${esc(b.node.id)}"><rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" rx="8" fill="${style.fill}" stroke="${style.stroke}" stroke-width="1.6"${style.dash}/>`;
+    nodes += text(r.x + 16, r.y + 24, [b.node.name], "start", 14, "bold");
+    nodes += text(r.x + r.width - 14, r.y + 23, [typeTag(b.node)], "end", 11, "normal", MUTED);
+    if (b.role === "imported") nodes += text(r.x + 16, r.y + TYPE_HEAD + 8, [`from ${b.node.module}`], "start", 11.5, "normal", MUTED);
+    const bodyTop = r.y + TYPE_HEAD + (b.role === "imported" ? TYPE_FROM : 0);
+    nodes += `<line x1="${r.x}" x2="${r.x + r.width}" y1="${bodyTop - 2}" y2="${bodyTop - 2}" stroke="${style.stroke}" stroke-opacity="0.35"/>`;
+    nodes += codeLines(r.x + 16, bodyTop, b.lines);
+    if (b.node.obligations.length > 0) nodes += obligationRow(r.x + 16, r.y + r.height - 12, b.node.obligations);
+    nodes += "</g>";
+  }
+  if (boxes.length === 0) nodes += text(20, 30, ["No types or state in this module"]);
+  // 图例两行：第一行是框与箭头，第二行是证明义务的状态色。
+  const height = area.y + area.height + 95 + 110 + 20 + LEGEND_ROW, row = height - 32 - LEGEND_ROW;
+  let legendX = 28, legend = "";
+  for (const role of ["own", "state", "imported"] as const) {
+    const style = TYPE_STYLE[role];
+    legend += `<rect x="${legendX}" y="${row - 13}" width="22" height="16" rx="3" fill="${style.fill}" stroke="${style.stroke}"${style.dash}/>` + text(legendX + 30, row, [style.name], "start", 12);
+    legendX += 30 + sizedWidth(style.name, 12) + 30;
+  }
+  legend += `<path d="M${legendX},${row - 5} h22" stroke="#5d6b78" stroke-width="1.6" marker-end="url(#arrow)"/>` + text(legendX + 30, row, ["Uses · via fields"], "start", 12);
+  legend += poLegend(28, height - 32);
+  return frame(title, `${diagram.element} · each box is a type with its structure; arrows point at the types it uses`, area.x + area.width + 20 + 56, height, `<g transform="translate(28,95)">${edges}${nodes}${labels}</g>`, legend, 2);
+}
+
+const ACCESS_STYLE: Readonly<Record<Access, { readonly fill: string; readonly ink: string; readonly text: string; readonly name: string }>> = {
+  wr: { fill: "#fde6da", ink: "#b2431c", text: "wr", name: "wr · writes (and may read)" },
+  rd: { fill: "#e3eefb", ink: "#1f5fa8", text: "rd", name: "rd · reads only" },
+  none: { fill: "#ffffff", ink: MUTED, text: "", name: "blank · does not touch" },
+};
+const ACCESS_ROW = 36, ACCESS_HEAD = 44;
+export function accessSvg(table: AccessTable): DiagramSvg {
+  const sourceNote = (row: AccessRow): string => `${row.source === "ext" ? "ext clause" : "derived from body"}${row.exported ? "" : " · internal"}`;
+  const first = Math.max(220, ...table.rows.map((r) => Math.max(sizedWidth(r.operation, 14), sizedWidth(sourceNote(r), 11)) + 32));
+  const columns = table.fields.map((f) => Math.max(72, sizedWidth(f, 13) + 28));
+  const x0 = (index: number): number => first + columns.slice(0, index).reduce((a, b) => a + b, 0);
+  const gridWidth = x0(columns.length), gridHeight = ACCESS_HEAD + table.rows.length * ACCESS_ROW;
+  let body = `<rect x="0" y="0" width="${gridWidth}" height="${gridHeight}" rx="6" fill="#fff" stroke="#c9d1d9"/>`;
+  body += `<rect x="0" y="0" width="${gridWidth}" height="${ACCESS_HEAD}" rx="6" fill="#f6f7f9"/>`;
+  body += text(16, 27, [`operation \\ ${table.state}`], "start", 12.5, "bold", MUTED);
+  table.fields.forEach((f, i) => {
+    body += `<g data-node="${esc(`field:${f}`)}"><rect x="${x0(i)}" y="0" width="${columns[i]}" height="${ACCESS_HEAD}" fill="transparent"/>${text(x0(i) + columns[i]! / 2, 27, [f], "middle", 13, "bold")}</g>`;
+  });
+  table.rows.forEach((row, r) => {
+    const y = ACCESS_HEAD + r * ACCESS_ROW;
+    body += `<g data-node="${esc(row.operation)}">`;
+    body += `<rect x="1" y="${y}" width="${gridWidth - 2}" height="${ACCESS_ROW}" fill="${r % 2 === 1 ? "#fafbfc" : "transparent"}"/>`;
+    body += text(16, y + 17, [row.operation], "start", 14, "bold");
+    body += text(16, y + 31, [sourceNote(row)], "start", 11, "normal", MUTED);
+    row.cells.forEach((cell, i) => {
+      const style = ACCESS_STYLE[cell];
+      if (cell !== "none") body += `<rect x="${x0(i) + 8}" y="${y + 6}" width="${columns[i]! - 16}" height="${ACCESS_ROW - 12}" rx="4" fill="${style.fill}"/>` + text(x0(i) + columns[i]! / 2, y + 23, [style.text], "middle", 13, "bold", style.ink);
+    });
+    body += "</g>";
+  });
+  body += `<line x1="0" x2="${gridWidth}" y1="${ACCESS_HEAD}" y2="${ACCESS_HEAD}" stroke="#c9d1d9"/>`;
+  for (let r = 1; r < table.rows.length; r++) body += `<line x1="0" x2="${gridWidth}" y1="${ACCESS_HEAD + r * ACCESS_ROW}" y2="${ACCESS_HEAD + r * ACCESS_ROW}" stroke="#edf0f3"/>`;
+  for (let i = 0; i < columns.length; i++) body += `<line x1="${x0(i)}" x2="${x0(i)}" y1="0" y2="${gridHeight}" stroke="#e1e5e9"/>`;
+  if (table.rows.length === 0) body += text(16, ACCESS_HEAD + 24, ["No operations"], "start", 13, "normal", MUTED);
+  const height = 95 + gridHeight + 100;
+  let legendX = 28, legend = "";
+  for (const cell of ["wr", "rd", "none"] as const) {
+    const style = ACCESS_STYLE[cell];
+    legend += `<rect x="${legendX}" y="${height - 45}" width="22" height="16" rx="3" fill="${style.fill}" stroke="#c9d1d9"/>` + text(legendX + 30, height - 32, [style.name], "start", 12);
+    legendX += 30 + sizedWidth(style.name, 12) + 30;
+  }
+  return frame(`Read / write · ${table.module}`, `${table.element} · which state fields each operation reads or writes`, Math.max(gridWidth, legendX) + 56, height, `<g transform="translate(28,95)">${body}</g>`, legend);
 }
 
 export async function screenshotSvg(browser: Browser, image: DiagramSvg, path: string): Promise<void> {

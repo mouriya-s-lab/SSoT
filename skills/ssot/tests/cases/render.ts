@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { compileBehavior } from "../../scripts/src/compile/quint";
-import { compileVdm } from "../../scripts/src/compile/vdm";
+import { type ProofObligation, type VdmDefinition, type VdmModule, type VdmType, compileVdm } from "../../scripts/src/compile/vdm";
+import { projectAccess } from "../../scripts/src/render/access";
+import { projectTypes } from "../../scripts/src/render/types";
 import { format, global } from "../../scripts/src/diag";
 import { generateContract } from "../../scripts/src/gen/contract";
-import { projectBox, vdmTypeName } from "../../scripts/src/render/box";
+import { bareExpression, projectBox, vdmTypeName, vdmValueText } from "../../scripts/src/render/box";
 import { projectComposition } from "../../scripts/src/render/composition";
 import { compileLikeC4 } from "../../scripts/src/compile/likec4";
 import { elementOfModule } from "../../scripts/src/model";
@@ -200,6 +202,59 @@ function verifyRouting(): void {
   }
 }
 
+/** 类型图、读写表与值、表达式的写法：用手写的投影，不经 VDMJ。 */
+function verifyVdmViews(): void {
+  const at = { file: "a.vdmsl", module: "a", line: 1, col: 1 };
+  const ref = (module: string, name: string): VdmType => ({ kind: "ref", module, name });
+  const typeDef = (name: string, type: VdmType): VdmDefinition => ({ category: "type", name, location: at, type, inv: null, invSample: null });
+  const op = (name: string, ext: { rd: string[]; wr: string[] } | null, reads: string[], writes: string[]): VdmDefinition =>
+    ({ category: "operation", kind: "implicit", name, location: at, params: [], result: { name: null, type: { kind: "void" } }, pre: null, post: null, imperative: [], preSample: null, postSample: null, ext, reads, writes });
+  const base = { location: at, exports: [{ kind: "all" } as const], references: [], fieldReads: [] };
+  const b: VdmModule = { ...base, name: "b", file: "b.vdmsl", imports: [], definitions: [typeDef("T", { kind: "token" }), typeDef("Imported", { kind: "nat" }), typeDef("Unused", { kind: "nat" })] };
+  const a: VdmModule = {
+    ...base, name: "a", file: "a.vdmsl",
+    imports: [{ module: "b", items: [{ kind: "type", name: "T", renamed: null }, { kind: "type", name: "Imported", renamed: null }] }],
+    definitions: [
+      typeDef("A", { kind: "nat" }),
+      typeDef("R", { kind: "record", module: "a", name: "R", fields: [
+        { name: "x", type: ref("b", "T") },
+        { name: "y", type: { kind: "seq", element: ref("a", "R") } },
+        { name: "z", type: { kind: "map", from: ref("a", "A"), to: ref("b", "T") } },
+      ] }),
+      typeDef("U", { kind: "union", types: [{ kind: "quote", value: "X" }, ref("a", "R")] }),
+      { category: "state", name: "S", location: at, fields: [{ name: "n", type: ref("a", "A") }, { name: "m", type: { kind: "nat" } }], inv: null, init: null, invReads: [], invSample: null, initial: null },
+      op("both", { rd: ["n", "m"], wr: ["m"] }, [], []),
+      op("derived", null, ["n"], ["m"]),
+    ],
+  };
+  const types = projectTypes({ modules: [a, b] }, "a", []);
+  // 同一目标的多个字段并成一条线；自引用不成线；非记录的引用没有字段名；引入的类型画出来并带来源模块，没被引用也画。
+  assert.deepEqual(types.edges, [
+    { source: "a`R", target: "b`T", fields: ["x", "z"] },
+    { source: "a`R", target: "a`A", fields: ["z"] },
+    { source: "a`U", target: "a`R", fields: [] },
+    { source: "a`S", target: "a`A", fields: ["n"] },
+  ]);
+  assert.deepEqual(types.nodes.map((n) => [n.id, n.module, n.category, n.shape.kind]), [
+    ["a`A", "a", "type", "alias"], ["a`R", "a", "type", "record"], ["a`U", "a", "type", "union"], ["a`S", "a", "state", "record"],
+    ["b`T", "b", "type", "alias"], ["b`Imported", "b", "type", "alias"],
+  ]);
+  assert.deepEqual(types.nodes.find((n) => n.id === "a`U")!.shape, { kind: "union", alternatives: ["<X>", "R"] });
+  assert.throws(() => projectTypes({ modules: [a] }, "a", []), /b`T/);
+
+  const table = projectAccess(a);
+  // ext 子句优先；没有 ext 子句的操作按体求出的读写；写覆盖读。
+  assert.deepEqual(table, {
+    module: "a", element: "a", state: "S", fields: ["n", "m"],
+    rows: [{ operation: "both", source: "ext", exported: true, cells: ["rd", "wr"] }, { operation: "derived", source: "body", exported: true, cells: ["rd", "wr"] }],
+  });
+  assert.equal(projectAccess(b), null);
+
+  assert.equal(vdmValueText({ kind: "record", module: "a", name: "S", fields: [{ name: "n", value: { kind: "map", entries: [] } }, { name: "m", value: { kind: "map", entries: [[{ kind: "int", v: "1" }, { kind: "quote", v: "X" }]] } }] }), "mk_S({|->}, {1 |-> <X>})");
+  assert.equal(bareExpression("((a) and (b))"), "(a) and (b)");
+  assert.equal(bareExpression("(a) and (b)"), "(a) and (b)");
+}
+
 export async function verifyRenderProjections(): Promise<number> {
   const fixture = join(import.meta.dir, "..", "render");
   const stage = mkdtempSync("/tmp/ssot-render-fixture-");
@@ -208,20 +263,27 @@ export async function verifyRenderProjections(): Promise<number> {
     assert.equal(vdm.kind, "ok", vdm.diagnostics.map(format).join("\n"));
     if (vdm.kind !== "ok") throw new Error("VDM fixture compilation failed");
     const module = vdm.project.modules[0]!;
-    const box = projectBox(module);
+    // 义务按名字的第一段归属：`increment; post_increment` 归 increment，`Store` 归状态，别的模块的同名义务不算。
+    const po = (number: number, name: string, status: ProofObligation["status"], owner = "shop_worker"): ProofObligation =>
+      ({ number, kind: "TOTAL_FUNCTION", name, module: owner, status, location: { file: "f", module: owner, line: 1, col: 1 }, counterexample: {}, message: null, qualifier: null, checkable: true });
+    const box = projectBox(module, [po(1, "Store", "PROVABLE"), po(2, "increment; post_increment", "MAYBE"), po(3, "increment", "FAILED"), po(4, "increment", "PROVABLE", "other")]);
     assert.deepEqual(box, {
       module: "shop_worker", element: "shop.worker",
       ports: [
-        { name: "describe", kind: "function", inputs: ["seq of nat", "[bool]"], output: "seq of nat", ext: null },
-        { name: "increment", kind: "operation", inputs: ["nat"], output: "nat", ext: { rd: [], wr: ["count"] } },
+        { name: "describe", kind: "function", inputs: ["seq of nat", "[bool]"], output: "seq of nat", ext: null, pre: null, post: null, obligations: [] },
+        {
+          name: "increment", kind: "operation", inputs: ["nat"], output: "nat", ext: { rd: [], wr: ["count"] }, pre: null,
+          post: { text: "(count = (count~ + n)) and (result = count)", sample: null },
+          obligations: [{ number: 2, kind: "TOTAL_FUNCTION", status: "MAYBE" }, { number: 3, kind: "TOTAL_FUNCTION", status: "FAILED" }],
+        },
       ],
-      state: { name: "Store", fields: ["count: nat"] },
+      state: { name: "Store", fields: ["count: nat"], inv: null, init: { clause: "s == s = mk_Store(0)", value: "mk_Store(0)" }, obligations: [{ number: 1, kind: "TOTAL_FUNCTION", status: "PROVABLE" }] },
     });
     assert.equal(vdmTypeName({ kind: "map", from: { kind: "ref", module: "shop_worker", name: "Input" }, to: { kind: "optional", type: { kind: "union", types: [{ kind: "quote", value: "Yes" }, { kind: "quote", value: "No" }] } } }), "map Input to [<Yes> | <No>]");
     assert.equal(vdmTypeName({ kind: "seq", element: { kind: "product", types: [{ kind: "nat" }, { kind: "bool" }] } }), "seq of (nat * bool)");
     assert.equal(vdmTypeName({ kind: "function", partial: false, params: [{ kind: "token" }], result: { kind: "set", element: { kind: "char" } } }), "(token +> set of char)");
-    assert.equal(projectBox({ ...module, exports: [{ kind: "all" }] }).ports.some((port) => port.name === "hidden"), true);
-    assert.equal(projectBox({ ...module, definitions: module.definitions.filter((def) => def.category !== "state") }).state, null);
+    assert.equal(projectBox({ ...module, exports: [{ kind: "all" }] }, []).ports.some((port) => port.name === "hidden"), true);
+    assert.equal(projectBox({ ...module, definitions: module.definitions.filter((def) => def.category !== "state") }, []).state, null);
 
     const generated = generateContract(vdm.project, new Set([module.name]), () => global);
     assert.deepEqual(generated.diagnostics, []);
@@ -290,6 +352,7 @@ export async function verifyRenderProjections(): Promise<number> {
     await verifyC4AndLayerProjections(stage, fixture);
     verifyRouting();
     verifyIcons();
+    verifyVdmViews();
     const peekDiagram = projectComposition(peekIr, peekCompiled.module, vdm.project);
     assert.deepEqual(peekDiagram, {
       module: "peek",
@@ -309,7 +372,7 @@ export async function verifyRenderProjections(): Promise<number> {
         { kind: "read", contract: "shop_worker", step: "peekFeedback" },
       ],
     });
-    return 26;
+    return 27;
   } finally {
     rmSync(stage, { recursive: true, force: true });
   }

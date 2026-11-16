@@ -50,6 +50,12 @@ export type VdmValue =
   | { readonly kind: "map"; readonly entries: readonly (readonly [VdmValue, VdmValue])[] }
   | { readonly kind: "record"; readonly module: string; readonly name: string; readonly fields: readonly { readonly name: string; readonly value: VdmValue }[] };
 
+/** inv 或 init 子句 `pattern == expression`，两段都是 VDMJ 按检查后的 AST 打印的文本。 */
+export interface VdmClause {
+  readonly pattern: string;
+  readonly expression: string;
+}
+
 /** 一个谓词（pre、post、inv）在 QuickCheck 采样上的取值计数；没有采样时为 null。 */
 export interface VdmSample {
   readonly trueCount: number;
@@ -63,8 +69,9 @@ interface VdmCallable<Category extends "operation" | "function"> {
   readonly location: VdmLocation;
   readonly params: readonly VdmParam[];
   readonly result: { readonly name: string | null; readonly type: VdmType };
-  readonly hasPre: boolean;
-  readonly hasPost: boolean;
+  /** pre、post 的文本（VDMJ 按检查后的 AST 打印）；没有该谓词时为 null。 */
+  readonly pre: string | null;
+  readonly post: string | null;
   /** 显式体里出现 dcl、赋值或循环时的位置；没有时为空。 */
   readonly imperative: readonly VdmLocation[];
   /** pre 的采样计数。 */
@@ -79,14 +86,23 @@ interface VdmCallable<Category extends "operation" | "function"> {
 }
 
 export type VdmDefinition =
-  | { readonly category: "type"; readonly name: string; readonly location: VdmLocation; readonly type: VdmType; readonly hasInvariant: boolean; readonly invSample: VdmSample | null }
+  | {
+      readonly category: "type";
+      readonly name: string;
+      readonly location: VdmLocation;
+      readonly type: VdmType;
+      /** 没有 inv 时为 null。 */
+      readonly inv: VdmClause | null;
+      readonly invSample: VdmSample | null;
+    }
   | {
       readonly category: "state";
       readonly name: string;
       readonly location: VdmLocation;
       readonly fields: readonly VdmField[];
-      readonly hasInvariant: boolean;
-      readonly hasInit: boolean;
+      /** 没有该子句时为 null。 */
+      readonly inv: VdmClause | null;
+      readonly init: VdmClause | null;
       readonly invReads: readonly string[];
       /** 状态 inv 的采样计数。 */
       readonly invSample: VdmSample | null;

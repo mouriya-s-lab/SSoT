@@ -241,13 +241,15 @@ const TAG_TINTS: readonly { readonly fill: string; readonly stroke: string; read
 export const c4Notation = (kind: C4NodeKind): string => C4_STYLE[kind].notation;
 const C4_NODE_WIDTH = 248, C4_PERSON_HEAD = 30, C4_STORE_CAP = 12;
 
-interface C4NodeText { readonly title: string[]; readonly type: string; readonly description: string[]; readonly height: number }
+interface C4NodeText { readonly title: string[]; readonly type: string[]; readonly description: string[]; readonly height: number }
+/** 记法行（种类与技术）字号 11.5，行距 16；技术写得长时折行，不越出框。 */
+const C4_TYPE_SIZE = 11.5, C4_TYPE_LEAD = 16;
 function c4NodeText(node: C4DiagramNode): C4NodeText {
   const style = C4_STYLE[node.kind];
   const title = sizedWrap(node.title, C4_NODE_WIDTH - 28, 15);
-  const type = `[${style.notation}${node.technology ? `: ${node.technology}` : ""}]`;
+  const type = sizedWrap(`[${style.notation}${node.technology ? `: ${node.technology}` : ""}]`, C4_NODE_WIDTH - 28, C4_TYPE_SIZE);
   const description = node.description ? sizedWrap(node.description, C4_NODE_WIDTH - 28, 13) : [];
-  return { title, type, description, height: c4Head(node.kind) + 22 + title.length * 20 + 18 + (description.length ? 8 + description.length * 18 : 0) + 14 + (node.kind === "store" ? C4_STORE_CAP : 0) };
+  return { title, type, description, height: c4Head(node.kind) + 22 + title.length * 20 + 18 + (type.length - 1) * C4_TYPE_LEAD + (description.length ? 8 + description.length * 18 : 0) + 14 + (node.kind === "store" ? C4_STORE_CAP : 0) };
 }
 
 /** 形状在文字上方占去的高度：人的头、数据存储圆柱的顶面。 */
@@ -285,8 +287,8 @@ function c4NodeBody(node: C4DiagramNode, x: number, y: number, width: number): s
   let top = y + c4Head(node.kind) + (node.kind === "person" ? 4 : 0) + 24;
   let out = text(cx, top, content.title, "middle", 15, "bold", style.ink);
   top += (content.title.length - 1) * 20 + 19;
-  out += text(cx, top, [content.type], "middle", 11.5, "normal", style.sub);
-  if (content.description.length) out += text(cx, top + 24, content.description, "middle", 13, "normal", style.ink);
+  out += text(cx, top, content.type, "middle", C4_TYPE_SIZE, "normal", style.sub);
+  if (content.description.length) out += text(cx, top + 24 + (content.type.length - 1) * C4_TYPE_LEAD, content.description, "middle", 13, "normal", style.ink);
   return out;
 }
 
@@ -392,7 +394,10 @@ function placed(graph: ElkNode, placement: Placement): ElkNode {
   };
 }
 
-/** 按每种摆法摆一次、走一遍线，返回线的代价最小的那次。request 由框的位置给出路由要的框、标题与线。 */
+/**
+ * 按每种摆法摆一次、快速走一遍线（quick），取线的代价最小的摆法，再对它完整地走线（full）。request 由框的位置
+ * 给出路由要的框、标题与线。
+ */
 async function bestLayout(graph: ElkNode, request: (box: (id: string) => Rect) => RouteRequest): Promise<{ readonly box: (id: string) => Rect; readonly routes: Point[][] }> {
   const { ELK } = await loadDiagramTools();
   const elk = new ELK();
@@ -406,10 +411,10 @@ async function bestLayout(graph: ElkNode, request: (box: (id: string) => Rect) =
       if (!n || n.x === undefined || n.y === undefined || n.width === undefined || n.height === undefined) throw new Error(`ELK 没有布置 ${id}`);
       return { x: n.x, y: n.y, width: n.width, height: n.height };
     };
-    const routes = routeEdges(request(box));
-    return { box, routes, cost: routeCost(routes) };
+    return { box, cost: routeCost(routeEdges(request(box), "quick")) };
   }));
-  return tried.reduce((best, next) => next.cost < best.cost ? next : best);
+  const { box } = tried.reduce((best, next) => next.cost < best.cost ? next : best);
+  return { box, routes: routeEdges(request(box), "full") };
 }
 
 /** 框、线与标签合起来占的范围：线可能绕到 ELK 给的画布之外。 */

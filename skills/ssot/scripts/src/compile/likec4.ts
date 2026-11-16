@@ -255,9 +255,10 @@ export async function compileLikeC4(dir: string): Promise<C4Result> {
         deployment: v.isDeploymentView() ? {
           placements: (() => {
             // LikeC4 把只装一个实例的部署节点折叠掉，图上只剩实例；信任边界就画在这种节点上，所以按部署模型补回实例的祖先节点。
+            // 折叠后的部署节点在视图里也带着那个实例的元素，种类按部署模型判定，不按视图节点有没有元素判定。
             const placements: C4DeploymentPlacement[] = [...v.nodes()].map((n): C4DeploymentPlacement => {
               const common = { id: n.id, title: n.title, parent: n.deployment?.parent?.id ?? null, tags: [...n.tags], description: n.description.text ?? "", technology: n.technology ?? null };
-              return n.element ? { kind: "instance", element: n.element.id, ...common } : { kind: "node", nodeKind: n.kind, ...common };
+              return n.deployment?.isInstance() ? { kind: "instance", element: n.deployment.element.id, ...common } : { kind: "node", nodeKind: n.kind, ...common };
             });
             const shown = new Set(placements.map((p) => p.id));
             for (const n of [...v.nodes()]) {

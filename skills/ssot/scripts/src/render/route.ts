@@ -15,6 +15,9 @@ export interface RouteRequest {
   readonly edges: readonly { readonly source: number; readonly target: number }[];
 }
 
+/** quick：短线优先走一遍，只用来比较几种摆法；full：短线优先、长线优先各走三遍取代价小的，用于最终画出的摆法。 */
+export type Effort = "quick" | "full";
+
 const STEP = 8;
 /** 线与节点框之间至少留的空。 */
 const CLEARANCE = 12;
@@ -114,7 +117,7 @@ function simplify(points: readonly Point[]): Point[] {
   });
 }
 
-export function routeEdges(request: RouteRequest): Point[][] {
+export function routeEdges(request: RouteRequest, effort: Effort): Point[][] {
   const { boxes, headers, edges } = request;
   if (edges.length === 0) return [];
   const all = boxes.map((box) => box.rect);
@@ -186,6 +189,14 @@ export function routeEdges(request: RouteRequest): Point[][] {
     }
   }
 
+  // 每个格点在哪些框里（前 31 个框各占一位）。点与终点所在框不同的每一个框，线至少要穿一次，A* 的估计
+  // 把这些穿越算进去：穿框代价远大于长度，只按长度估计时搜索几乎铺满整张网格。
+  const tracked = frames.slice(0, 31);
+  const member = new Uint32Array(points);
+  const membership = (x: number, y: number): number => tracked.reduce((mask, f, b) => inside(f, x, y) ? mask | (1 << b) : mask, 0);
+  for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) member[at(i, j)] = membership(xs[i]!, ys[j]!);
+  const bits = (v: number): number => { let n = 0; for (let w = v; w !== 0; w &= w - 1) n++; return n; };
+
   // 已走好的线占用的格段与格点：横着经过、竖着经过分开记，重叠与交叉都靠它算。
   const useH = new Int16Array(points), useV = new Int16Array(points), segH = new Int16Array(points), segV = new Int16Array(points);
   const ports = new Map<string, number[]>();
@@ -219,16 +230,19 @@ export function routeEdges(request: RouteRequest): Point[][] {
     const heap = new Heap();
     const vertical = (t: Terminal): boolean => t.side === 0 || t.side === 2;
     const toLine = vertical(to) ? index(ys, to.line) : index(xs, to.line);
-    const heuristic = (i: number, j: number): number => {
-      const x = xs[i]!, y = ys[j]!;
-      if (vertical(to)) return Math.max(0, to.lo - x, x - to.hi) + Math.abs(y - to.line);
-      return Math.max(0, to.lo - y, y - to.hi) + Math.abs(x - to.line);
+    const goal = vertical(to) ? membership(to.center, to.line) : membership(to.line, to.center);
+    const arrive = ((to.side + 2) % 4) as Dir;
+    // 估计到终点的最小代价：剩下的长度、还要穿的框；方向不是进框方向时，要么再拐一次弯，要么斜着进框，都至少多一个 BEND。
+    const heuristic = (i: number, j: number, dir: Dir): number => {
+      const x = xs[i]!, y = ys[j]!, rest = bits(member[at(i, j)]! ^ goal) * FRAME_CROSS + (dir === arrive ? 0 : BEND);
+      if (vertical(to)) return rest + Math.max(0, to.lo - x, x - to.hi) + Math.abs(y - to.line);
+      return rest + Math.max(0, to.lo - y, y - to.hi) + Math.abs(x - to.line);
     };
     const clash = (t: Terminal, v: number): number => (ports.get(portKey(t)) ?? []).some((u) => Math.abs(u - v) < PORT_GAP) ? PORT_CLASH : 0;
     const visit = (state: number, cost: number, from: number, i: number, j: number): void => {
       if (seen[state] === epoch && g[state]! <= cost) return;
       seen[state] = epoch; g[state] = cost; parent[state] = from;
-      heap.push(cost + heuristic(i, j), state);
+      heap.push(cost + heuristic(i, j, (state & 3) as Dir), state);
     };
     const fromLine = vertical(from) ? index(ys, from.line) : index(xs, from.line);
     const span = vertical(from) ? xs : ys;
@@ -239,7 +253,6 @@ export function routeEdges(request: RouteRequest): Point[][] {
       if (blocked[at(i, j)]) continue;
       visit(at(i, j) * 4 + from.side, STUB + OFF_CENTER * Math.abs(v - from.center) + clash(from, v), -1, i, j);
     }
-    const arrive = ((to.side + 2) % 4) as Dir;
     let best = -1, bestCost = Infinity;
     while (heap.size > 0) {
       const state = heap.pop();
@@ -254,7 +267,7 @@ export function routeEdges(request: RouteRequest): Point[][] {
           if (end < bestCost) { bestCost = end; best = state; }
         }
       }
-      for (const next of [0, 1, 2, 3] as const) {
+      for (let next: Dir = 0; next < 4; next = (next + 1) as Dir) {
         if (next === ((dir + 2) & 3)) continue;
         const i2 = i + DX[next], j2 = j + DY[next];
         if (i2 < 0 || j2 < 0 || i2 >= nx || j2 >= ny) continue;
@@ -331,11 +344,11 @@ export function routeEdges(request: RouteRequest): Point[][] {
     }
     return out;
   };
-  // 按给定顺序走一遍，再把每条线拆掉按其余线重走两遍：先走的线不知道后面的线，重走时让出位置。
-  const run = (order: readonly number[]): Point[][] => {
+  // 按给定顺序走一遍；passes 大于 1 时再把每条线拆掉按其余线重走：先走的线不知道后面的线，重走时让出位置。
+  const run = (order: readonly number[], passes: number): Point[][] => {
     useH.fill(0); useV.fill(0); segH.fill(0); segV.fill(0); ports.clear();
     const paths: (Path | null)[] = edges.map(() => null);
-    for (let pass = 0; pass < 3; pass++) {
+    for (let pass = 0; pass < passes; pass++) {
       for (const k of order) {
         const { from, to } = ends[k]!, old = paths[k];
         if (old) { apply(old, -1); claim(portKey(from), old.from, -1); claim(portKey(to), old.to, -1); }
@@ -349,6 +362,11 @@ export function routeEdges(request: RouteRequest): Point[][] {
   // 先走短线还是先走长线结果不同，两种都走，取代价小的。
   const span = (k: number): number => { const s = all[edges[k]!.source]!, t = all[edges[k]!.target]!; return Math.abs(s.x + s.width / 2 - t.x - t.width / 2) + Math.abs(s.y + s.height / 2 - t.y - t.height / 2); };
   const shortFirst = edges.map((_, k) => k).sort((a, b) => span(a) - span(b));
-  const results = [run(shortFirst), run([...shortFirst].reverse())];
-  return results.reduce((best, next) => routeCost(next) < routeCost(best) ? next : best);
+  switch (effort) {
+    case "quick": return run(shortFirst, 1);
+    case "full": {
+      const results = [run(shortFirst, 3), run([...shortFirst].reverse(), 3)];
+      return results.reduce((best, next) => routeCost(next) < routeCost(best) ? next : best);
+    }
+  }
 }

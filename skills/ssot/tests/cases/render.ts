@@ -46,6 +46,9 @@ deployment {
   host core 'Core' {
     instanceOf shop.api
     instanceOf shop.ledger
+    host edge 'Edge' {
+      instanceOf shop.web
+    }
   }
   host partner 'Partner' {
     #untrusted
@@ -99,10 +102,13 @@ async function verifyC4AndLayerProjections(stage: string, fixture: string): Prom
     core: { element: null, kind: "deploymentNode", technology: "host", tags: [], parent: null, boundary: true },
     "core.api": { element: "shop.api", kind: "container", technology: "HTTP", tags: [], parent: "core", boundary: false },
     "core.ledger": { element: "shop.ledger", kind: "store", technology: null, tags: [], parent: "core", boundary: false },
+    // 只装一个实例的部署节点被 LikeC4 折叠后仍是边界，实例画在它里面。
+    "core.edge": { element: null, kind: "deploymentNode", technology: "host", tags: [], parent: "core", boundary: true },
+    "core.edge.web": { element: "shop.web", kind: "container", technology: null, tags: [], parent: "core.edge", boundary: false },
     partner: { element: null, kind: "deploymentNode", technology: "host", tags: ["untrusted"], parent: null, boundary: true },
     "partner.pay": { element: "pay", kind: "external", technology: null, tags: [], parent: "partner", boundary: false },
   });
-  assert.deepEqual(deployed.edges.map((e) => `${e.source} -> ${e.target} ${e.label}`).sort(), ["core.api -> core.ledger writes", "core.api -> partner.pay charges"]);
+  assert.deepEqual(deployed.edges.map((e) => `${e.source} -> ${e.target} ${e.label}`).sort(), ["core.api -> core.ledger writes", "core.api -> partner.pay charges", "core.edge.web -> core.api forwards"]);
 
   const contracts = await compileVdm(["shop.api.vdmsl", "shop.ledger.vdmsl"].map((f) => join(fixture, "..", "base", "contract", f)), () => global, new Set());
   assert.equal(contracts.kind, "ok", contracts.diagnostics.map(format).join("\n"));
@@ -125,7 +131,7 @@ function verifyRouting(): void {
   const F: Rect = { x: -40, y: -60, width: 328, height: 650 };
   const boxes = [A, B, C, O].map((rect) => ({ kind: "node" as const, rect }));
   const edges = [{ source: 0, target: 1 }, { source: 0, target: 2 }, { source: 1, target: 2 }];
-  const routes = routeEdges({ boxes: [...boxes, { kind: "frame", rect: F }], headers: [], edges });
+  const routes = routeEdges({ boxes: [...boxes, { kind: "frame", rect: F }], headers: [], edges }, "full");
   const rects = [A, B, C, O];
   const inside = (r: Rect, p: Point): boolean => p.x > r.x && p.x < r.x + r.width && p.y > r.y && p.y < r.y + r.height;
   const segments = (points: readonly Point[]): [Point, Point][] => points.slice(1).map((b, i) => [points[i]!, b]);

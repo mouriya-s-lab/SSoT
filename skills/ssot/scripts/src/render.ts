@@ -1,17 +1,19 @@
-// C4 remains in LikeC4's native renderer; String Diagrams project the current compiled contracts and behavior.
+// C4 逻辑视图、契约分层图、盒子图与组合图由 ssot 用 ELK 绘制；部署视图仍由 LikeC4 导出。
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { type C4View, compileLikeC4 } from "./compile/likec4";
 import { compileBehavior } from "./compile/quint";
 import { compileVdm } from "./compile/vdm";
-import { element, format, global } from "./diag";
+import { assertNever, element, format, global } from "./diag";
 import { generateContract } from "./gen/contract";
 import { likec4Command, loadDiagramTools } from "./install";
 import { elementOfModule } from "./model";
 import { importCycleRules, isRunnable } from "./rules/cross";
 import { projectBox } from "./render/box";
+import { projectC4View } from "./render/c4";
 import { projectComposition } from "./render/composition";
-import { boxSvg, compositionSvg, screenshotSvg } from "./render/svg";
+import { projectLayers } from "./render/layers";
+import { boxSvg, c4Svg, compositionSvg, layersSvg, screenshotSvg } from "./render/svg";
 
 export function renderOrder(views: readonly C4View[]): C4View[] {
   const rank = (v: C4View): number => v.id === "index" ? 0 : v.type === "deployment" ? 2 : 1;
@@ -53,33 +55,53 @@ export async function render(structure: string, output: string | null): Promise<
     const modules = await Promise.all(behaviorFiles.map((file) => compileBehavior(join(behavior, basename(file)), basename(file, ".qnt"), generated, work, (path) => path.replace(stage, root), { origins: contract.origins, subjectOf })));
     for (const module of modules) for (const diagnostic of module.diagnostics) console.error(format(diagnostic));
     if (modules.some((module) => module.kind === "failed")) return 1;
-    const run = Bun.spawn([...likec4Command(), "export", "png", "--flat", "--notation", "--description", "-o", images, structure], { stdout: "pipe", stderr: "pipe" });
-    const [stdout, stderr, code] = await Promise.all([new Response(run.stdout).text(), new Response(run.stderr).text(), run.exited]);
-    if (code !== 0) {
-      console.error(stdout + stderr);
-      return code;
+    const views = renderOrder(compiled.structure.views);
+    const deployments = views.filter((view) => view.type === "deployment");
+    if (deployments.length > 0) {
+      const run = Bun.spawn([...likec4Command(), "export", "png", "--flat", "--notation", "--description", ...deployments.flatMap((view) => ["-f", view.id]), "-o", images, structure], { stdout: "pipe", stderr: "pipe" });
+      const [stdout, stderr, code] = await Promise.all([new Response(run.stdout).text(), new Response(run.stderr).text(), run.exited]);
+      if (code !== 0) {
+        console.error(stdout + stderr);
+        return code;
+      }
     }
-    const outputs = renderOrder(compiled.structure.views).map((view) => ({ file: `${view.id}.png`, id: view.id }));
+    const outputs: { file: string; id: string }[] = [];
     const boxes = vdm.project.modules.filter((module) => owner.has(module.name)).sort((a, b) => a.name.localeCompare(b.name));
     const compositions = modules.flatMap((module) => module.kind === "ok" && isRunnable(module.module) ? [module.module] : []).sort((a, b) => a.name.localeCompare(b.name));
-    if (boxes.length > 0 || compositions.length > 0) {
-      const { chromium } = await loadDiagramTools();
-      const browser = await chromium.launch();
-      try {
-        for (const module of boxes) {
-          const file = `box-${module.name}.png`;
-          await screenshotSvg(browser, await boxSvg(projectBox(module)), join(images, file));
-          outputs.push({ file, id: `box:${module.name}` });
+    const { chromium } = await loadDiagramTools();
+    const browser = await chromium.launch();
+    try {
+      for (const view of views) {
+        switch (view.type) {
+          case "element":
+            await screenshotSvg(browser, await c4Svg(projectC4View(compiled.structure, view)), join(images, `${view.id}.png`));
+            break;
+          case "deployment":
+            break;
+          case "dynamic":
+            throw new Error(`动态视图 ${view.id} 不应通过检查`);
+          default:
+            assertNever(view.type);
         }
-        for (const module of compositions) {
-          const file = `composition-${module.name}.png`;
-          const ir: unknown = await Bun.file(module.typecheckOut).json();
-          await screenshotSvg(browser, await compositionSvg(projectComposition(ir, module, vdm.project)), join(images, file));
-          outputs.push({ file, id: `composition:${module.name}` });
-        }
-      } finally {
-        await browser.close();
+        outputs.push({ file: `${view.id}.png`, id: view.id });
       }
+      if (boxes.length > 0) {
+        await screenshotSvg(browser, await layersSvg(projectLayers(compiled.structure, vdm.project, owner)), join(images, "layers.png"));
+        outputs.push({ file: "layers.png", id: "layers" });
+      }
+      for (const module of boxes) {
+        const file = `box-${module.name}.png`;
+        await screenshotSvg(browser, await boxSvg(projectBox(module)), join(images, file));
+        outputs.push({ file, id: `box:${module.name}` });
+      }
+      for (const module of compositions) {
+        const file = `composition-${module.name}.png`;
+        const ir: unknown = await Bun.file(module.typecheckOut).json();
+        await screenshotSvg(browser, await compositionSvg(projectComposition(ir, module, vdm.project)), join(images, file));
+        outputs.push({ file, id: `composition:${module.name}` });
+      }
+    } finally {
+      await browser.close();
     }
     for (const output of outputs) {
       const file = join(images, output.file);

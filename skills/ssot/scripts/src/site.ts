@@ -200,8 +200,7 @@ function c4Entry(s: Structure, links: Links, view: C4View, kind: "view" | "deplo
       kind: `${c4Notation(node.kind)}${node.technology ? `: ${node.technology}` : ""}`,
       description: node.description,
       facts: [
-        ...(node.element !== null && node.element !== node.id ? [["Element", node.element] as const] : []),
-        ...(e !== null ? [["Path", e.fqn] as const] : []),
+        ...(node.element === node.id ? [["Path", node.id] as const] : [["Deployment path", node.id] as const, ...(node.element !== null ? [["Element", node.element] as const] : [])]),
         ...node.tags.map((t) => ["Tag", `#${t}`] as const),
         ...(module !== null ? [["Contract module", module] as const] : []),
         ...(typeof e?.metadata["group"] === "string" ? [["Group", e.metadata["group"]] as const] : []),

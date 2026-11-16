@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>SSoT</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --ink: #1f2933; --muted: #5f6b77; --line: #e3e7ec; --panel: #f7f9fb; --accent: #1168bd; --hot: #d9480f;
+    --bad: #c92a2a; --ok: #2b8a3e; --warn: #e67700;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
+    font-size: 14px; color: var(--ink);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #fff; }
+  #app { display: grid; grid-template-columns: 280px 1fr auto; grid-template-rows: auto 1fr; height: 100%; }
+  header { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--line); min-height: 52px; }
+  header .brand { font-weight: 700; letter-spacing: .02em; }
+  #crumbs { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; }
+  #crumbs a { color: var(--accent); text-decoration: none; cursor: pointer; }
+  #crumbs a:hover { text-decoration: underline; }
+  #crumbs .sep { color: #aab4be; }
+  #crumbs .here { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+  #status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); cursor: default; padding: 4px 8px; border-radius: 12px; background: var(--panel); }
+  #status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+  #status.building .dot { background: var(--warn); animation: pulse 1s infinite; }
+  #status.failed { color: var(--bad); cursor: pointer; }
+  #status.failed .dot { background: var(--bad); }
+  #status.offline .dot { background: #adb5bd; }
+  @keyframes pulse { 50% { opacity: .3; } }
+  .tools { display: flex; gap: 4px; }
+  button { font: inherit; border: 1px solid var(--line); background: #fff; border-radius: 6px; padding: 4px 9px; cursor: pointer; color: var(--ink); }
+  button:hover { background: var(--panel); }
+  nav { border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+  #search { margin: 10px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; font: inherit; }
+  #lists { overflow: auto; flex: 1; padding-bottom: 12px; }
+  nav h3 { margin: 12px 14px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  nav a { display: block; padding: 5px 14px 5px 18px; color: var(--ink); text-decoration: none; cursor: pointer; border-left: 3px solid transparent; }
+  nav a small { display: block; color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  nav a:hover { background: #eef2f6; }
+  nav a.active { border-left-color: var(--accent); background: #e7f0fa; font-weight: 600; }
+  nav a.hit mark { background: #ffe8a1; color: inherit; }
+  main { position: relative; overflow: hidden; background: #fbfcfd; cursor: grab; }
+  main.panning { cursor: grabbing; }
+  #stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+  #stage svg { display: block; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  #stage [data-node]:not([data-frame]), #stage [data-edge], #stage [data-header] { cursor: pointer; transition: opacity .12s; }
+  #stage.focus [data-node]:not([data-frame]):not(.hot), #stage.focus [data-edge]:not(.hot) { opacity: .16; }
+  #stage [data-edge].hot path[stroke="#5d6b78"], #stage [data-edge].hot path[stroke="#59636e"] { stroke: var(--hot); stroke-width: 2.6; }
+  #stage [data-node].picked > :first-child { stroke: var(--hot) !important; stroke-width: 3 !important; }
+  #stage .badge { cursor: pointer; }
+  #stage .badge:hover circle { fill: #0b4884; }
+  #hint { position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: var(--muted); background: rgba(255,255,255,.85); padding: 4px 8px; border-radius: 6px; pointer-events: none; }
+  #tip { position: absolute; pointer-events: none; max-width: 360px; background: #1f2933; color: #fff; font-size: 12.5px; padding: 6px 9px; border-radius: 6px; display: none; z-index: 5; line-height: 1.45; }
+  #tip b { color: #ffd8a8; }
+  aside { width: 0; overflow: hidden; border-left: 1px solid var(--line); background: #fff; }
+  aside.open { width: 360px; overflow: auto; }
+  aside .inner { padding: 14px 16px 24px; width: 360px; }
+  aside h2 { margin: 0 0 2px; font-size: 18px; }
+  aside .kind { color: var(--muted); font-size: 12.5px; margin-bottom: 10px; }
+  aside p { margin: 8px 0 12px; line-height: 1.55; }
+  aside dl { display: grid; grid-template-columns: 96px 1fr; gap: 4px 10px; margin: 0 0 12px; font-size: 13px; }
+  aside dt { color: var(--muted); }
+  aside dd { margin: 0; word-break: break-word; }
+  aside .links a { display: block; margin: 4px 0; color: var(--accent); cursor: pointer; text-decoration: none; }
+  aside .links a:hover { text-decoration: underline; }
+  aside .close { float: right; }
+  aside .rel { border-top: 1px solid var(--line); padding: 8px 0; font-size: 13px; }
+  #problems { position: absolute; left: 12px; right: 12px; top: 12px; max-height: 45%; overflow: auto; background: #fff5f5; border: 1px solid #ffc9c9; color: #7d1414; border-radius: 8px; padding: 10px 14px; font: 12px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap; display: none; z-index: 4; }
+  #problems h4 { margin: 0 0 6px; font: 600 13px -apple-system, sans-serif; }
+  #empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <span class="brand">SSoT</span>
+    <div id="crumbs"></div>
+    <div class="tools">
+      <button id="zoomOut" title="缩小 (-)">−</button>
+      <button id="zoomReset" title="实际大小 (0)">100%</button>
+      <button id="zoomIn" title="放大 (+)">+</button>
+      <button id="fit" title="适应窗口 (F)">适应</button>
+      <button id="download" title="下载当前图的 SVG">SVG</button>
+    </div>
+    <div id="status" title=""><span class="dot"></span><span id="statusText">连接中</span></div>
+  </header>
+  <nav>
+    <input id="search" placeholder="搜索图与元素（/）" autocomplete="off">
+    <div id="lists"></div>
+  </nav>
+  <main id="canvas">
+    <div id="stage"></div>
+    <div id="empty">正在构建…</div>
+    <div id="problems"></div>
+    <div id="tip"></div>
+    <div id="hint">拖动平移 · 滚轮平移 / ⌘ 或 Ctrl + 滚轮缩放 · 单击看详情 · 双击或点角标下钻 · Esc 取消</div>
+  </main>
+  <aside id="details"><div class="inner"></div></aside>
+</div>
+<script>
+"use strict";
+const KIND_TITLES = { view: "C4 视图", deployment: "部署", layers: "契约", box: "契约", composition: "行为组合" };
+const KIND_ORDER = ["view", "deployment", "layers", "box", "composition"];
+const $ = (id) => document.getElementById(id);
+const canvas = $("canvas"), stage = $("stage"), details = $("details"), tip = $("tip");
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+let site = null;                 // /api/site 的最近一次结果
+let current = null;              // 当前图
+let selected = null;             // { type: "node" | "edge", id }
+const views = new Map();         // 图 id → { x, y, scale }：每张图各自记住视野，重画后不跳
+
+// ---------- 路由：#/<图 id>?node=<节点 id> ----------
+function parseHash() {
+  const raw = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
+  const [id, query] = raw.split("?");
+  const node = new URLSearchParams(query ?? "").get("node");
+  return { id: id || null, node };
+}
+function go(id, node = null, replace = false) {
+  const hash = `#/${encodeURIComponent(id)}${node ? `?node=${encodeURIComponent(node)}` : ""}`;
+  if (replace) history.replaceState(null, "", hash); else if (location.hash !== hash) history.pushState(null, "", hash);
+  route();
+}
+window.addEventListener("popstate", route);
+
+function route() {
+  if (!site || site.diagrams.length === 0) return;
+  const { id, node } = parseHash();
+  const diagram = site.diagrams.find((d) => d.id === id) ?? site.diagrams[0];
+  // 选中状态先按地址定下来再画图：详情面板的开合会改变画布宽度，适应窗口要按最终宽度算。
+  const pick = node && diagram.items[node] ? { type: "node", id: node } : null;
+  if (!current || current !== diagram) { selected = pick; renderDetails(); show(diagram); }
+  else select(pick);
+  if (pick) centerOn(pick.id);
+}
+
+// ---------- 侧栏 ----------
+function renderLists(filter = "") {
+  const q = filter.trim().toLowerCase();
+  const lists = $("lists");
+  let html = "";
+  const groups = new Map();
+  for (const d of site?.diagrams ?? []) {
+    const title = KIND_TITLES[d.kind];
+    if (!groups.has(title)) groups.set(title, []);
+    groups.get(title).push(d);
+  }
+  const mark = (text) => q ? esc(text).replace(new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "ig"), (m) => `<mark>${m}</mark>`) : esc(text);
+  for (const [title, diagrams] of groups) {
+    const shown = q ? diagrams.filter((d) => `${d.title} ${d.id}`.toLowerCase().includes(q)) : diagrams;
+    if (shown.length === 0) continue;
+    html += `<h3>${esc(title)}</h3>`;
+    for (const d of shown) html += `<a data-go="${esc(d.id)}" class="${current?.id === d.id ? "active" : ""} ${q ? "hit" : ""}">${mark(d.title)}<small>${esc(d.id)}</small></a>`;
+  }
+  if (q) {
+    const hits = [];
+    for (const d of site?.diagrams ?? []) for (const [id, item] of Object.entries(d.items))
+      if (`${item.title} ${item.kind} ${item.description} ${id}`.toLowerCase().includes(q)) hits.push({ d, id, item });
+    if (hits.length) {
+      html += `<h3>元素</h3>`;
+      for (const { d, id, item } of hits.slice(0, 80)) html += `<a class="hit" data-go="${esc(d.id)}" data-node="${esc(id)}">${mark(item.title)}<small>${esc(d.title)} · ${esc(item.kind)}</small></a>`;
+    }
+    if (!html) html = `<h3>没有匹配</h3>`;
+  }
+  lists.innerHTML = html;
+}
+$("lists").addEventListener("click", (e) => {
+  const a = e.target.closest("a[data-go]");
+  if (a) go(a.dataset.go, a.dataset.node ?? null);
+});
+$("search").addEventListener("input", (e) => renderLists(e.target.value));
+$("search").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { const first = $("lists").querySelector("a[data-go]"); if (first) go(first.dataset.go, first.dataset.node ?? null); }
+  if (e.key === "Escape") { e.target.value = ""; renderLists(); e.target.blur(); }
+});
+
+// ---------- 面包屑 ----------
+function renderCrumbs() {
+  const chain = [];
+  for (let d = current; d; d = d.parent ? site.diagrams.find((x) => x.id === d.parent) : null) chain.unshift(d);
+  $("crumbs").innerHTML = chain.map((d, i) => i === chain.length - 1
+    ? `<span class="here" title="${esc(d.description)}">${esc(d.title)}</span>`
+    : `<a data-go="${esc(d.id)}">${esc(d.title)}</a><span class="sep">›</span>`).join("");
+}
+$("crumbs").addEventListener("click", (e) => { const a = e.target.closest("a[data-go]"); if (a) go(a.dataset.go); });
+
+// ---------- 画布：平移与缩放 ----------
+function viewOf(d) { return views.get(d.id); }
+function apply() {
+  if (!current) return;
+  const v = viewOf(current), svg = stage.querySelector("svg");
+  if (!svg) return;
+  svg.style.width = `${current.width * v.scale}px`;
+  svg.style.height = `${current.height * v.scale}px`;
+  stage.style.transform = `translate(${v.x}px, ${v.y}px)`;
+  $("zoomReset").textContent = `${Math.round(v.scale * 100)}%`;
+}
+function fit() {
+  if (!current) return;
+  const r = canvas.getBoundingClientRect(), pad = 24;
+  const scale = Math.min((r.width - pad * 2) / current.width, (r.height - pad * 2) / current.height, 1.5);
+  views.set(current.id, { scale, x: (r.width - current.width * scale) / 2, y: Math.max(pad, (r.height - current.height * scale) / 2) });
+  apply();
+}
+function zoomAt(factor, cx, cy) {
+  const v = viewOf(current), scale = Math.min(6, Math.max(0.08, v.scale * factor)), k = scale / v.scale;
+  views.set(current.id, { scale, x: cx - (cx - v.x) * k, y: cy - (cy - v.y) * k });
+  apply();
+}
+function zoomCenter(factor) { const r = canvas.getBoundingClientRect(); zoomAt(factor, r.width / 2, r.height / 2); }
+canvas.addEventListener("wheel", (e) => {
+  if (!current) return;
+  e.preventDefault();
+  const r = canvas.getBoundingClientRect();
+  if (e.ctrlKey || e.metaKey) zoomAt(Math.exp(-e.deltaY * 0.01), e.clientX - r.left, e.clientY - r.top);
+  else { const v = viewOf(current); views.set(current.id, { ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }); apply(); }
+}, { passive: false });
+let drag = null;
+canvas.addEventListener("pointerdown", (e) => {
+  if (e.button !== 0 || !current) return;
+  drag = { x: e.clientX, y: e.clientY, moved: false, start: { ...viewOf(current) } };
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener("pointermove", (e) => {
+  if (!drag) return hover(e);
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+  drag.moved = true;
+  canvas.classList.add("panning");
+  views.set(current.id, { ...drag.start, x: drag.start.x + dx, y: drag.start.y + dy });
+  apply();
+});
+canvas.addEventListener("pointerup", (e) => {
+  const was = drag; drag = null; canvas.classList.remove("panning");
+  if (was && !was.moved) click(e);
+});
+$("zoomIn").onclick = () => zoomCenter(1.25);
+$("zoomOut").onclick = () => zoomCenter(0.8);
+$("zoomReset").onclick = () => { const r = canvas.getBoundingClientRect(), v = viewOf(current); zoomAt(1 / v.scale, r.width / 2, r.height / 2); };
+$("fit").onclick = fit;
+$("download").onclick = () => {
+  if (!current) return;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([current.svg], { type: "image/svg+xml" }));
+  a.download = `${current.id.replace(/[:/]/g, "-")}.svg`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+window.addEventListener("resize", () => { if (current && !views.has(current.id)) fit(); });
+
+// ---------- 显示一张图 ----------
+function show(diagram) {
+  const first = !views.has(diagram.id);
+  current = diagram;
+  tip.style.display = "none";
+  hovered = null;
+  stage.innerHTML = diagram.svg;
+  $("empty").style.display = "none";
+  addBadges();
+  if (first) fit(); else apply();
+  renderCrumbs();
+  renderLists($("search").value);
+  if (selected && !(selected.type === "node" ? diagram.items[selected.id] : diagram.edges[selected.id])) select(null);
+  else select(selected);
+  document.title = `${diagram.title} · SSoT`;
+}
+
+/** 能下钻的节点右上角画一个角标，点它直接跳过去。 */
+function addBadges() {
+  for (const g of stage.querySelectorAll("[data-node]")) {
+    const item = current.items[g.dataset.node];
+    const target = item && primaryLink(item);
+    if (!target) continue;
+    const box = g.getBBox();
+    const ns = "http://www.w3.org/2000/svg";
+    const badge = document.createElementNS(ns, "g");
+    badge.setAttribute("class", "badge");
+    badge.dataset.open = target.diagram;
+    const x = box.x + box.width - 4, y = box.y + 4;
+    badge.innerHTML = `<title>${esc(target.label)}</title><circle cx="${x}" cy="${y}" r="11" fill="#1168bd" stroke="#fff" stroke-width="2"/><path d="M${x - 4},${y - 3} L${x},${y + 2} L${x + 4},${y - 3}" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
+    g.appendChild(badge);
+  }
+}
+/** 下钻的首选：元素自己的视图，其次是契约盒子、组合图。 */
+function primaryLink(item) {
+  return item.links.find((l) => l.label.startsWith("Open ")) ?? item.links.find((l) => l.label.startsWith("Contract box") || l.label.startsWith("Composed in")) ?? null;
+}
+
+// ---------- 悬停：高亮相连的线与节点 ----------
+function targetOf(e) {
+  // 拖动时画布捕获了指针，事件的 target 是画布本身；按指针位置取真正的元素。
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  if (!el || !stage.contains(el)) return null;
+  e = { target: el };
+  const badge = e.target.closest?.(".badge");
+  if (badge) return { type: "badge", id: badge.dataset.open };
+  const edge = e.target.closest?.("[data-edge]");
+  if (edge) return { type: "edge", id: Number(edge.dataset.edge) };
+  const header = e.target.closest?.("[data-header]");
+  if (header && current.items[header.dataset.header]) return { type: "node", id: header.dataset.header };
+  const node = e.target.closest?.("[data-node]");
+  if (node) return { type: "node", id: node.dataset.node };
+  return null;
+}
+function related(t) {
+  const nodes = new Set(), edges = new Set();
+  if (!t) return { nodes, edges };
+  if (t.type === "node") {
+    nodes.add(t.id);
+    current.edges.forEach((e, i) => { if (e.source === t.id || e.target === t.id) { edges.add(i); nodes.add(e.source); nodes.add(e.target); } });
+  } else if (t.type === "edge") {
+    const e = current.edges[t.id];
+    if (e) { edges.add(t.id); nodes.add(e.source); nodes.add(e.target); }
+  }
+  return { nodes, edges };
+}
+function paint(t) {
+  const { nodes, edges } = related(t);
+  stage.classList.toggle("focus", nodes.size + edges.size > 0);
+  for (const el of stage.querySelectorAll("[data-node]")) el.classList.toggle("hot", nodes.has(el.dataset.node));
+  for (const el of stage.querySelectorAll("[data-edge]")) el.classList.toggle("hot", edges.has(Number(el.dataset.edge)));
+}
+let hovered = null;
+function hover(e) {
+  if (!current) return;
+  const t = targetOf(e);
+  const key = t ? `${t.type}:${t.id}` : null;
+  if (key !== hovered) { hovered = key; paint(t && t.type !== "badge" ? t : selected); }
+  if (t && t.type !== "badge") {
+    const r = canvas.getBoundingClientRect();
+    tip.innerHTML = tipText(t);
+    tip.style.display = tip.innerHTML ? "block" : "none";
+    tip.style.left = `${Math.min(e.clientX - r.left + 14, r.width - 370)}px`;
+    tip.style.top = `${e.clientY - r.top + 14}px`;
+  } else tip.style.display = "none";
+}
+canvas.addEventListener("pointerleave", () => { hovered = null; tip.style.display = "none"; paint(selected); });
+function tipText(t) {
+  if (t.type === "node") {
+    const item = current.items[t.id];
+    return item ? `<b>${esc(item.title)}</b> · ${esc(item.kind)}${item.description ? `<br>${esc(item.description)}` : ""}` : "";
+  }
+  const e = current.edges[t.id];
+  if (!e) return "";
+  const name = (id) => current.items[id]?.title ?? id;
+  const rel = e.relations.map((r) => `${esc(r.title || "—")}${r.description ? `<br><span style="opacity:.8">${esc(r.description)}</span>` : ""}`).join("<br>");
+  return `<b>${esc(name(e.source))} → ${esc(name(e.target))}</b><br>${rel || esc(e.label ?? "")}`;
+}
+
+// ---------- 单击选中、双击下钻 ----------
+function click(e) {
+  const t = targetOf(e);
+  if (t?.type === "badge") return go(t.id);
+  select(t);
+  history.replaceState(null, "", `#/${encodeURIComponent(current.id)}${t?.type === "node" ? `?node=${encodeURIComponent(t.id)}` : ""}`);
+}
+canvas.addEventListener("dblclick", (e) => {
+  const t = targetOf(e);
+  if (t?.type !== "node") return;
+  const link = primaryLink(current.items[t.id] ?? { links: [] });
+  if (link) go(link.diagram);
+});
+function select(t) {
+  selected = t;
+  for (const el of stage.querySelectorAll(".picked")) el.classList.remove("picked");
+  if (t?.type === "node") for (const el of stage.querySelectorAll(`[data-node="${CSS.escape(t.id)}"]`)) el.classList.add("picked");
+  paint(t);
+  renderDetails();
+}
+function renderDetails() {
+  const inner = details.querySelector(".inner");
+  if (!selected || !current) { details.classList.remove("open"); inner.innerHTML = ""; return; }
+  let html = `<button class="close" id="closeDetails">✕</button>`;
+  if (selected.type === "node") {
+    const item = current.items[selected.id];
+    if (!item) { details.classList.remove("open"); return; }
+    html += `<h2>${esc(item.title)}</h2><div class="kind">${esc(item.kind)}</div>`;
+    if (item.description) html += `<p>${esc(item.description)}</p>`;
+    if (item.facts.length) html += `<dl>${item.facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`;
+    if (item.links.length) html += `<div class="links">${item.links.map((l) => `<a data-go="${esc(l.diagram)}">→ ${esc(l.label)}</a>`).join("")}</div>`;
+  } else {
+    const e = current.edges[selected.id];
+    if (!e) { details.classList.remove("open"); return; }
+    const name = (id) => current.items[id]?.title ?? id;
+    html += `<h2>${esc(name(e.source))} → ${esc(name(e.target))}</h2><div class="kind">${esc(e.label ?? "")}</div>`;
+    for (const r of e.relations) html += `<div class="rel"><b>${esc(r.title || "—")}</b><br>${esc(r.source)} → ${esc(r.target)}${r.description ? `<p>${esc(r.description)}</p>` : ""}</div>`;
+    html += `<div class="links"><a data-pick="${esc(e.source)}">← ${esc(name(e.source))}</a><a data-pick="${esc(e.target)}">→ ${esc(name(e.target))}</a></div>`;
+  }
+  inner.innerHTML = html;
+  details.classList.add("open");
+}
+details.addEventListener("click", (e) => {
+  if (e.target.id === "closeDetails") return select(null);
+  const go_ = e.target.closest("a[data-go]");
+  if (go_) return go(go_.dataset.go);
+  const pick = e.target.closest("a[data-pick]");
+  if (pick) { select({ type: "node", id: pick.dataset.pick }); centerOn(pick.dataset.pick); }
+});
+function centerOn(id) {
+  const el = stage.querySelector(`[data-node="${CSS.escape(id)}"]`);
+  if (!el) return;
+  const r = canvas.getBoundingClientRect(), b = el.getBoundingClientRect(), v = viewOf(current);
+  views.set(current.id, { ...v, x: v.x + (r.left + r.width / 2) - (b.left + b.width / 2), y: v.y + (r.top + r.height / 2) - (b.top + b.height / 2) });
+  apply();
+}
+
+// ---------- 键盘 ----------
+window.addEventListener("keydown", (e) => {
+  if (e.target instanceof HTMLInputElement) return;
+  if (e.key === "/") { e.preventDefault(); $("search").focus(); }
+  else if (e.key === "Escape") select(null);
+  else if (e.key === "f" || e.key === "F") fit();
+  else if (e.key === "+" || e.key === "=") zoomCenter(1.25);
+  else if (e.key === "-") zoomCenter(0.8);
+  else if (e.key === "0") $("zoomReset").click();
+  else if (e.key === "Backspace" && current?.parent) go(current.parent);
+});
+
+// ---------- 实时更新 ----------
+function setStatus(kind, text, title = "") {
+  const s = $("status");
+  s.className = kind;
+  $("statusText").textContent = text;
+  s.title = title;
+}
+function renderProblems() {
+  const box = $("problems");
+  if (!site?.failed) { box.style.display = "none"; return; }
+  box.innerHTML = `<h4>构建失败：显示的是上一版图。修好后会自动重画。</h4>${esc(site.diagnostics.join("\n"))}`;
+  box.style.display = "block";
+}
+$("status").addEventListener("click", () => { const box = $("problems"); if (site?.failed) box.style.display = box.style.display === "none" ? "block" : "none"; });
+let loaded = -1;
+async function load() {
+  const next = await (await fetch("/api/site")).json();
+  loaded = next.version;
+  site = next;
+  const keep = current?.id;
+  current = null;
+  if (site.diagrams.length === 0) { stage.innerHTML = ""; $("empty").style.display = "flex"; $("empty").textContent = site.failed ? "构建失败，还没有可显示的图" : "设计里还没有图"; }
+  else if (!location.hash && keep === undefined) go(site.diagrams[0].id, null, true);
+  else route();
+  renderLists($("search").value);
+  renderProblems();
+  setStatus(site.failed ? "failed" : "", site.failed ? `构建失败 · ${site.diagnostics.length} 条诊断` : `实时 · ${site.diagrams.length} 张图${site.diagnostics.length ? ` · ${site.diagnostics.length} 条诊断` : ""}`, site.diagnostics.join("\n"));
+}
+function connect() {
+  const events = new EventSource("/events");
+  events.addEventListener("site", (e) => {
+    const { version, building } = JSON.parse(e.data);
+    if (building) setStatus("building", "重画中…");
+    if (!building && version !== loaded) load();
+    else if (!building && site) setStatus(site.failed ? "failed" : "", $("statusText").textContent === "重画中…" ? `实时 · ${site.diagrams.length} 张图` : $("statusText").textContent);
+  });
+  events.onerror = () => setStatus("offline", "已断开，重连中…");
+}
+connect();
+</script>
+</body>
+</html>

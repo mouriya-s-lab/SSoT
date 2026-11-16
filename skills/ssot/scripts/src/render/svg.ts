@@ -55,7 +55,7 @@ function sectionPoints(edge: ElkExtendedEdge): Point[][] {
 }
 function frame(title: string, subtitle: string, width: number, height: number, body: string, legend: string): DiagramSvg {
   const w = Math.ceil(Math.max(width, 860)), h = Math.ceil(height);
-  return { width: w, height: h, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" font-family="Arial, sans-serif" font-size="14"><defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse"><path d="M0,0 L9,4.5 L0,9 z" fill="${MUTED}"/></marker></defs><rect width="100%" height="100%" fill="#fff"/>${text(28, 34, [title], "start", 21, "bold")}${text(28, 59, [subtitle], "start", 14)}${body}<line x1="28" x2="${w - 28}" y1="${h - 65}" y2="${h - 65}" stroke="#dde1e5"/>${legend}</svg>` };
+  return { width: w, height: h, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" font-family="Arial, sans-serif" font-size="14"><defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse"><path d="M0,0 L9,4.5 L0,9 z" fill="${MUTED}"/></marker></defs><rect width="100%" height="100%" fill="#fff"/>${text(28, 34, [title], "start", 21, "bold")}${text(28, 59, [subtitle], "start", 14)}${body}<line x1="28" x2="${w - 28}" y1="${h - 65}" y2="${h - 65}" stroke="#dde1e5"/>${legend}</svg>` };
 }
 function flowPath(edge: ElkExtendedEdge, kind: "flow" | "update"): string {
   const markers = kind === "update" ? 'marker-start="url(#arrow)" marker-end="url(#arrow)"' : 'marker-end="url(#arrow)"';
@@ -387,7 +387,7 @@ export async function c4Svg(diagram: C4Diagram): Promise<DiagramSvg> {
   for (const node of [...diagram.nodes].filter((n) => n.boundary).sort((a, b) => depth(a.id) - depth(b.id))) {
     const { x, y, width, height } = box(node.id), paint = tint(node);
     const fill = paint?.fill ?? "#f6f9fc";
-    frames += `<g data-node="${esc(node.id)}"><rect x="${x}" y="${y}" width="${width}" height="${height}" rx="10" fill="${fill}" stroke="${paint?.stroke ?? "#5b6b7c"}" stroke-width="1.6" stroke-dasharray="9 5"/></g>`;
+    frames += `<g data-node="${esc(node.id)}" data-frame=""><rect x="${x}" y="${y}" width="${width}" height="${height}" rx="10" fill="${fill}" stroke="${paint?.stroke ?? "#5b6b7c"}" stroke-width="1.6" stroke-dasharray="9 5"/></g>`;
     const tags = node.tags.map((t) => ` #${t}`).join("");
     header(node.id, x + 16, y + 26, node.title, 15, `[${C4_STYLE[node.kind].notation}${node.technology ? `: ${node.technology}` : ""}]${tags}`, 12, paint?.ink ?? "#26323f", fill, frameNote(node));
   }

@@ -5,7 +5,8 @@ import { loadDiagramTools } from "../install";
 import type { POStatus, VdmSample } from "../compile/vdm";
 import type { Access, AccessRow, AccessTable } from "./access";
 import type { BoxDiagram, BoxObligation, BoxPredicate } from "./box";
-import type { BoxDrills, Drill, DrillKind } from "./drill";
+import type { BoxDrills, CompositionDrills, Drill, DrillKind } from "./drill";
+import type { PropertiesDiagram, PropertyCard, WiringSummary } from "./wiring";
 import type { TypeNode, TypeShape, TypesDiagram } from "./types";
 import type { C4Diagram, C4DiagramNode, C4NodeKind } from "./c4";
 import type { CompositionDiagram, CompositionNode } from "./composition";
@@ -127,6 +128,8 @@ const DRILL_STYLE: Readonly<Record<DrillKind, { readonly label: string; readonly
   promises: { label: "Promises", fill: CONTRACT, legend: "opens pre / post / inv and their checks" },
   types: { label: "Types", fill: CONTRACT, legend: "opens the type diagram" },
   access: { label: "Read / write", fill: CONTRACT, legend: "opens the read / write table" },
+  wiring: { label: "Wiring", fill: BEHAVIOR, legend: "opens the wiring diagram" },
+  properties: { label: "Properties", fill: BEHAVIOR, legend: "opens safety and coverage targets" },
 };
 const DRILL_HEIGHT = 20;
 const drillWidth = (kind: DrillKind): number => Math.round(sizedWidth(DRILL_STYLE[kind].label, 11) + 30);
@@ -146,10 +149,11 @@ function drillPill(right: number, cy: number, d: Drill, of: string, primary: boo
 }
 interface LegendEntry { readonly swatch: number; readonly label: string; readonly draw: (x: number, base: number) => string }
 const drillLegend = (kind: DrillKind): LegendEntry => ({ swatch: drillWidth(kind) + 8, label: DRILL_STYLE[kind].legend, draw: (x, base) => drillShape(x, base - 15, kind) });
-const typeLinkLegend: LegendEntry = {
-  swatch: sizedWidth("Type", 13) + 10, label: "underlined type · opens it in the type diagram",
-  draw: (x, base) => `<text x="${x}" y="${base}" font-size="13" fill="${CONTRACT}" text-decoration="underline">Type</text>`,
-};
+const linkLegend = (sample: string, label: string): LegendEntry => ({
+  swatch: sizedWidth(sample, 13) + 10, label,
+  draw: (x, base) => `<text x="${x}" y="${base}" font-size="13" fill="${CONTRACT}" text-decoration="underline">${esc(sample)}</text>`,
+});
+const typeLinkLegend = linkLegend("Type", "underlined type · opens it in the type diagram");
 /** 图例一行排一组项；rows 行里第 r 行的基线在 height - 32 - (rows - 1 - r) * LEGEND_ROW。 */
 function legendRow(entries: readonly LegendEntry[], base: number): string {
   let x = 28, svg = "";
@@ -158,8 +162,8 @@ function legendRow(entries: readonly LegendEntry[], base: number): string {
 }
 const legendRowWidth = (entries: readonly LegendEntry[]): number => entries.reduce((w, e) => w + e.swatch + sizedWidth(e.label, 12) + 34, 28);
 
-/** 文字里出现的类型名画成带下划线的下钻链接；links 给出一个名字的去处，不是类型名时为 null。 */
-function linkedText(x: number, y: number, lines: readonly string[], anchor: "start" | "end", size: number, links: (name: string) => Drill | null, of: string): string {
+/** 文字里出现的名字（类型、契约模块、端口）画成带下划线的下钻链接；links 给出一个名字的去处，不是链接时为 null。 */
+function linkedText(x: number, y: number, lines: readonly string[], anchor: "start" | "end", size: number, links: (name: string) => Drill | null, of: string, weight: "normal" | "bold" = "normal", fill = INK): string {
   const lead = Math.round(size * 1.36);
   const spans = lines.map((line, index) => {
     const inner = line.split(/([A-Za-z_][A-Za-z0-9_]*)/).map((part) => {
@@ -168,7 +172,7 @@ function linkedText(x: number, y: number, lines: readonly string[], anchor: "sta
     }).join("");
     return `<tspan x="${x}" dy="${index === 0 ? 0 : lead}">${inner}</tspan>`;
   }).join("");
-  return `<text x="${x}" y="${y}" text-anchor="${anchor}" font-size="${size}" fill="${INK}">${spans}</text>`;
+  return `<text x="${x}" y="${y}" text-anchor="${anchor}" font-size="${size}" font-weight="${weight}" fill="${fill}">${spans}</text>`;
 }
 
 const BOX_LABEL_GAP = 14, PORT_HEAD = 30, PORT_EXT = 19, PORT_PAD = 10;
@@ -320,9 +324,10 @@ function poLegend(x: number, y: number): string {
   return svg;
 }
 
-type StepCall = { readonly kind: "call" | "read"; readonly text: string };
+type StepCall = { readonly kind: "call" | "read"; readonly contract: string; readonly operations: readonly string[] };
 
 /**
+ * 接线这一面的组合图：drills 给出它下面一层的性质图，以及有盒子图的契约模块——步骤里的契约模块名打开它的盒子图，端口名打开该盒子承诺图里的端口。
  * 契约调用与读取写进发起它的步骤框，不画成连到契约节点的线：每个步骤都连向同一两个契约节点，
  * 这些线横穿整张变量连线图，交叉数由契约节点决定而不由组合本身决定。
  * 变量是总线：每个变量只有左侧一个写入端口、右侧一个读出端口，同一变量的线在端口处汇成一束。
@@ -330,7 +335,7 @@ type StepCall = { readonly kind: "call" | "read"; readonly text: string };
  * 不同变量的线并进同一条竖线，读图时分不清哪条线去哪个变量。update 按“步骤 → 变量”参与分层，
  * 与 put 同向，双向箭头表示步骤也读它。
  */
-export async function compositionSvg(diagram: CompositionDiagram): Promise<DiagramSvg> {
+export async function compositionSvg(diagram: CompositionDiagram, drills: CompositionDrills): Promise<DiagramSvg> {
   const { ELK } = await loadDiagramTools();
   const key = (kind: CompositionNode["kind"], id: string): string => `${kind}:${id}`;
   const calls = new Map<string, StepCall[]>();
@@ -347,13 +352,18 @@ export async function compositionSvg(diagram: CompositionDiagram): Promise<Diagr
       case "take": flows.push({ source: `${key("wire", edge.wire)}.out`, target: stepPort(edge.step, "WEST"), from: key("wire", edge.wire), to: key("step", edge.step), kind: "flow" }); break;
       case "put": flows.push({ source: stepPort(edge.step, "EAST"), target: `${key("wire", edge.wire)}.in`, from: key("step", edge.step), to: key("wire", edge.wire), kind: "flow" }); break;
       case "update": flows.push({ source: stepPort(edge.step, "EAST"), target: `${key("wire", edge.wire)}.in`, from: key("step", edge.step), to: key("wire", edge.wire), kind: "update" }); break;
-      case "call": callsOf(edge.step).push({ kind: "call", text: `${edge.contract}.${edge.operations.join(", ")}` }); break;
-      case "read": callsOf(edge.step).push({ kind: "read", text: `${edge.contract}` }); break;
+      case "call": callsOf(edge.step).push({ kind: "call", contract: edge.contract, operations: edge.operations }); break;
+      case "read": callsOf(edge.step).push({ kind: "read", contract: edge.contract, operations: [] }); break;
       default: assertNever(edge);
     }
   }
-  const callLines = (step: string): { readonly kind: StepCall["kind"]; readonly line: string }[] =>
-    (calls.get(step) ?? []).flatMap((call) => sizedWrap(`${call.kind === "call" ? "calls" : "reads"} ${call.text}`, 300, 12).map((line) => ({ kind: call.kind, line })));
+  const callLines = (step: string): { readonly call: StepCall; readonly line: string }[] =>
+    (calls.get(step) ?? []).flatMap((call) => sizedWrap(call.kind === "call" ? `calls ${call.contract}.${call.operations.join(", ")}` : `reads ${call.contract}`, 300, 12).map((line) => ({ call, line })));
+  const callLink = (call: StepCall) => (name: string): Drill | null =>
+    !drills.boxes.has(call.contract) ? null
+    : name === call.contract ? { kind: "box", diagram: `box:${call.contract}`, node: null }
+    : call.operations.includes(name) ? { kind: "promises", diagram: `promises:${call.contract}`, node: name }
+    : null;
   const typeLines = (node: CompositionNode): string[] => node.kind === "wire" ? wrap(node.type, 260) : [];
   const children: ElkNode[] = [];
   for (const node of diagram.nodes) {
@@ -396,7 +406,7 @@ export async function compositionSvg(diagram: CompositionDiagram): Promise<Diagr
         body += `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="8" fill="#eef4fa" stroke="${BEHAVIOR}" stroke-width="2"/>`;
         if (lines.length === 0) { body += text(x + width / 2, y + height / 2 + 5, [node.id], "middle", 14, "bold"); break; }
         body += text(x + width / 2, y + 22, [node.id], "middle", 14, "bold") + `<line x1="${x}" x2="${x + width}" y1="${y + 32}" y2="${y + 32}" stroke="${BEHAVIOR}" stroke-opacity="0.35"/>`;
-        lines.forEach(({ kind, line }, i) => { body += text(x + 14, y + 50 + i * 16, [line], "start", 12, kind === "call" ? "bold" : "normal", CONTRACT); });
+        lines.forEach(({ call, line }, i) => { body += linkedText(x + 14, y + 50 + i * 16, [line], "start", 12, callLink(call), key("step", node.id), call.kind === "call" ? "bold" : "normal", CONTRACT); });
         break;
       }
       case "wire":
@@ -409,14 +419,95 @@ export async function compositionSvg(diagram: CompositionDiagram): Promise<Diagr
   }
   if (children.length === 0) body += text(20, 30, ["No steps or wires"]);
   body += "</g>";
-  const height = Math.max(laid.height + 210, 330);
-  const legend = `<rect x="28" y="${height - 48}" width="20" height="16" rx="4" fill="#eef4fa" stroke="${BEHAVIOR}"/>${text(58, height - 34, ["Step · action in step"], "start", 12)}`
-    + `<rect x="230" y="${height - 48}" width="26" height="16" rx="8" fill="#fff" stroke="${MUTED}"/>${text(266, height - 34, ["Wire · var : type"], "start", 12)}`
-    + `<path d="M420,${height - 40} h35" stroke="${MUTED}" marker-end="url(#arrow)"/>${text(465, height - 34, ["Take / Put"], "start", 12)}`
-    + `<path d="M560,${height - 40} h35" stroke="${MUTED}" marker-start="url(#arrow)" marker-end="url(#arrow)"/>${text(605, height - 34, ["Update · reads and writes"], "start", 12)}`
-    + `<circle cx="800" cy="${height - 40}" r="3.5" fill="${MUTED}"/>${text(812, height - 34, ["Shared wire"], "start", 12)}`
-    + text(920, height - 34, ["calls box.operation"], "start", 12, "bold", CONTRACT) + text(1060, height - 34, ["reads box · feedback"], "start", 12, "normal", CONTRACT);
-  return frame(`Composition · ${diagram.module}`, "Steps as boxes, behavior variables as wires; contract calls and reads listed in the step that makes them", Math.max(laid.width + 56, 1240), height, body, legend);
+  const height = Math.max(laid.height + 210, 330) + LEGEND_ROW;
+  const shapes: LegendEntry[] = [
+    { swatch: 30, label: "Step · action in step", draw: (x, base) => `<rect x="${x}" y="${base - 14}" width="20" height="16" rx="4" fill="#eef4fa" stroke="${BEHAVIOR}"/>` },
+    { swatch: 36, label: "Wire · var : type", draw: (x, base) => `<rect x="${x}" y="${base - 14}" width="26" height="16" rx="8" fill="#fff" stroke="${MUTED}"/>` },
+    { swatch: 45, label: "Take / Put", draw: (x, base) => `<path d="M${x},${base - 6} h35" stroke="${MUTED}" marker-end="url(#arrow)"/>` },
+    { swatch: 45, label: "Update · reads and writes", draw: (x, base) => `<path d="M${x},${base - 6} h35" stroke="${MUTED}" marker-start="url(#arrow)" marker-end="url(#arrow)"/>` },
+    { swatch: 12, label: "Shared wire", draw: (x, base) => `<circle cx="${x + 3.5}" cy="${base - 6}" r="3.5" fill="${MUTED}"/>` },
+  ];
+  const opens: LegendEntry[] = [
+    { swatch: sizedWidth("calls box.port", 12) + 10, label: "the step calls a contract port", draw: (x, base) => text(x, base, ["calls box.port"], "start", 12, "bold", CONTRACT) },
+    { swatch: sizedWidth("reads box", 12) + 10, label: "the step reads a box's feedback", draw: (x, base) => text(x, base, ["reads box"], "start", 12, "normal", CONTRACT) },
+    linkLegend("box", "opens the contract box"), linkLegend("port", "opens the port's promises"), drillLegend("properties"),
+  ];
+  const width = Math.max(laid.width + 56, 1240, legendRowWidth(opens));
+  // 性质图的标注在标题行右端，属于整张图。
+  body += drillPill(width - 28, 30, { kind: "properties", diagram: drills.properties, node: null }, `wiring:${diagram.module}`, false);
+  const legend = legendRow(shapes, height - 32 - LEGEND_ROW) + legendRow(opens, height - 32);
+  return frame(`Composition · ${diagram.module}`, "Steps as boxes, behavior variables as wires; contract calls and reads listed in the step that makes them", width, height, body, legend, 2);
+}
+
+const WIRING_CARD_HEAD = 40;
+/** 接线索引里一张卡片的正文：担心、接进来的契约盒子、规模。 */
+function wiringCardLines(w: WiringSummary, inner: number): { readonly concern: string[]; readonly boxes: string[]; readonly counts: string } {
+  return {
+    concern: w.concern.flatMap((line) => sizedWrap(line, inner, 13.5)),
+    boxes: sizedWrap(`Boxes: ${w.boxes.join(", ") || "none"}`, inner, 13),
+    counts: `${w.steps} steps · ${w.wires} wires · ${w.properties} properties in safety · ${w.targets} coverage targets`,
+  };
+}
+/** 接线索引：接线这一面的入口，每张接线图（可运行的 Quint 模块）一张卡片；boxes：有盒子图的契约模块。 */
+export function wiringsSvg(wirings: readonly WiringSummary[], boxes: ReadonlySet<string>): DiagramSvg {
+  const inner = CARD_WIDTH - 32, lead = (size: number): number => Math.round(size * 1.36);
+  let y = 0, body = "";
+  for (const w of wirings) {
+    const l = wiringCardLines(w, inner);
+    const h = WIRING_CARD_HEAD + l.concern.length * lead(13.5) + 8 + l.boxes.length * lead(13) + 26;
+    body += `<g data-node="${esc(w.module)}"><rect x="0" y="${y}" width="${CARD_WIDTH}" height="${h}" rx="8" fill="#eef4fa" stroke="${BEHAVIOR}" stroke-width="1.6"/>`;
+    body += text(16, y + 26, [w.module], "start", 16, "bold");
+    let at = y + WIRING_CARD_HEAD + 6;
+    if (l.concern.length > 0) body += text(16, at, l.concern, "start", 13.5);
+    at += l.concern.length * lead(13.5) + 8;
+    body += linkedText(16, at, l.boxes, "start", 13, (name) => boxes.has(name) ? { kind: "box", diagram: `box:${name}`, node: null } : null, w.module);
+    at += (l.boxes.length - 1) * lead(13) + 22;
+    body += text(16, at, [l.counts], "start", 12, "normal", MUTED) + "</g>";
+    const right = CARD_WIDTH - 14;
+    body += drillPill(right, y + 21, { kind: "wiring", diagram: `composition:${w.module}`, node: null }, w.module, true);
+    body += drillPill(right - drillWidth("wiring") - 8, y + 21, { kind: "properties", diagram: `properties:${w.module}`, node: null }, w.module, false);
+    y += h + CARD_GAP;
+  }
+  const opens = [drillLegend("wiring"), drillLegend("properties"), linkLegend("box", "opens the contract box")];
+  const height = 95 + Math.max(y, 40) + 100;
+  return frame("Wirings", "Each wiring diagram (one Quint module) is drawn around one concern and wires contract boxes together", Math.max(CARD_WIDTH + 56, legendRowWidth(opens)), height, `<g transform="translate(28,95)">${body}</g>`, legendRow(opens, height - 32));
+}
+
+/** 性质图里一张卡片的正文：注释（需求编号）与等宽的原文。 */
+function propertyLines(p: PropertyCard, inner: number): CodeLine[] {
+  return [
+    ...p.comment.flatMap((c) => sizedWrap(c, inner, 12)).map((t) => plainLine(t, 12, "normal", MUTED)),
+    // SVG 文字不保留行首空白：原文的缩进换成行的起点（等宽 12px 每个字符约 7.2px）。
+    ...p.text.split("\n").flatMap((line) => {
+      const indent = (line.length - line.trimStart().length) * 7.2;
+      return sizedWrap(line.trimStart(), inner - indent, 12).map((t): CodeLine => ({ label: null, text: t, size: 12, weight: "normal", fill: INK, mono: true, indent }));
+    }),
+  ];
+}
+/** 性质图：组合图下面一层，写出 safety、它的各个合取项与覆盖目标的原文；模拟与定向模拟的结果由 ssot check 报告。 */
+export function propertiesSvg(diagram: PropertiesDiagram): DiagramSvg {
+  const inner = CARD_WIDTH - 32;
+  const cards = [
+    ...(diagram.safety ? [{ id: "safety", title: "safety · property", note: "checked on every simulated state", fill: "#eef4fa", lines: propertyLines(diagram.safety, inner) }] : []),
+    ...diagram.conjuncts.map((p) => ({ id: `property:${p.name}`, title: `${p.name} · in safety`, note: "", fill: "#eef4fa", lines: propertyLines(p, inner) })),
+    ...diagram.targets.map((t) => ({ id: `target:${t.name}`, title: `${t.name} · coverage target`, note: t.maxSteps !== null ? `max steps ${t.maxSteps}` : "default max steps", fill: "#eef7f1", lines: propertyLines(t, inner) })),
+  ];
+  let y = 0, body = "";
+  for (const card of cards) {
+    const h = CARD_HEAD + linesHeight(card.lines) + 14;
+    body += `<g data-node="${esc(card.id)}"><rect x="0" y="${y}" width="${CARD_WIDTH}" height="${h}" rx="8" fill="${card.fill}" stroke="${BEHAVIOR}" stroke-width="1.6"/>`;
+    body += text(16, y + 24, [card.title], "start", 14, "bold");
+    if (card.note) body += text(CARD_WIDTH - 16, y + 24, [card.note], "end", 12, "normal", MUTED);
+    body += codeLines(16, y + CARD_HEAD, card.lines) + "</g>";
+    y += h + CARD_GAP;
+  }
+  if (cards.length === 0) body += text(16, 24, ["No safety and no coverage targets"], "start", 13, "normal", MUTED);
+  const height = 95 + Math.max(y, 40) + 100;
+  const legend: LegendEntry[] = [
+    { swatch: 30, label: "safety and its conjuncts · must hold on every simulated state", draw: (x, base) => `<rect x="${x}" y="${base - 14}" width="20" height="16" rx="4" fill="#eef4fa" stroke="${BEHAVIOR}"/>` },
+    { swatch: 30, label: "coverage target · a directed simulation must reach it", draw: (x, base) => `<rect x="${x}" y="${base - 14}" width="20" height="16" rx="4" fill="#eef7f1" stroke="${BEHAVIOR}"/>` },
+  ];
+  return frame(`Properties · ${diagram.module}`, "What the wiring must keep and the situations it must reach; ssot check reports the simulation results", Math.max(CARD_WIDTH + 56, legendRowWidth(legend)), height, `<g transform="translate(28,95)">${body}</g>`, legendRow(legend, height - 32));
 }
 
 const C4_STYLE: Readonly<Record<C4NodeKind, { readonly notation: string; readonly fill: string; readonly stroke: string; readonly ink: string; readonly sub: string }>> = {

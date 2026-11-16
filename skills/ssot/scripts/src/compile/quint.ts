@@ -39,9 +39,10 @@ interface CompileOutput {
   readonly table?: Readonly<Record<string, { readonly id: number; readonly name?: string }>>;
 }
 
+type MapPoint = QuintLoc["start"] & { readonly index: number };
 interface SourceMap {
   readonly sourceIndex: Readonly<Record<string, string>>;
-  readonly map: Readonly<Record<string, readonly [string | number, QuintLoc["start"], QuintLoc["start"]]>>;
+  readonly map: Readonly<Record<string, readonly [string | number, MapPoint, MapPoint]>>;
 }
 
 export interface QuintAttribution {
@@ -65,12 +66,23 @@ export interface QuintDecl {
   readonly varType: { readonly module: string; readonly name: string } | null;
   /** 变量的类型是 contract::Call。 */
   readonly isCallVar: boolean;
+  /** 声明的原文与紧贴其上的 `//` 注释；没有表达式的声明（var、typedef 等）为 null。 */
+  readonly source: DeclSource | null;
+}
+
+export interface DeclSource {
+  /** 从声明所在行的首个非空字符到表达式末尾，续行去掉声明行的缩进。 */
+  readonly text: string;
+  /** 紧贴声明之上的连续 `//` 注释行（去掉 `//`）；`// ---` 开头的分节线不算。 */
+  readonly comment: readonly string[];
 }
 
 export interface QuintModule {
   readonly file: string;
   readonly name: string;
   readonly decls: readonly QuintDecl[];
+  /** 文件开头 `module` 之前的 `//` 注释行（去掉 `//`）：这张接线图的担心、盒子与步骤怎样顺接。 */
+  readonly header: readonly string[];
   /** 编译时 `quint typecheck --out` 写下的未展平 IR（对暂存文件、读本次新生成的 contract.qnt）；初态检查直接读它。 */
   readonly typecheckOut: string;
 }
@@ -328,6 +340,26 @@ export async function compileBehavior(
     walk(node);
     return { modules: [...modules].sort(), references: [...references].sort() };
   };
+  const sourceText = await Bun.file(file).text(), sourceLines = sourceText.split("\n");
+  const commentText = (line: string): string | null => { const t = line.trim(); return t.startsWith("//") ? t.slice(2).trim() : null; };
+  const sourceOf = (d: Declaration): DeclSource | null => {
+    const expr = d.expr;
+    if (expr === null || expr === undefined || typeof expr !== "object" || Array.isArray(expr) || typeof expr.id !== "number") return null;
+    const name = map.map[String(d.id)], body = map.map[String(expr.id)];
+    if (!name || !body) throw new Error(`Quint 源码映射缺少 ${moduleName} 的声明 ${d.name ?? d.id}`);
+    const lineStart = sourceText.lastIndexOf("\n", name[1].index) + 1;
+    const indent = sourceText.slice(lineStart).match(/^[ \t]*/)![0];
+    const text = sourceText.slice(lineStart + indent.length, body[2].index + 1).split("\n").map((l) => l.startsWith(indent) ? l.slice(indent.length) : l.trimStart()).join("\n");
+    const comment: string[] = [];
+    for (let i = name[1].line - 1; i >= 0; i--) {
+      const c = commentText(sourceLines[i]!);
+      if (c === null || c.startsWith("---")) break;
+      comment.unshift(c);
+    }
+    return { text, comment };
+  };
+  const header: string[] = [];
+  for (const line of sourceLines) { const c = commentText(line); if (c === null) break; header.push(c); }
   const decls: QuintDecl[] = [];
   for (const d of self.declarations) {
     const kind = declKind(d);
@@ -347,7 +379,8 @@ export async function compileBehavior(
       intLiteral,
       varType,
       isCallVar: varType?.module === "contract" && varType.name === "Call",
+      source: sourceOf(d),
     });
   }
-  return { kind: "ok", module: { file: mapFile(file), name: moduleName, decls, typecheckOut: out }, diagnostics: [] };
+  return { kind: "ok", module: { file: mapFile(file), name: moduleName, decls, header, typecheckOut: out }, diagnostics: [] };
 }

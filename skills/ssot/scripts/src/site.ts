@@ -1,4 +1,4 @@
-// 一份设计的全部图：C4 逻辑视图 → 部署视图 → 契约分层图 → 每个契约模块的盒子图、类型图、读写表 → 组合图。
+// 一份设计的全部图：C4 逻辑视图 → 部署视图 → 契约分层图 → 每个契约模块的盒子图、承诺图、类型图、读写表 → 接线索引 → 每张接线图的组合图与性质图。
 // ssot render 把每张图截成 PNG；ssot serve 把同一份结果连同节点详情与跳转交给浏览器页面。
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
@@ -15,10 +15,11 @@ import { type C4Diagram, projectC4View, projectDeploymentView } from "./render/c
 import { type CompositionDiagram, projectComposition } from "./render/composition";
 import { type LayersDiagram, projectLayers } from "./render/layers";
 import type { BoxDrills, Drill } from "./render/drill";
-import { type DiagramSvg, accessSvg, boxSvg, c4Notation, c4Svg, compositionSvg, layersSvg, obligationTally, promisesSvg, sampleText, typesSvg } from "./render/svg";
+import { type DiagramSvg, accessSvg, boxSvg, c4Notation, c4Svg, compositionSvg, layersSvg, obligationTally, promisesSvg, propertiesSvg, sampleText, typesSvg, wiringsSvg } from "./render/svg";
 import { type TypeShape, type TypesDiagram, projectTypes } from "./render/types";
+import { type PropertiesDiagram, type PropertyCard, type WiringSummary, projectProperties, projectWiring } from "./render/wiring";
 
-export type DiagramKind = "view" | "deployment" | "layers" | "box" | "promises" | "types" | "access" | "composition";
+export type DiagramKind = "view" | "deployment" | "layers" | "box" | "promises" | "types" | "access" | "wirings" | "composition" | "properties";
 
 /** 页面上一处可以跳去的图。 */
 export interface SiteLink { readonly label: string; readonly diagram: string }
@@ -102,10 +103,10 @@ export async function buildSite(structure: string): Promise<SiteBuild> {
     const obligations: readonly ProofObligation[] = checked.obligations;
     const diagnostics = [...front, ...modules.flatMap((m) => m.diagnostics)];
     if (modules.some((m) => m.kind === "failed")) return { kind: "failed", diagnostics };
-    const compositions: { readonly module: QuintModule; readonly diagram: CompositionDiagram }[] = [];
+    const compositions: { readonly module: QuintModule; readonly diagram: CompositionDiagram; readonly properties: PropertiesDiagram }[] = [];
     for (const m of modules) {
       if (m.kind !== "ok" || !isRunnable(m.module)) continue;
-      compositions.push({ module: m.module, diagram: projectComposition(await Bun.file(m.module.typecheckOut).json(), m.module, vdm.project) });
+      compositions.push({ module: m.module, diagram: projectComposition(await Bun.file(m.module.typecheckOut).json(), m.module, vdm.project), properties: projectProperties(m.module) });
     }
     compositions.sort((a, b) => a.module.name.localeCompare(b.module.name));
     const contractModules = vdm.project.modules.filter((m) => owner.has(m.name)).sort((a, b) => a.name.localeCompare(b.name));
@@ -144,7 +145,16 @@ export async function buildSite(structure: string): Promise<SiteBuild> {
       diagrams.push(typesEntry(links, types, await typesSvg(types)));
       if (table !== undefined) diagrams.push(accessEntry(links, table, accessSvg(table)));
     }
-    for (const { diagram } of compositions) diagrams.push(compositionEntry(links, diagram, await compositionSvg(diagram)));
+    // 接线这一面：接线索引是入口，每张接线图的组合图在它下面，性质图在组合图下面。
+    if (compositions.length > 0) {
+      const boxes = new Set(contractModules.map((m) => m.name));
+      const wirings = compositions.map((c) => projectWiring(c.module, c.diagram, c.properties));
+      diagrams.push(wiringsEntry(links, wirings, wiringsSvg(wirings, boxes)));
+      for (const { diagram, properties } of compositions) {
+        diagrams.push(compositionEntry(links, diagram, await compositionSvg(diagram, { properties: `properties:${diagram.module}`, boxes })));
+        diagrams.push(propertiesEntry(properties, propertiesSvg(properties)));
+      }
+    }
     return { kind: "ok", diagrams, diagnostics };
   } finally {
     rmSync(stage, { recursive: true, force: true });
@@ -407,6 +417,28 @@ function accessEntry(links: Links, table: AccessTable, svg: DiagramSvg): SiteDia
   return { id, file: `access-${table.module}.png`, kind: "access", title: `Read / write · ${table.module}`, description: table.element, parent: `box:${table.module}`, svg, items, edges: [] };
 }
 
+function wiringsEntry(links: Links, wirings: readonly WiringSummary[], svg: DiagramSvg): SiteDiagram {
+  const items: Record<string, SiteItem> = {};
+  for (const w of wirings) {
+    items[w.module] = {
+      title: w.module, kind: "Wiring diagram · Quint module", description: w.concern.join(""),
+      facts: [["Boxes", w.boxes.join(", ") || "none"], ["Steps", String(w.steps)], ["Wires", String(w.wires)], ["Properties in safety", String(w.properties)], ["Coverage targets", String(w.targets)]],
+      links: [{ label: `Composition of ${w.module}`, diagram: `composition:${w.module}` }, { label: `Properties of ${w.module}`, diagram: `properties:${w.module}` }, ...w.boxes.flatMap((m) => links.ofModule(m, "wirings"))],
+    };
+  }
+  return { id: "wirings", file: "wirings.png", kind: "wirings", title: "Wirings", description: "Each wiring diagram is drawn around one concern", parent: null, svg, items, edges: [] };
+}
+
+function propertiesEntry(p: PropertiesDiagram, svg: DiagramSvg): SiteDiagram {
+  const id = `properties:${p.module}`, items: Record<string, SiteItem> = {};
+  const item = (card: PropertyCard, kind: string, extra: readonly (readonly [string, string])[]): SiteItem =>
+    ({ title: card.name, kind, description: card.comment.join(" "), facts: [["Definition", card.text], ...extra], links: [] });
+  if (p.safety) items["safety"] = item(p.safety, "Property · safety", p.conjuncts.map((c) => ["Conjunct", c.name] as const));
+  for (const c of p.conjuncts) items[`property:${c.name}`] = item(c, "Property · in safety", []);
+  for (const t of p.targets) items[`target:${t.name}`] = item(t, "Coverage target", [["Max steps", t.maxSteps !== null ? String(t.maxSteps) : "default"]]);
+  return { id, file: `properties-${p.module}.png`, kind: "properties", title: `Properties · ${p.module}`, description: "Safety and coverage targets", parent: `composition:${p.module}`, svg, items, edges: [] };
+}
+
 function compositionEntry(links: Links, c: CompositionDiagram, svg: DiagramSvg): SiteDiagram {
   const id = `composition:${c.module}`, items: Record<string, SiteItem> = {};
   for (const node of c.nodes) {
@@ -438,7 +470,7 @@ function compositionEntry(links: Links, c: CompositionDiagram, svg: DiagramSvg):
     }
   }
   return {
-    id, file: `composition-${c.module}.png`, kind: "composition", title: `Composition · ${c.module}`, description: "Steps, wires and the contract calls each step makes", parent: null, svg, items,
+    id, file: `composition-${c.module}.png`, kind: "composition", title: `Composition · ${c.module}`, description: "Steps, wires and the contract calls each step makes", parent: "wirings", svg, items,
     // 与 compositionSvg 的 data-edge 下标一致：契约调用与读取不画成箭头。
     edges: c.edges.flatMap((e): SiteEdge[] => {
       switch (e.kind) {

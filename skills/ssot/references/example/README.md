@@ -24,4 +24,4 @@
 
 **其余位置保持不可见。** `API`、`Pricing`、`Notifier` 与外部 `Payment Gateway` 没有 `#contract`，也不出现在接线图里：它们要么是标准范式，要么尚无运行时故障观测。`Fulfillment` 与 `Cancellation` 只作为接线图里的顺接步骤与取消收束过程出现，不单独立 VDM 盒子：它们的隐患在跨边界交错上，不在自身某一个端口的数据契约上。`requirements.md` 中的 `REQ-1` 至 `REQ-4` 没有附着到 VDM 或 Quint，它们由 C4 结构回答或留给代码实现。
 
-**渲染。** `ssot render design` 导出 4 张 C4 视图（`index` → `checkoutView` → `serviceView` → `deployed`）、1 张契约分层图（`layers`，两个契约模块 `checkout_ledger` 与 `checkout_inventory` 的 import 关系）、两个契约模块各 1 张 VDM 盒子图、承诺图、类型图与读写表（`box:`、`promises:`、`types:`、`access:` 后接 `checkout_inventory` 或 `checkout_ledger`）与 1 张 Quint 组合图（`composition:cancellation`）。
+**渲染。** `ssot render design` 导出 4 张 C4 视图（`index` → `checkoutView` → `serviceView` → `deployed`）、1 张契约分层图（`layers`，两个契约模块 `checkout_ledger` 与 `checkout_inventory` 的 import 关系）、两个契约模块各 1 张 VDM 盒子图、承诺图、类型图与读写表（`box:`、`promises:`、`types:`、`access:` 后接 `checkout_inventory` 或 `checkout_ledger`）与 1 张接线索引（`wirings`）及它下面的 Quint 组合图（`composition:cancellation`）和性质图（`properties:cancellation`）。

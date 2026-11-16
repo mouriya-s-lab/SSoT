@@ -24,4 +24,4 @@
 
 ## 怎么确认
 
-`setup` 最后检查 PATH 上的 `ssot` 是不是 `~/.local/bin/ssot`，不是时打印要加进 shell 启动文件的 `export PATH=…`。照做之后在新 shell 里运行 `command -v ssot`，应当输出 `~/.local/bin/ssot` 的完整路径；再对一个设计目录运行 `ssot check <design>`，能输出诊断与 `PASS`、`FAIL` 或 `INCOMPLETE` 的结论行，运行 `ssot render <design>` 能列出每个 C4 视图、部署视图、契约分层图、盒子图、承诺图、类型图、读写表与组合图的图片路径，即装好了。
+`setup` 最后检查 PATH 上的 `ssot` 是不是 `~/.local/bin/ssot`，不是时打印要加进 shell 启动文件的 `export PATH=…`。照做之后在新 shell 里运行 `command -v ssot`，应当输出 `~/.local/bin/ssot` 的完整路径；再对一个设计目录运行 `ssot check <design>`，能输出诊断与 `PASS`、`FAIL` 或 `INCOMPLETE` 的结论行，运行 `ssot render <design>` 能列出每个 C4 视图、部署视图、契约分层图、盒子图、承诺图、类型图、读写表、接线索引、组合图与性质图的图片路径，即装好了。

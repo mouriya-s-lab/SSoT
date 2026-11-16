@@ -1,3 +1,6 @@
+// 担心：左右两条线交换之后失去同步（REQ-1），
+// 或者移动时工人计数没有前进。
+// 盒子：契约盒子 shop_worker；行为一侧：左右两条线。
 module wiring {
   import contract.* from "../.gen/contract"
   import shop_worker as Api from "../.gen/contract"
@@ -34,4 +37,17 @@ module wiring {
     store' = store, last' = NoCall,
   }
   action step = any { move, local, sync, idle }
+
+  // ---------- 性质 ----------
+  // REQ-2：右线不为负。
+  val rightNonNegative = right >= 0
+  // REQ-1：左线不为负。
+  val leftNonNegative = left >= 0
+  val safety = leftNonNegative and rightNonNegative
+  val witnessMoved = left > 0
+  // REQ-1：两条线交换过，
+  // 且左线已经前进。
+  val witnessSwapped = left > 0 and
+    right > 0
+  pure val maxSteps_witnessSwapped = 12
 }

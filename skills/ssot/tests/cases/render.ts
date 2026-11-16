@@ -9,6 +9,7 @@ import { format, global } from "../../scripts/src/diag";
 import { generateContract } from "../../scripts/src/gen/contract";
 import { bareExpression, projectBox, vdmTypeName, vdmValueText } from "../../scripts/src/render/box";
 import { projectComposition } from "../../scripts/src/render/composition";
+import { projectProperties, projectWiring } from "../../scripts/src/render/wiring";
 import { compileLikeC4 } from "../../scripts/src/compile/likec4";
 import { elementOfModule } from "../../scripts/src/model";
 import { projectC4View, projectDeploymentView } from "../../scripts/src/render/c4";
@@ -317,6 +318,24 @@ export async function verifyRenderProjections(): Promise<number> {
         { kind: "update", wire: "left", step: "sync" },
         { kind: "update", wire: "right", step: "sync" },
       ],
+    });
+    // 性质按源码次序（不是编译器或字母次序）；注释是紧贴其上的 `//` 行，分节线不算；续行去掉声明行的缩进。
+    const properties = projectProperties(quint.module);
+    assert.deepEqual(properties, {
+      module: "wiring",
+      safety: { name: "safety", comment: [], text: "val safety = leftNonNegative and rightNonNegative" },
+      conjuncts: [
+        { name: "rightNonNegative", comment: ["REQ-2：右线不为负。"], text: "val rightNonNegative = right >= 0" },
+        { name: "leftNonNegative", comment: ["REQ-1：左线不为负。"], text: "val leftNonNegative = left >= 0" },
+      ],
+      targets: [
+        { name: "witnessMoved", comment: [], text: "val witnessMoved = left > 0", maxSteps: null },
+        { name: "witnessSwapped", comment: ["REQ-1：两条线交换过，", "且左线已经前进。"], text: "val witnessSwapped = left > 0 and\n  right > 0", maxSteps: 12 },
+      ],
+    });
+    // 接线索引的担心是开头注释里“盒子：”之前的部分。
+    assert.deepEqual(projectWiring(quint.module, composition, properties), {
+      module: "wiring", concern: ["左右两条线交换之后失去同步（REQ-1），", "或者移动时工人计数没有前进。"], boxes: ["shop_worker"], steps: 4, wires: 4, properties: 2, targets: 2,
     });
 
     writeFileSync(join(stage, "behavior", "peek.qnt"), `module peek {

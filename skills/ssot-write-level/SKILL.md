@@ -34,8 +34,8 @@ description: SSoT 写一个元素的一层（LikeC4）：写出它的直接子�
 
 ## 二、写子元素、本层关系与视图
 
-1. **子元素。** 种类按 C4 层级：system 的子元素是 container，container 的子元素是 component。每个子元素一句职责描述；container 写 `technology`；数据存储带 `#datastore`。按职责与运行单元划分，不按执行步骤、角色或文件切；同层的兄弟各管一块，不重叠。
-2. **外部元素。** 外部系统与别人负责的部分不展开。
+1. **子元素。** 种类按 C4 层级：system 的子元素是 container 与 store（数据存储），container 的子元素是 component；store 不展开。每个子元素一句职责描述；container 与 store 写 `technology`。按职责与运行单元划分，不按执行步骤、角色或文件切；同层的兄弟各管一块，不重叠。
+2. **外部元素。** 外部系统与别人负责的部分不展开，是带 `#external` 的顶层 system；本系统拥有、托管在别处的存储是本系统的 store。
 3. **本层关系。** 关系连在子元素之间，以及子元素与 E 在上一层有关系的外部元素 X 之间（写 X 本身，不写 X 的子元素）。标题用本层的说法，短动词短语，顺箭头读成一句话。从外部元素指向子元素的关系也由本层声明，不改 X。
 4. **视图。** 有 E 时写 `view <V> of E`，带 `title` 与 `description`，`include *`；V 是 `index` 时写顶层视图 `view index`，不带 `of`。视图使用全局样式（`global style theme`）。
 5. **契约标记。** `#contract` 只在 `reason` 说明某个子元素已经决定写 VDM 盒子时加，只加在没有子元素的元素上。E 本来带 `#contract`、本层按结构自己的理由给了它子元素时，去掉 E 的 `#contract`：原来的盒子不再对应一个底层元素，不预设由哪个子元素继承。输出里写明这一点，之后接 `ssot-judge`，对原盒子的担心与新的子元素重新判断：可能由某个子元素、几个子元素的接线承担，也可能不再需要盒子（这时原模块由 `ssot-write-contract` 删除）。

@@ -1,6 +1,6 @@
 ---
 name: ssot-c4
-description: SSoT 结构载体（LikeC4）：按 C4 逐层放大的架构图怎样写——四种元素与层级、元素与关系写法、视图与部署、样式与图例、禁止写进图的东西、工具会拒绝什么、渲染图自查。写或评 LikeC4 的切片（ssot-write-level、ssot-write-deploy、ssot-verify-structure）时与操作 skill 一起完整读。先读 ssot。
+description: SSoT 结构载体（LikeC4）：按 C4 逐层放大的架构图怎样写——五种元素与层级、元素与关系写法、视图与部署、样式与图例、禁止写进图的东西、工具会拒绝什么、渲染图自查。写或评 LikeC4 的切片（ssot-write-level、ssot-write-deploy、ssot-verify-structure）时与操作 skill 一起完整读。先读 ssot。
 ---
 
 # ssot-c4：逐层放大的架构图
@@ -9,26 +9,28 @@ LikeC4 只用来画 C4 图。一张图是给人看的：读图的人只看这一
 
 ## 一、层级（严格按 C4）
 
-只用四种元素：
+只用五种元素：
 
 | 种类 | 是什么 | 位置 |
 |---|---|---|
 | `actor` | 使用系统的人或角色 | 只在顶层，没有子元素 |
 | `system` | 一个软件系统：本设计的系统，或它直接交互的外部系统 | 只在顶层 |
-| `container` | 一个应用或一个数据存储：必须运行起来系统才能工作的运行单元（进程、服务、数据库、文件存储、队列） | 只在 `system` 里 |
+| `container` | 一个应用：必须运行起来系统才能工作的运行单元（进程、服务、只做转递的消息队列） | 只在 `system` 里 |
+| `store` | 一个数据存储：某类事实持久存放的地方（数据库、文件存储、缓存、作为事件日志被重放的 topic） | 只在 `system` 里，没有子元素 |
 | `component` | 一个 container 里、在明确接口后面的一组相关功能；不能单独运行 | 只在 `container` 里，不再往下 |
 
 - 顶层是系统上下文：一个被设计的系统，周围是使用它的 actor 与它直接交互的外部系统。
 - 上下文与容器两层是默认的导航图。组件层只在读图的人确实需要看清某个容器的内部划分时才画。
-- 外部系统与别人负责的部分（合作方仓储节点、外部支付通道）不展开：在本设计里它们是一个框。
+- 外部系统与别人负责的部分（合作方仓储节点、外部支付通道）不展开：在本设计里它们是一个框。本系统拥有、只是托管在别处的数据库或存储是本系统的 `store`，不是外部系统。
 - 子系统、分层、角色、团队这类划分不是元素层级；需要在图上表达时，用视图里的 `group` 框起来，不新建元素。
-- 一个东西是 container 还是 component，看它能不能单独运行；是 system 还是 container，看它的实现是否在本设计的边界内。
+- 一个东西是 container 还是 component，看它能不能单独运行；是 system 还是 container，看它的实现是否在本设计的边界内；是 store 还是 container，看它是不是某类事实存放的地方：消息 topic 只把消息从生产方转给消费方时是 container，保留期内作为事件日志被重放、是事实的源头时是 store。
+- store 不展开：数据存储的内部划分（表、集合、键空间）是数据内容，不画进 C4。
 
 ## 二、元素写法
 
 - 标题是名字；`description` 一句话写它负责什么，不写它为什么存在、怎样做、依据什么。
-- container 写 `technology`：它是哪一种运行单元（如 `'Service process'`、`'Transactional database'`），或设计已经定下的技术。component 只在设计已经定下技术时写；可以替换的技术选型属于实现，不写。
-- 数据存储带 `#datastore`，外部系统带 `#external`。它们在逻辑视图里的形状、颜色与图例由全局样式统一给出（见「写法范例」），元素上不单独写样式。
+- container 与 store 写 `technology`：它是哪一种运行单元（如 `'Service process'`、`'Transactional database'`），或设计已经定下的技术。component 只在设计已经定下技术时写；可以替换的技术选型属于实现，不写。
+- 数据存储用 `store` 种类，它的形状与图例写在 `specification` 的种类样式上。外部系统带 `#external`，只能标在没有子元素的顶层 `system` 上，它在逻辑视图里的颜色与图例由全局样式给出。见「写法范例」；元素上不单独写样式。
 - `#contract` 标记一个已经决定写 VDM 盒子的元素（`ssot` 第三节的深入判断），只能写在没有子元素的元素上。没有决定深入的元素不带它。结构要不要展开、怎样划分，只按 C4 自己的理由决定；一个带 `#contract` 的元素被展开时，原盒子作废，由深入判断重新决定，结构不为保住盒子而不展开或迁就划分。
 - 架构与业务：只服务一项业务的元素及其后代标 `#business`。“架构不引用业务”指契约的引用：架构元素的契约模块不得 import 业务元素的契约模块；箭头只表示谁发起调用，不受这条约束。
 - 信任边界用部署节点上的标签表达（如 `#untrusted`）。
@@ -46,7 +48,7 @@ LikeC4 只用来画 C4 图。一张图是给人看的：读图的人只看这一
 - 顶层恰有一个视图，id 为 `index`，没有 `of`。
 - 每个有子元素的元素恰有一个 `view <id> of <fqn>`，id 取 fqn 最后一段加 `View`（与已有 id 重名时前面再加父元素 fqn 的最后一段）。`include *` 只显示该元素、它的直接子元素和与它们有关系的外部元素，不显示孙辈。
 - 每个视图写 `title` 与 `description`：`title` 说明这是哪一种图、画的是谁（“checkout 容器图”），`description` 一句话说这张图回答什么问题。渲染图顶部的标题栏只在视图有 `description` 时出现。
-- `specification` 给四种元素写 `notation`，渲染时生成图例。逻辑视图写 `global style theme` 使用全局样式。
+- `specification` 给五种元素写 `notation`，渲染时生成图例。逻辑视图写 `global style theme` 使用全局样式。
 - 需要突出或分组时用视图规则（`group`），不改模型。
 - 不写动态视图：次序归 Quint。
 
@@ -55,7 +57,7 @@ LikeC4 只用来画 C4 图。一张图是给人看的：读图的人只看这一
 部署节点用 `deploymentNode` 声明，节点里用 `instanceOf` 放 container；节点描述一句话写它是什么运行位置；信任边界用节点标签。部署视图单独画，不改变元素树。
 
 - 只有运行位置确实不同（不同主机、不同信任域）时才拆子节点；container 本身就是一个运行单元，不为它单独套一层进程节点。
-- 部署视图不应用全局样式：图上每个实例与信任边界节点的样式和 `notation` 写在部署视图里，按实例或节点的路径选中（`coreNet.ledger`、`partnerNet`）。按标签或种类选中的样式规则 LikeC4 不支持，写了以后整个视图不被导出。
+- 部署视图不应用全局样式，种类上的 `notation` 也不进部署图的图例；种类上的形状会带进部署实例。图上每个实例与信任边界节点的 `notation`，以及全局样式给的颜色，写在部署视图里，按实例或节点的路径选中（`coreNet.ledger`、`partnerNet`）。按标签或种类选中的样式规则 LikeC4 不支持，写了以后整个视图不被导出。
 - 部署视图只画容器之间的箭头：用 `exclude * -> * where source.kind is component or target.kind is component` 去掉组件一层的关系，否则同一对实例之间的多条关系会合并成一个标着 `[...]` 的箭头。
 - 部署视图的 id 就是部署切片的名字。部署模型不在任何逻辑视图里，它的诊断按全局报告，检查用 `ssot check <design> --scope index`。
 
@@ -87,7 +89,6 @@ views {
     style coreNet.service { notation 'Container' }
     style partnerNet.inventory { notation 'Container' }
     style coreNet.ledger {
-      shape storage
       notation 'Container: Data Store'
     }
     style partnerNet.gateway {
@@ -109,17 +110,17 @@ specification {
   element actor { notation 'Person' style { shape person } }
   element system { notation 'Software System' }
   element container { notation 'Container' }
+  element store { notation 'Container: Data Store' style { shape storage } }
   element component { notation 'Component' }
   tag external
-  tag datastore
   tag contract
 }
 model {
   buyer = actor 'Buyer' { description '提交订单、发起取消并查询订单状态的买家' }
   checkout = system 'checkout' {
     description '协调订单履约、库存预占、支付扣款与订单取消的交易系统'
-    ledger = container 'Ledger' {
-      #datastore #contract
+    ledger = store 'Ledger' {
+      #contract
       technology 'Transactional database'
       description '订单、订单项与结算结局的唯一权威源头'
     }
@@ -135,10 +136,6 @@ global {
     style element.tag = #external {
       color muted
       notation 'External Software System'
-    }
-    style element.tag = #datastore {
-      shape storage
-      notation 'Container: Data Store'
     }
   }
 }
@@ -190,8 +187,9 @@ view serviceView of checkout.service {
 | 规则 | 拒绝什么 |
 |---|---|
 | `compile.c4` | LikeC4 语法与引用错误 |
-| `struct.kinds` | 四种之外的元素种类；声明或使用关系种类 |
-| `struct.nesting` | actor 或 system 不在顶层；actor 有子元素；container 不在 system 里；component 不在 container 里 |
+| `struct.kinds` | 五种之外的元素种类；声明或使用关系种类 |
+| `struct.nesting` | actor 或 system 不在顶层；actor 有子元素；container 或 store 不在 system 里；store 有子元素；component 不在 container 里 |
+| `struct.external` | `#external` 标在顶层 system 以外的元素上；带 `#external` 的 system 有子元素 |
 | `struct.layering` | actor 带 `#business`；`#business` 重复标在业务元素的后代上 |
 | `struct.views` | `index` 缺失或不唯一；有子元素的元素没有恰好一个 `view of`；视图显示孙辈或无关的外部元素；动态视图 |
 | `struct.ids` | 带 `#contract` 的元素或其祖先的 id 含字母数字以外的字符（模块名由 fqn 映射） |

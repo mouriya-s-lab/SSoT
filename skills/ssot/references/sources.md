@@ -25,8 +25,9 @@
 - Perry, D. E., Wolf, A. L. (1992). "Foundations for the Study of Software Architecture." *ACM SIGSOFT SEN* 17(4)：`Architecture = {Elements, Form, Rationale}`。本项目的载体只写元素与形式；理由不进设计，见「设计只呈现结果」。
 - Kruchten, P. (1995). "The 4+1 View Model of Architecture." *IEEE Software* 12(6)：进程视图与物理视图中部件运行在哪里、随谁部署，是与模块分解不同的投影。据此把部署与信任边界写成 LikeC4 的部署模型，与元素树分开。
 - Booch, G. (2006). "On Architecture." *IEEE Software*，DOI 10.1109/MS.2006.52：架构是一组重要决定，必须保持可见。把架构与业务用 `#business` 标签分开是本项目自己的划分，这篇文章不给出它。
-- Brown, S. *The C4 model for visualising software architecture*（[c4model.com](https://c4model.com)）：person、software system、container、component 四种抽象与逐级放大的图；container 是必须运行起来系统才能工作的应用或数据存储，component 是 container 内、在明确接口后面的一组功能，不能单独运行；每个元素写类型、技术与一句职责，每张图带标题与图例、能离开旁白独立读懂（[notation](https://c4model.com/diagrams/notation)、[review checklist](https://c4model.com/diagrams/checklist)）。据此用 LikeC4 只画这四种元素、逐层视图，并以渲染图评审结构。
+- Brown, S. *The C4 model for visualising software architecture*（[c4model.com](https://c4model.com)）：person、software system、container、component 四种抽象与逐级放大的图；container 是必须运行起来系统才能工作的应用或数据存储，component 是 container 内、在明确接口后面的一组功能，不能单独运行；每个元素写类型、技术与一句职责，每张图带标题与图例、能离开旁白独立读懂（[notation](https://c4model.com/diagrams/notation)、[review checklist](https://c4model.com/diagrams/checklist)）。据此用 LikeC4 只画这四种抽象（container 拆成应用 `container` 与数据存储 `store` 两个种类，见下一条 IcePanel）、逐层视图，并以渲染图评审结构。
 - Brown, S. (2024). "The C4 Model – Misconceptions, Misuses & Mistakes." GOTO 2024（仓库 `articles/c4-model-misconceptions.blog.md` 有整理）：组件不再嵌套组件；子系统、分层等是组织结构，用分组表达，不是新的抽象层级；外部系统与别的团队的容器不画进自己的图；上下文图与容器图通常就够；图不表达决策。据此规定严格的 C4 层级、外部不展开、逻辑分组用视图 `group`、不强制展开到底、C4 里不写依据。
+- IcePanel 的模型对象类型（[Model Objects](https://developer.icepanel.io/core-concepts/model-objects)、[Modelling](https://docs.icepanel.io/core-features/modelling)）：只用 C4 的前三层；container 分成 app 与 store 两种类型，二者只能放在 system 下；external 是对象上的标记，第三方系统才是外部，本系统拥有、托管在别处的服务是自己的容器。据此把数据存储定为元素种类 `store`、把 `#external` 限定在不展开的顶层 system 上，由 `ssot check` 拒绝违反。它的教程示例展开外部系统、在部署图里新建连线，与上一条 Brown 的做法相悖，这些不采用。
 - LikeC4 官方示例 [likec4/template](https://github.com/likec4/template)：`specification` 里给元素种类写 `notation` 与形状，视图用样式突出焦点。据此规定示例与总纲里的 LikeC4 写法。
 
 ## 两条轴与依赖方向

@@ -2,9 +2,11 @@ specification {
   element actor { notation 'Person' style { shape person } }
   element system { notation 'Software System' }
   element container { notation 'Container' }
+  element store { notation 'Container: Data Store' style { shape storage } }
   element component { notation 'Component' }
   tag contract
   tag business
+  tag external
 }
 
 model {

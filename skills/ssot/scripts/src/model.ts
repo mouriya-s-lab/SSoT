@@ -2,11 +2,12 @@
 // 全部是对 Structure 的纯函数。
 import type { C4Element, Structure } from "./compile/likec4";
 
-export const ELEMENT_KINDS = ["actor", "system", "container", "component"] as const;
+export const ELEMENT_KINDS = ["actor", "system", "container", "store", "component"] as const;
 export type ElementKind = (typeof ELEMENT_KINDS)[number];
 
 export const TAG_CONTRACT = "contract";
 export const TAG_BUSINESS = "business";
+export const TAG_EXTERNAL = "external";
 
 export function parseElementKind(k: string): ElementKind | null {
   return ELEMENT_KINDS.find((kind) => kind === k) ?? null;

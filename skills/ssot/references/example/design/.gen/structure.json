@@ -38,12 +38,11 @@
     },
     {
       "fqn": "checkout.ledger",
-      "kind": "container",
+      "kind": "store",
       "parent": "checkout",
       "children": [],
       "tags": [
-        "contract",
-        "datastore"
+        "contract"
       ],
       "business": false,
       "contract": {

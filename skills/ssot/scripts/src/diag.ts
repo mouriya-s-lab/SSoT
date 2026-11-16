@@ -6,6 +6,7 @@ export const RULES = {
   "compile.quint": "quint",
   "struct.kinds": "likec4",
   "struct.nesting": "likec4",
+  "struct.external": "likec4", // #external 只能标在没有子元素的顶层 system 上
   "struct.layering": "likec4",
   "struct.views": "likec4",
   "struct.ids": "likec4",

@@ -4,6 +4,7 @@ import { type Diagnostic, assertNever, diag, element, relation, view } from "../
 import {
   ELEMENT_KINDS,
   TAG_BUSINESS,
+  TAG_EXTERNAL,
   ancestors,
   hasTag,
   isContract,
@@ -43,11 +44,14 @@ function nesting(s: Structure): Diagnostic[] {
         if (e.parent !== null) out.push(diag("struct.nesting", element(e.fqn), e.at, "system 只能在顶层"));
         break;
       case "container":
+      case "store":
       case "component": {
-        const required = k === "container" ? "system" : "container";
+        const required = k === "component" ? "container" : "system";
         const parent = e.parent === null ? null : s.elements.get(e.parent);
         if (parent?.kind !== required)
           out.push(diag("struct.nesting", element(e.fqn), e.at, `${k} 的父元素必须是 ${required}`));
+        if (k === "store" && e.children.length > 0)
+          out.push(diag("struct.nesting", element(e.fqn), e.at, "store 不能有子元素：数据存储的内部划分是数据内容，不画进 C4"));
         break;
       }
       default:
@@ -68,6 +72,18 @@ function ids(s: Structure): Diagnostic[] {
   return out;
 }
 
+
+function external(s: Structure): Diagnostic[] {
+  const out: Diagnostic[] = [];
+  for (const e of s.elements.values()) {
+    if (!hasTag(e, TAG_EXTERNAL)) continue;
+    if (parseElementKind(e.kind) !== "system" || e.parent !== null)
+      out.push(diag("struct.external", element(e.fqn), e.at, `#external 只能标在顶层 system 上，${e.fqn} 是 ${e.kind}`));
+    if (e.children.length > 0)
+      out.push(diag("struct.external", element(e.fqn), e.at, `外部系统 ${e.fqn} 不能展开：别人负责的系统在本设计里是一个框`));
+  }
+  return out;
+}
 
 function layering(s: Structure): Diagnostic[] {
   const out: Diagnostic[] = [];
@@ -149,5 +165,5 @@ function scopedViewContents(s: Structure, of: C4Element, id: string, nodes: read
 }
 
 export function structureRules(s: Structure): Diagnostic[] {
-  return [...kinds(s), ...nesting(s), ...ids(s), ...layering(s), ...views(s)];
+  return [...kinds(s), ...nesting(s), ...external(s), ...ids(s), ...layering(s), ...views(s)];
 }

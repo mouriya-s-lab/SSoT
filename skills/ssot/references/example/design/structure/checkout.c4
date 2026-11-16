@@ -11,12 +11,17 @@ specification {
   element container {
     notation 'Container'
   }
+  element store {
+    notation 'Container: Data Store'
+    style {
+      shape storage
+    }
+  }
   element component {
     notation 'Component'
   }
 
   tag external
-  tag datastore
   tag contract
   tag untrusted
 
@@ -52,8 +57,8 @@ model {
       }
     }
 
-    ledger = container 'Ledger' {
-      #datastore #contract
+    ledger = store 'Ledger' {
+      #contract
       technology 'Transactional database'
       description '订单、订单项与结算结局的唯一权威源头'
     }
@@ -116,10 +121,6 @@ global {
       color muted
       notation 'External Software System'
     }
-    style element.tag = #datastore {
-      shape storage
-      notation 'Container: Data Store'
-    }
   }
 }
 
@@ -157,7 +158,6 @@ views {
       notation 'Container'
     }
     style coreNet.ledger {
-      shape storage
       notation 'Container: Data Store'
     }
     style partnerNet.gateway {

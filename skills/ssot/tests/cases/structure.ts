@@ -24,13 +24,47 @@ export const mutations: readonly Mutation[] = [
     id: `struct-nesting-${id}`, expect: "struct.nesting", description: `${kind} 不能直接嵌套在 system 内`, regen: true,
     edits: [{ file: C4, find: "    description '下单与记账'", replace: `    description '下单与记账'\n    wrong = ${kind} 'Wrong'` }],
   })),
-  ...(["container", "component"] as const).map((kind): Mutation => ({
+  ...(["container", "store", "component"] as const).map((kind): Mutation => ({
     id: `struct-nesting-top-${kind}`, expect: "struct.nesting", description: `${kind} 不能在顶层`, regen: true,
     edits: [{ file: C4, find: top, replace: `${top}\n  wrong = ${kind} 'Wrong'` }],
   })),
   {
     id: "struct-nesting-component-component", expect: "struct.nesting", description: "component 不能继续嵌套 component", regen: true,
     edits: [{ file: C4, find: top, replace: `${top}\n  other = system 'Other' { process = container 'Process' { worker = component 'Worker' { detail = component 'Detail' } } }` }],
+  },
+  {
+    id: "struct-nesting-store-valid", expect: "struct.nesting", description: "没有子元素的 store 直接在 system 下通过", regen: true, expectPass: true,
+    edits: [{ file: C4, find: "    description '下单与记账'", replace: "    description '下单与记账'\n    archive = store 'Archive'" }], outputExcludes: ["/struct.nesting]"],
+  },
+  {
+    id: "struct-nesting-store-under-container", expect: "struct.nesting", description: "store 不能嵌在 container 里", regen: true,
+    edits: [{ file: C4, find: "      technology 'HTTP'", replace: "      technology 'HTTP'\n      cache = store 'Cache'" }, { file: C4, find: view, replace: "  view apiLayer of shop.api { include * }\n" + view }],
+    outputIncludes: ["store 的父元素必须是 system"],
+  },
+  {
+    id: "struct-nesting-store-children", expect: "struct.nesting", description: "store 不能展开出组件", regen: true,
+    edits: [
+      { file: C4, find: "    description '下单与记账'", replace: "    description '下单与记账'\n    archive = store 'Archive' { table = component 'Table' }" },
+      { file: C4, find: view, replace: "  view archiveLayer of shop.archive { include * }\n" + view },
+    ],
+    outputIncludes: ["store 不能有子元素", "component 的父元素必须是 container"],
+  },
+  {
+    id: "struct-external-leaf-system", expect: "struct.external", description: "#external 标在没有子元素的顶层 system 上通过", regen: true, expectPass: true,
+    edits: [{ file: C4, find: top, replace: `${top}\n  gateway = system 'Gateway' { #external }` }], outputExcludes: ["/struct.external]"],
+  },
+  {
+    id: "struct-external-container", expect: "struct.external", description: "#external 不能标在 container 上：本系统的托管存储不是外部系统", regen: true,
+    edits: [{ file: C4, find: "      #business #contract", replace: "      #business #contract #external" }],
+    outputIncludes: ["#external 只能标在顶层 system 上"],
+  },
+  {
+    id: "struct-external-expanded", expect: "struct.external", description: "外部系统不能展开", regen: true,
+    edits: [
+      { file: C4, find: top, replace: `${top}\n  gateway = system 'Gateway' {\n    #external\n    charge = container 'Charge'\n  }` },
+      { file: C4, find: view, replace: "  view gatewayLayer of gateway { include * }\n" + view },
+    ],
+    outputIncludes: ["外部系统 gateway 不能展开"],
   },
   {
     id: "struct-nesting-actor-children", expect: "struct.nesting", description: "actor 不能有子元素", regen: true,

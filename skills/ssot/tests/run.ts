@@ -107,7 +107,7 @@ const tasks: { readonly id: string; readonly run: () => Promise<Outcome> }[] = [
     id: "render-projections",
     run: async (): Promise<Outcome> => {
       const checks = await verifyRenderProjections();
-      return { id: "render-projections", expect: "-", ok: true, line: `${checks} 项 String Diagram 投影断言通过` };
+      return { id: "render-projections", expect: "-", ok: true, line: `${checks} 项 C4、契约分层与 String Diagram 投影断言通过` };
     },
   },
   {

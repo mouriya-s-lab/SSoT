@@ -344,20 +344,28 @@ export async function c4Svg(diagram: C4Diagram): Promise<DiagramSvg> {
     if (!at || at.x === undefined || at.y === undefined || at.width === undefined || at.height === undefined) throw new Error(`ELK 没有布置 ${id}`);
     return { x: at.x, y: at.y, width: at.width, height: at.height };
   };
-  let frames = "", edges = "", nodes = "", labels = "";
+  // 边界与分组的标题画在连线之上、垫一块与框内同色的底：穿进框的连线从标题后面经过，标题不被线划穿。
+  let frames = "", headers = "", edges = "", nodes = "", labels = "";
+  const headerRects: Rect[] = [];
+  const header = (x: number, y: number, title: string, titleSize: number, kind: string, kindSize: number, ink: string, backing: string): void => {
+    const kindX = x + sizedWidth(title, titleSize) + 10, rect = { x: x - 6, y: y - titleSize - 2, width: kindX - x + sizedWidth(kind, kindSize) + 12, height: titleSize + 10 };
+    headerRects.push(rect);
+    headers += `<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="4" fill="${backing}"/>` + text(x, y, [title], "start", titleSize, "bold", ink) + text(kindX, y, [kind], "start", kindSize, "normal", MUTED);
+  };
   const depth = (id: string): number => { let d = 0, p = byId.get(id)?.parent ?? null; while (p !== null) { d++; p = byId.get(p)?.parent ?? null; } return d; };
   for (const node of [...diagram.nodes].filter((n) => n.boundary).sort((a, b) => depth(a.id) - depth(b.id))) {
     const { x, y, width, height } = box(node.id);
     frames += `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="10" fill="#f6f9fc" stroke="#5b6b7c" stroke-width="1.6" stroke-dasharray="9 5"/>`;
-    frames += text(x + 16, y + 26, [node.title], "start", 15, "bold", "#26323f") + text(x + 16 + sizedWidth(node.title, 15) + 10, y + 26, [`[${C4_STYLE[node.kind].notation}${node.technology ? `: ${node.technology}` : ""}]`], "start", 12, "normal", MUTED);
+    header(x + 16, y + 26, node.title, 15, `[${C4_STYLE[node.kind].notation}${node.technology ? `: ${node.technology}` : ""}]`, 12, "#26323f", "#f6f9fc");
   }
   for (const group of diagram.groups) {
     const { x, y, width, height } = box(group.id);
     frames += `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="8" fill="#eef2f6" fill-opacity="0.65" stroke="#7d8b99" stroke-width="1.3" stroke-dasharray="3 4"/>`;
-    frames += text(x + 14, y + 24, [group.name], "start", 13, "bold", "#3b4754") + text(x + 14 + sizedWidth(group.name, 13) + 8, y + 24, ["[Group]"], "start", 11.5, "normal", MUTED);
+    // 分组框是半透明的 #eef2f6；底色取它叠在父框（#f6f9fc）或白底上的结果。
+    header(x + 14, y + 24, group.name, 13, "[Group]", 11.5, "#3b4754", group.parent === null ? "#f4f6f9" : "#f1f4f8");
   }
   const leaves = diagram.nodes.filter((n) => !n.boundary);
-  const labelBoxes = placeLabels(laid.edges ?? [], leaves.map((n) => box(n.id)));
+  const labelBoxes = placeLabels(laid.edges ?? [], [...leaves.map((n) => box(n.id)), ...headerRects]);
   for (const [index, edge] of (laid.edges ?? []).entries()) {
     for (const points of sectionPoints(edge)) edges += `<path d="${roundedPath(points, 12)}" fill="none" stroke="#5d6b78" stroke-width="1.6" stroke-dasharray="7 4" marker-end="url(#arrow)"/>`;
     for (const r of labelBoxes[index] ?? []) {
@@ -387,7 +395,7 @@ export async function c4Svg(diagram: C4Diagram): Promise<DiagramSvg> {
   if (diagram.nodes.some((n) => n.boundary)) legendItem(`<rect x="${legendX}" y="${height - 45}" width="22" height="16" rx="3" fill="#f6f9fc" stroke="#5b6b7c" stroke-dasharray="4 2"/>`, "Boundary · element opened in this view");
   if (diagram.groups.length) legendItem(`<rect x="${legendX}" y="${height - 45}" width="22" height="16" rx="3" fill="#eef2f6" stroke="#7d8b99" stroke-dasharray="2 2"/>`, "Group");
   legendItem(`<path d="M${legendX},${height - 37} h22" stroke="#5d6b78" stroke-width="1.6" stroke-dasharray="5 3" marker-end="url(#arrow)"/>`, "Call · initiator → callee");
-  return frame(diagram.title, diagram.description, Math.max(laid.width + 56, legendX + 28), height, `<g transform="translate(28,95)">${frames}${edges}${nodes}${labels}</g>`, legend);
+  return frame(diagram.title, diagram.description, Math.max(laid.width + 56, legendX + 28), height, `<g transform="translate(28,95)">${frames}${edges}${headers}${nodes}${labels}</g>`, legend);
 }
 
 const TIER_STYLE: Readonly<Record<LayerTier, { readonly name: string; readonly band: string; readonly fill: string; readonly stroke: string }>> = {

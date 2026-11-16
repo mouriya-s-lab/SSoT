@@ -1,6 +1,8 @@
 // 正交连线路由：节点位置由 ELK 定，连线在这里重新走。ELK 跨层级（INCLUDE_CHILDREN）的连线在每道框边上
 // 断成几段再拼起来，留下小错位、沿框边走的线和绕圈；这里在整张图的网格上一次找完整条线，代价里同时算
 // 长度、拐弯、穿框次数、与已走好的线交叉或重叠，线自然取最直、最少穿越的走法。
+import { assertNever } from "../diag";
+
 export type Point = { readonly x: number; readonly y: number };
 export type Rect = { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
 
@@ -15,10 +17,20 @@ export interface RouteRequest {
   readonly edges: readonly { readonly source: number; readonly target: number }[];
 }
 
-/** quick：短线优先走一遍，只用来比较几种摆法；full：短线优先、长线优先各走三遍取代价小的，用于最终画出的摆法。 */
+/**
+ * quick：在两倍粗的网格上短线优先走一遍，只用来比较几种摆法；full：在 STEP 网格上短线优先、长线优先各走三遍取
+ * 代价小的，用于最终画出的摆法。
+ */
 export type Effort = "quick" | "full";
 
 const STEP = 8;
+const gridStep = (effort: Effort): number => {
+  switch (effort) {
+    case "quick": return 2 * STEP;
+    case "full": return STEP;
+    default: return assertNever(effort);
+  }
+};
 /** 线与节点框之间至少留的空。 */
 const CLEARANCE = 12;
 /** 线离开或进入节点时先垂直走的长度：箭头总是正对着框边。 */
@@ -141,9 +153,10 @@ export function routeEdges(request: RouteRequest, effort: Effort): Point[][] {
 
   // 网格：每 STEP 一条线，再加上每个线头伸出后的那条线和框边正中那条线：线头落在格点上，对齐的两个框能连成一条直线。
   const terminals = ends.flatMap(({ from, to }) => [from, to]);
-  const xs = sorted([...Array.from({ length: Math.ceil((maxX - minX) / STEP) + 1 }, (_, i) => minX + i * STEP),
+  const step = gridStep(effort);
+  const xs = sorted([...Array.from({ length: Math.ceil((maxX - minX) / step) + 1 }, (_, i) => minX + i * step),
     ...terminals.map((t) => t.side === 1 || t.side === 3 ? t.line : t.center)]);
-  const ys = sorted([...Array.from({ length: Math.ceil((maxY - minY) / STEP) + 1 }, (_, i) => minY + i * STEP),
+  const ys = sorted([...Array.from({ length: Math.ceil((maxY - minY) / step) + 1 }, (_, i) => minY + i * step),
     ...terminals.map((t) => t.side === 0 || t.side === 2 ? t.line : t.center)]);
   const nx = xs.length, ny = ys.length, points = nx * ny;
   const at = (i: number, j: number): number => i * ny + j;

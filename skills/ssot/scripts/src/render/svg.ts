@@ -369,9 +369,13 @@ type Placement = (typeof PLACEMENTS)[number];
 
 function placed(graph: ElkNode, placement: Placement): ElkNode {
   const leaves = new Set<string>();
+  const collect = (node: ElkNode): void => { if (node.children?.length) node.children.forEach(collect); else leaves.add(node.id); };
+  (graph.children ?? []).forEach(collect);
+  const end = (id: string, port: "in" | "out"): string => placement.ports === "center" && leaves.has(id) ? `${id}\u0000${port}` : id;
+  const edges = (list: ElkExtendedEdge[] | undefined): ElkExtendedEdge[] | undefined =>
+    list?.map((edge) => ({ ...edge, sources: edge.sources.map((id) => end(id, "out")), targets: edge.targets.map((id) => end(id, "in")) }));
   const visit = (node: ElkNode): ElkNode => {
-    if (node.children?.length) return { ...node, children: node.children.map(visit) };
-    leaves.add(node.id);
+    if (node.children?.length) return { ...node, children: node.children.map(visit), edges: edges(node.edges) };
     if (placement.ports === "spread") return node;
     const width = node.width ?? 0, height = node.height ?? 0;
     return {
@@ -383,33 +387,37 @@ function placed(graph: ElkNode, placement: Placement): ElkNode {
       ],
     };
   };
-  const children = (graph.children ?? []).map(visit);
-  const end = (id: string, port: "in" | "out"): string => placement.ports === "center" && leaves.has(id) ? `${id}\u0000${port}` : id;
+  // 节点放置策略要写在每个框上：框各自排版时（nested）不从父框继承。
   const bk: Record<string, string> = placement.strategy === "BRANDES_KOEPF" ? { "elk.layered.nodePlacement.bk.fixedAlignment": "BALANCED", "elk.layered.nodePlacement.bk.edgeStraightening": "IMPROVE_STRAIGHTNESS" } : {};
-  return {
-    ...graph,
-    layoutOptions: { ...graph.layoutOptions, "elk.layered.nodePlacement.strategy": placement.strategy, ...bk },
-    children,
-    edges: (graph.edges ?? []).map((edge) => ({ ...edge, sources: edge.sources.map((id) => end(id, "out")), targets: edge.targets.map((id) => end(id, "in")) })),
-  };
+  const strategy = (node: ElkNode): ElkNode => node.children?.length
+    ? { ...node, layoutOptions: { ...node.layoutOptions, "elk.layered.nodePlacement.strategy": placement.strategy, ...bk }, children: node.children.map(strategy) }
+    : node;
+  return strategy({ ...visit(graph), edges: edges(graph.edges) });
 }
 
 /**
- * 按每种摆法摆一次、快速走一遍线（quick），取线的代价最小的摆法，再对它完整地走线（full）。request 由框的位置
- * 给出路由要的框、标题与线。
+ * 每张候选图按每种摆法摆一次、快速走一遍线（quick），取线的代价最小的摆法，再对它完整地走线（full）。request 由框
+ * 的位置给出路由要的框、标题与线。
  */
-async function bestLayout(graph: ElkNode, request: (box: (id: string) => Rect) => RouteRequest): Promise<{ readonly box: (id: string) => Rect; readonly routes: Point[][] }> {
+async function bestLayout(graphs: readonly ElkNode[], request: (box: (id: string) => Rect) => RouteRequest): Promise<{ readonly box: (id: string) => Rect; readonly routes: Point[][] }> {
   const { ELK } = await loadDiagramTools();
   const elk = new ELK();
-  const tried = await Promise.all(PLACEMENTS.map(async (placement) => {
+  const tried = await Promise.all(graphs.flatMap((graph) => PLACEMENTS.map((placement) => ({ graph, placement }))).map(async ({ graph, placement }) => {
     const laid = await elk.layout(placed(graph, placement));
-    const at = new Map<string, ElkNode>();
-    const collect = (node: ElkNode): void => { at.set(node.id, node); for (const child of node.children ?? []) collect(child); };
-    collect(laid);
+    // ELK 给的坐标相对父框（elk.json.shapeCoords 取 ROOT 时，各框分开排版的子节点会换算错），这里逐层累加成绝对坐标。
+    // 取整到像素：路由网格把线头所在的线取到 0.5 像素，框边是小数时线头会落进框四周的留空，线就走不出来。
+    const at = new Map<string, Rect>();
+    const collect = (node: ElkNode, dx: number, dy: number): void => {
+      if (node.x === undefined || node.y === undefined || node.width === undefined || node.height === undefined) throw new Error(`ELK 没有布置 ${node.id}`);
+      const x = dx + node.x, y = dy + node.y;
+      at.set(node.id, { x: Math.round(x), y: Math.round(y), width: Math.round(node.width), height: Math.round(node.height) });
+      for (const child of node.children ?? []) collect(child, x, y);
+    };
+    for (const child of laid.children ?? []) collect(child, 0, 0);
     const box = (id: string): Rect => {
-      const n = at.get(id);
-      if (!n || n.x === undefined || n.y === undefined || n.width === undefined || n.height === undefined) throw new Error(`ELK 没有布置 ${id}`);
-      return { x: n.x, y: n.y, width: n.width, height: n.height };
+      const r = at.get(id);
+      if (!r) throw new Error(`ELK 没有布置 ${id}`);
+      return r;
     };
     return { box, cost: routeCost(routeEdges(request(box), "quick")) };
   }));
@@ -435,42 +443,91 @@ function frameHeader(spec: Omit<FrameHeader, "rect">): FrameHeader {
 }
 
 /**
+ * 框里的节点怎样分层。global：所有节点一起分层（ELK 的 INCLUDE_CHILDREN），跨框的线尽量拉直，但一串框按线首尾
+ * 相接时，框沿对角线一级级错开，图又高又空。nested：每个框只按框内的线把子节点排好（上下分层），框之间的线提升到
+ * 两端所在的那两个兄弟框之间，含有子框的那一层左右排开：调用方在左、框在中、被调方在右，框各自紧凑。
+ * 哪种好取决于图，由 bestLayout 按线的代价挑。
+ */
+export type Hierarchy = "global" | "nested";
+/** 没有框时两种分层是同一张图，只摆一次。 */
+const hierarchiesOf = (diagram: C4Diagram): readonly Hierarchy[] => diagram.nodes.some((n) => n.boundary) || diagram.groups.length > 0 ? ["global", "nested"] : ["global"];
+
+/**
  * C4 图交给 ELK 的图：嵌套的边界与分组、叶子节点的尺寸与箭头。
  * 同一张图的叶子取同一高度，同一层的框上下边都对齐；标签不进 ELK（见 placeLabels），层距留出放标签的竖段。
  */
-function c4Graph(diagram: C4Diagram): ElkNode {
+function c4Graph(diagram: C4Diagram, hierarchy: Hierarchy): ElkNode {
   const leafHeight = Math.max(0, ...diagram.nodes.filter((node) => !node.boundary).map((node) => c4NodeText(node).height));
   // 间距不会从父框继承：INCLUDE_CHILDREN 下框里的层距、节点距取的是框自己的设置，不写就是 ELK 的默认 20。
   const spacing = {
-    "elk.spacing.nodeNode": "72", "elk.layered.spacing.nodeNodeBetweenLayers": "104", "elk.spacing.edgeNode": "26",
+    // 框里没有线相连的节点各成一个连通分量，ELK 按 componentComponent 把分量拼在一起，默认只隔 20。
+    "elk.spacing.nodeNode": "72", "elk.spacing.componentComponent": "72", "elk.layered.spacing.nodeNodeBetweenLayers": "104", "elk.spacing.edgeNode": "26",
     "elk.spacing.edgeEdge": "16", "elk.layered.spacing.edgeNodeBetweenLayers": "26", "elk.layered.spacing.edgeEdgeBetweenLayers": "14",
   };
-  const childrenOf = (container: string | null): ElkNode[] => [
-    ...diagram.groups.filter((group) => group.parent === container).map((group): ElkNode => ({
+  // nested 时每个框单独排版，方向、算法同样不继承，每个框都写上。含子框的那一层左右排开。
+  const holdsFrames = (frame: string | null): boolean => diagram.groups.some((g) => g.parent === frame) || diagram.nodes.some((n) => n.boundary && n.parent === frame && n.group === null);
+  const own = (frame: string | null): Record<string, string> => {
+    switch (hierarchy) {
+      case "global": return {};
+      case "nested": return { "elk.algorithm": "layered", "elk.direction": holdsFrames(frame) ? "RIGHT" : "DOWN", "elk.edgeRouting": "ORTHOGONAL", "elk.layered.thoroughness": "100" };
+      default: return assertNever(hierarchy);
+    }
+  };
+  // 每个节点、分组所在的框：分组的框是父元素，节点的框是分组（有分组时）或父元素。null 是图的顶层。
+  const container = new Map<string, string | null>([
+    ...diagram.groups.map((group): [string, string | null] => [group.id, group.parent]),
+    ...diagram.nodes.map((node): [string, string | null] => [node.id, node.group ?? node.parent]),
+  ]);
+  // 从 id 往外到顶层的一串框，首项是 id 自己，末项是 null。
+  const chain = (id: string): (string | null)[] => {
+    const out: (string | null)[] = [id];
+    let c = container.get(id) ?? null;
+    while (c !== null) { out.push(c); c = container.get(c) ?? null; }
+    out.push(null);
+    return out;
+  };
+  // nested：线提升到两端最近的公共框里，两端换成该框下包含它们的那两个子框或节点；同一对只留一条。
+  const lifted = new Map<string | null, Map<string, ElkExtendedEdge>>();
+  for (const [index, edge] of diagram.edges.entries()) {
+    if (hierarchy === "global") continue;
+    const up = chain(edge.source), down = chain(edge.target);
+    const common = up.find((c) => c !== edge.source && down.includes(c)) ?? null;
+    const source = up[up.indexOf(common) - 1]!, target = down[down.indexOf(common) - 1]!;
+    if (source === null || target === null || source === target) continue;
+    const edges = lifted.get(common) ?? new Map<string, ElkExtendedEdge>();
+    if (!edges.has(`${source}\u0000${target}`)) edges.set(`${source}\u0000${target}`, { id: `edge${index}`, sources: [source], targets: [target] });
+    lifted.set(common, edges);
+  }
+  const edgesIn = (frame: string | null): ElkExtendedEdge[] => [...(lifted.get(frame)?.values() ?? [])];
+  const childrenOf = (frame: string | null): ElkNode[] => [
+    ...diagram.groups.filter((group) => group.parent === frame).map((group): ElkNode => ({
       id: group.id,
-      layoutOptions: { ...spacing, "elk.padding": "[top=60,left=40,bottom=40,right=40]" },
+      layoutOptions: { ...own(group.id), ...spacing, "elk.padding": "[top=60,left=40,bottom=40,right=40]" },
       children: diagram.nodes.filter((node) => node.group === group.id).map(elkNode),
+      edges: edgesIn(group.id),
     })),
-    ...diagram.nodes.filter((node) => node.parent === container && node.group === null).map(elkNode),
+    ...diagram.nodes.filter((node) => node.parent === frame && node.group === null).map(elkNode),
   ];
   function elkNode(node: C4DiagramNode): ElkNode {
     const partition: Record<string, string> = node.parent === null ? { "elk.partitioning.partition": node.kind === "person" ? "0" : "1" } : {};
-    if (node.boundary) return { id: node.id, layoutOptions: { ...spacing, ...partition, "elk.padding": `[top=${70 + frameNote(node).length * 17},left=40,bottom=40,right=40]` }, children: childrenOf(node.id) };
+    if (node.boundary) return { id: node.id, layoutOptions: { ...own(node.id), ...spacing, ...partition, "elk.padding": `[top=${70 + frameNote(node).length * 17},left=40,bottom=40,right=40]` }, children: childrenOf(node.id), edges: edgesIn(node.id) };
     return { id: node.id, width: C4_NODE_WIDTH, height: leafHeight, layoutOptions: partition };
   }
   return {
     id: "root",
     layoutOptions: {
-      "elk.algorithm": "layered", "elk.direction": "DOWN", "elk.hierarchyHandling": "INCLUDE_CHILDREN", "elk.edgeRouting": "ORTHOGONAL",
+      "elk.algorithm": "layered", "elk.edgeRouting": "ORTHOGONAL", "elk.direction": "DOWN", ...own(null),
+      "elk.hierarchyHandling": hierarchy === "global" ? "INCLUDE_CHILDREN" : "SEPARATE_CHILDREN",
       "elk.partitioning.activate": "true", "elk.layered.thoroughness": "100", ...spacing,
-      "elk.json.shapeCoords": "ROOT", "elk.json.edgeCoords": "ROOT", "elk.padding": "[top=10,left=10,bottom=10,right=10]",
+      "elk.padding": "[top=10,left=10,bottom=10,right=10]",
     },
     children: childrenOf(null),
-    edges: diagram.edges.map((edge, index) => ({ id: `edge${index}`, sources: [edge.source], targets: [edge.target] })),
+    edges: hierarchy === "global" ? diagram.edges.map((edge, index) => ({ id: `edge${index}`, sources: [edge.source], targets: [edge.target] })) : edgesIn(null),
   };
 }
 
-export async function c4Svg(diagram: C4Diagram): Promise<DiagramSvg> {
+/** hierarchies：参与挑选的分层方式；不给时按图里有没有框决定。 */
+export async function c4Svg(diagram: C4Diagram, hierarchies: readonly Hierarchy[] = hierarchiesOf(diagram)): Promise<DiagramSvg> {
   const byId = new Map(diagram.nodes.map((node) => [node.id, node]));
   const tagKeys = [...new Set(diagram.nodes.filter((n) => n.boundary && n.tags.length > 0).map((n) => n.tags.map((t) => `#${t}`).join(" ")))].sort();
   const tint = (node: C4DiagramNode) => node.tags.length === 0 ? null : TAG_TINTS[tagKeys.indexOf(node.tags.map((t) => `#${t}`).join(" ")) % TAG_TINTS.length]!;
@@ -486,7 +543,7 @@ export async function c4Svg(diagram: C4Diagram): Promise<DiagramSvg> {
   ];
   const ids = [...leaves.map((n) => n.id), ...boundaries.map((n) => n.id), ...diagram.groups.map((g) => g.id)];
   const indexOf = (id: string): number => { const k = ids.indexOf(id); if (k < 0) throw new Error(`视图 ${diagram.view} 的连线引用了图上没有的 ${id}`); return k; };
-  const { box, routes } = await bestLayout(c4Graph(diagram), (box) => ({
+  const { box, routes } = await bestLayout(hierarchies.map((h) => c4Graph(diagram, h)), (box) => ({
     boxes: ids.map((id, k): RouteBox => ({ kind: k < leaves.length ? "node" : "frame", rect: box(id) })),
     headers: headersAt(box).map((h) => h.rect),
     edges: diagram.edges.map((edge) => ({ source: indexOf(edge.source), target: indexOf(edge.target) })),
@@ -568,7 +625,7 @@ export async function layersSvg(diagram: LayersDiagram): Promise<DiagramSvg> {
     edges: diagram.imports.map((i, index) => ({ id: `import${index}`, sources: [i.from], targets: [i.to] })),
   };
   const ids = diagram.modules.map((m) => m.module);
-  const { box, routes: raw } = await bestLayout(graph, (box) => ({
+  const { box, routes: raw } = await bestLayout([graph], (box) => ({
     boxes: ids.map((id): RouteBox => ({ kind: "node", rect: box(id) })),
     headers: [],
     edges: diagram.imports.map((i) => ({ source: ids.indexOf(i.from), target: ids.indexOf(i.to) })),

@@ -12,6 +12,7 @@ import { elementOfModule } from "../../scripts/src/model";
 import { projectC4View, projectDeploymentView } from "../../scripts/src/render/c4";
 import { projectLayers } from "../../scripts/src/render/layers";
 import { type Point, type Rect, routeEdges } from "../../scripts/src/render/route";
+import { c4Svg } from "../../scripts/src/render/svg";
 
 const C4_FIXTURE = `specification {
   element actor { notation 'Person' style { shape person } }
@@ -109,6 +110,23 @@ async function verifyC4AndLayerProjections(stage: string, fixture: string): Prom
     "partner.pay": { element: "pay", kind: "external", technology: null, tags: [], parent: "partner", boundary: false },
   });
   assert.deepEqual(deployed.edges.map((e) => `${e.source} -> ${e.target} ${e.label}`).sort(), ["core.api -> core.ledger writes", "core.api -> partner.pay charges", "core.edge.web -> core.api forwards"]);
+  // 各框分开排版（nested）时，节点画在自己的框里，并排的框互不重叠。
+  const nested = (await c4Svg(deployed, ["nested"])).svg;
+  const drawn = (id: string): Rect => {
+    const m = new RegExp(`<g data-node="${id.replaceAll(".", "\\.")}"[^>]*><rect x="([-\\d.]+)" y="([-\\d.]+)" width="([\\d.]+)" height="([\\d.]+)"`).exec(nested);
+    assert.ok(m, `图上没有画出 ${id}`);
+    return { x: Number(m[1]), y: Number(m[2]), width: Number(m[3]), height: Number(m[4]) };
+  };
+  const within = (inner: string, outer: string): void => {
+    const a = drawn(inner), b = drawn(outer);
+    assert.ok(a.x >= b.x && a.y >= b.y && a.x + a.width <= b.x + b.width && a.y + a.height <= b.y + b.height, `${inner} ${JSON.stringify(a)} 不在 ${outer} ${JSON.stringify(b)} 里`);
+  };
+  within("core.api", "core");
+  within("core.edge", "core");
+  within("core.edge.web", "core.edge");
+  within("partner.pay", "partner");
+  const [core, partner] = [drawn("core"), drawn("partner")];
+  assert.ok(core.x + core.width <= partner.x || partner.x + partner.width <= core.x || core.y + core.height <= partner.y || partner.y + partner.height <= core.y, "core 与 partner 两个框重叠");
 
   const contracts = await compileVdm(["shop.api.vdmsl", "shop.ledger.vdmsl"].map((f) => join(fixture, "..", "base", "contract", f)), () => global, new Set());
   assert.equal(contracts.kind, "ok", contracts.diagnostics.map(format).join("\n"));

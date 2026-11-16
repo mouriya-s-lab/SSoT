@@ -413,8 +413,13 @@ function placed(graph: ElkNode, placement: Placement): ElkNode {
 }
 
 /**
- * 每张候选图按每种摆法摆一次、快速走一遍线（quick），取线的代价最小的摆法，再对它完整地走线（full）。request 由框
- * 的位置给出路由要的框、标题与线。
+ * 整图适应一个 FIT_VIEW 大小的窗口（serve 页面在常见笔记本上的图区）时，缩放低于 FIT_SCALE 的摆法，线的代价按
+ * FIT_SCALE / 缩放 放大：框沿对角线错开的摆法线不一定更长，但画布又高又空，缩到屏幕上看不清。缩放够大的摆法只比线。
+ */
+const FIT_VIEW = { width: 1600, height: 1000 }, FIT_SCALE = 0.4;
+/**
+ * 每张候选图按每种摆法摆一次、快速走一遍线（quick），取代价最小的摆法，再对它完整地走线（full）。request 由框的
+ * 位置给出路由要的框、标题与线。
  */
 async function bestLayout(graphs: readonly ElkNode[], request: (box: (id: string) => Rect) => RouteRequest): Promise<{ readonly box: (id: string) => Rect; readonly routes: Point[][] }> {
   const { ELK } = await loadDiagramTools();
@@ -436,7 +441,8 @@ async function bestLayout(graphs: readonly ElkNode[], request: (box: (id: string
       if (!r) throw new Error(`ELK 没有布置 ${id}`);
       return r;
     };
-    return { box, cost: routeCost(routeEdges(request(box), "quick")) };
+    const fit = Math.min(FIT_VIEW.width / (laid.width ?? 1), FIT_VIEW.height / (laid.height ?? 1));
+    return { box, cost: routeCost(routeEdges(request(box), "quick")) * Math.max(1, FIT_SCALE / fit) };
   }));
   const { box } = tried.reduce((best, next) => next.cost < best.cost ? next : best);
   return { box, routes: routeEdges(request(box), "full") };

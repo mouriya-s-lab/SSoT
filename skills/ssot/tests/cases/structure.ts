@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { C4View, Structure } from "../../scripts/src/compile/likec4";
-import { renderOrder } from "../../scripts/src/render";
+import { renderOrder } from "../../scripts/src/site";
 import { structureRules } from "../../scripts/src/rules/structure";
 import type { Mutation } from "../mutations";
 

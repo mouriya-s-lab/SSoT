@@ -237,6 +237,8 @@ const TAG_TINTS: readonly { readonly fill: string; readonly stroke: string; read
   { fill: "#eef7f1", stroke: "#2f7d4f", ink: "#1d5233" },
   { fill: "#fdf8e8", stroke: "#a07a12", ink: "#6a510b" },
 ];
+/** C4 记法名（图例与节点里的方括号文字），ssot serve 的详情面板用同一套名字。 */
+export const c4Notation = (kind: C4NodeKind): string => C4_STYLE[kind].notation;
 const C4_NODE_WIDTH = 248, C4_PERSON_HEAD = 30, C4_STORE_CAP = 12;
 
 interface C4NodeText { readonly title: string[]; readonly type: string; readonly description: string[]; readonly height: number }

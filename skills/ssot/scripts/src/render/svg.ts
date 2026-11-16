@@ -5,6 +5,7 @@ import { loadDiagramTools } from "../install";
 import type { POStatus, VdmSample } from "../compile/vdm";
 import type { Access, AccessRow, AccessTable } from "./access";
 import type { BoxDiagram, BoxObligation, BoxPredicate } from "./box";
+import type { BoxDrills, Drill, DrillKind } from "./drill";
 import type { TypeNode, TypeShape, TypesDiagram } from "./types";
 import type { C4Diagram, C4DiagramNode, C4NodeKind } from "./c4";
 import type { CompositionDiagram, CompositionNode } from "./composition";
@@ -120,23 +121,77 @@ function predicateBlock(label: string, p: BoxPredicate, width: number): CodeLine
   ];
 }
 
-const BOX_LABEL_GAP = 14, BOX_WIDTH = 600, PORT_HEAD = 24, PORT_PAD = 14;
-export async function boxSvg(diagram: BoxDiagram): Promise<DiagramSvg> {
+const DRILL_STYLE: Readonly<Record<DrillKind, { readonly label: string; readonly fill: string; readonly legend: string }>> = {
+  view: { label: "Sub-view", fill: "#1168bd", legend: "opens the element's own view" },
+  box: { label: "Contract box", fill: CONTRACT, legend: "opens the element's contract box" },
+  promises: { label: "Promises", fill: CONTRACT, legend: "opens pre / post / inv and their checks" },
+  types: { label: "Types", fill: CONTRACT, legend: "opens the type diagram" },
+  access: { label: "Read / write", fill: CONTRACT, legend: "opens the read / write table" },
+};
+const DRILL_HEIGHT = 20;
+const drillWidth = (kind: DrillKind): number => Math.round(sizedWidth(DRILL_STYLE[kind].label, 11) + 30);
+/** 下钻标注的外形：带种类名与 ▸ 的圆角牌，左上角在 (x, y)。 */
+function drillShape(x: number, y: number, kind: DrillKind): string {
+  const style = DRILL_STYLE[kind], w = drillWidth(kind);
+  return `<rect x="${x}" y="${y}" width="${w}" height="${DRILL_HEIGHT}" rx="10" fill="${style.fill}" stroke="#fff" stroke-width="1.5"/>`
+    + text(x + 10, y + 14, [style.label], "start", 11, "bold", "#fff")
+    + `<path d="M${x + w - 15},${y + 6} l4,4 l-4,4" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`;
+}
+/** 下钻标注的属性：of 是标注所属的节点；双击节点时打开它 primary 的那一枚。 */
+const drillAttrs = (d: Drill, of: string, primary: boolean): string =>
+  `class="drill" data-open="${esc(d.diagram)}"${d.node !== null ? ` data-open-node="${esc(d.node)}"` : ""} data-of="${esc(of)}"${primary ? ' data-primary=""' : ""}`;
+/** 一枚下钻标注，右缘在 right，竖直居中于 cy。 */
+function drillPill(right: number, cy: number, d: Drill, of: string, primary: boolean): string {
+  return `<g ${drillAttrs(d, of, primary)}><title>Open ${esc(DRILL_STYLE[d.kind].label)}</title>${drillShape(right - drillWidth(d.kind), cy - DRILL_HEIGHT / 2, d.kind)}</g>`;
+}
+interface LegendEntry { readonly swatch: number; readonly label: string; readonly draw: (x: number, base: number) => string }
+const drillLegend = (kind: DrillKind): LegendEntry => ({ swatch: drillWidth(kind) + 8, label: DRILL_STYLE[kind].legend, draw: (x, base) => drillShape(x, base - 15, kind) });
+const typeLinkLegend: LegendEntry = {
+  swatch: sizedWidth("Type", 13) + 10, label: "underlined type · opens it in the type diagram",
+  draw: (x, base) => `<text x="${x}" y="${base}" font-size="13" fill="${CONTRACT}" text-decoration="underline">Type</text>`,
+};
+/** 图例一行排一组项；rows 行里第 r 行的基线在 height - 32 - (rows - 1 - r) * LEGEND_ROW。 */
+function legendRow(entries: readonly LegendEntry[], base: number): string {
+  let x = 28, svg = "";
+  for (const e of entries) { svg += e.draw(x, base) + text(x + e.swatch, base, [e.label], "start", 12); x += e.swatch + sizedWidth(e.label, 12) + 34; }
+  return svg;
+}
+const legendRowWidth = (entries: readonly LegendEntry[]): number => entries.reduce((w, e) => w + e.swatch + sizedWidth(e.label, 12) + 34, 28);
+
+/** 文字里出现的类型名画成带下划线的下钻链接；links 给出一个名字的去处，不是类型名时为 null。 */
+function linkedText(x: number, y: number, lines: readonly string[], anchor: "start" | "end", size: number, links: (name: string) => Drill | null, of: string): string {
+  const lead = Math.round(size * 1.36);
+  const spans = lines.map((line, index) => {
+    const inner = line.split(/([A-Za-z_][A-Za-z0-9_]*)/).map((part) => {
+      const d = part === "" ? null : links(part);
+      return d === null ? esc(part) : `<tspan ${drillAttrs(d, of, false)} fill="${CONTRACT}" text-decoration="underline">${esc(part)}</tspan>`;
+    }).join("");
+    return `<tspan x="${x}" dy="${index === 0 ? 0 : lead}">${inner}</tspan>`;
+  }).join("");
+  return `<text x="${x}" y="${y}" text-anchor="${anchor}" font-size="${size}" fill="${INK}">${spans}</text>`;
+}
+
+const BOX_LABEL_GAP = 14, PORT_HEAD = 30, PORT_EXT = 19, PORT_PAD = 10;
+/**
+ * 契约盒子图只画盒子这一层：端口、线、反馈线、每个端口读写的分量与证明义务的状态色。
+ * 下面一层由标注打开：端口与状态的“Promises”打开承诺图，状态的“Read / write”打开读写表，线上与状态里带下划线的类型名打开类型图。
+ */
+export async function boxSvg(diagram: BoxDiagram, drills: BoxDrills): Promise<DiagramSvg> {
   const { ELK } = await loadDiagramTools();
-  const boxWidth = Math.max(BOX_WIDTH, ...diagram.ports.map((port) => widthOf(port.name) + 260));
-  const inner = boxWidth - 32;
-  // 每个端口一块：名字与义务一行，ext 一行，pre、post 各自折行与采样计数；连线接在名字那行。
-  const blocks = diagram.ports.map((port) => {
-    const lines: CodeLine[] = [
-      ...(port.ext ? [plainLine(`rd ${port.ext.rd.join(", ") || "—"}  |  wr ${port.ext.wr.join(", ") || "—"}`, 12, "normal", MUTED)] : []),
-      ...(port.pre ? predicateBlock("pre", port.pre, inner) : []),
-      ...(port.post ? predicateBlock("post", port.post, inner) : []),
-    ];
-    return { port, lines, height: PORT_HEAD + linesHeight(lines) + PORT_PAD };
-  });
-  const offsets = blocks.reduce<number[]>((out, b, i) => [...out, i === 0 ? 8 : out[i - 1]! + blocks[i - 1]!.height], []);
-  const anchor = (index: number): number => offsets[index]! + 18;
-  const boxHeight = Math.max(100, blocks.reduce((h, b) => h + b.height, 0) + 16);
+  const typeLink = (name: string): Drill | null => {
+    const id = drills.typeIds.get(name);
+    return id === undefined ? null : { kind: "types", diagram: drills.types, node: id };
+  };
+  const promises = (node: string): Drill => ({ kind: "promises", diagram: drills.promises, node });
+  const portWidth = (port: BoxDiagram["ports"][number]): number =>
+    widthOf(`${port.name}  · op`) + 24 + obligationRowWidth(port.obligations) + 12 + drillWidth("promises") + 28;
+  const stateDrills: Drill[] = diagram.state ? [...(drills.access !== null ? [{ kind: "access", diagram: drills.access, node: null } as const] : []), promises(`state:${diagram.state.name}`)] : [];
+  const panelPills = stateDrills.reduce((w, d) => w + drillWidth(d.kind) + 8, 0);
+  const boxWidth = Math.ceil(Math.max(360, ...diagram.ports.map(portWidth), ...(diagram.state ? [...diagram.state.fields.map((f) => widthOf(f) + 96), widthOf(`${diagram.state.name} · state`) + panelPills + 120] : [])));
+  const blockHeight = (port: BoxDiagram["ports"][number]): number => PORT_HEAD + (port.ext ? PORT_EXT : 0) + PORT_PAD;
+  const offsets = diagram.ports.reduce<number[]>((out, _, i) => [...out, i === 0 ? 8 : out[i - 1]! + blockHeight(diagram.ports[i - 1]!)], []);
+  const anchor = (index: number): number => offsets[index]! + 20;
+  const boxHeight = Math.max(80, diagram.ports.reduce((h, p) => h + blockHeight(p), 0) + 16);
   const graph: ElkNode = {
     id: "root", layoutOptions: { "elk.algorithm": "layered", "elk.direction": "RIGHT", "elk.edgeRouting": "ORTHOGONAL", "elk.spacing.nodeNode": "28", "elk.layered.spacing.nodeNodeBetweenLayers": "64", "elk.padding": "[top=12,left=12,bottom=12,right=12]" },
     children: [{ id: "box", width: boxWidth, height: boxHeight, layoutOptions: { "elk.portConstraints": "FIXED_POS" }, ports: diagram.ports.flatMap((_, index) => [
@@ -154,18 +209,12 @@ export async function boxSvg(diagram: BoxDiagram): Promise<DiagramSvg> {
   const laid = await new ELK().layout(graph);
   const box = laid.children?.find((node) => node.id === "box");
   if (!box || box.x === undefined || box.y === undefined || !laid.width || !laid.height) throw new Error(`ELK 没有布置盒子 ${diagram.module}`);
-  // 状态画在反馈环上：名字、分量、inv、初值与它的义务。
-  const panelWidth = boxWidth - 72, panelInner = panelWidth - 24;
-  const stateLines: CodeLine[] = diagram.state ? [
-    plainLine(`${diagram.state.name} · state`, 14, "bold"),
-    ...diagram.state.fields.flatMap((field) => sizedWrap(field, panelInner, 13).map((t) => plainLine(t, 13))),
-    ...(diagram.state.inv ? predicateBlock("inv", diagram.state.inv, panelInner) : []),
-    ...(diagram.state.init ? predicateBlock("initial", { text: diagram.state.init.value ?? `? (${diagram.state.init.clause})`, sample: null }, panelInner) : []),
-  ] : [];
-  const panelHeight = diagram.state ? linesHeight(stateLines) + 40 : 0;
+  // 状态画在反馈环上：名字、分量与它的义务；inv 与初值在承诺图里。
+  const panelWidth = boxWidth - 72;
+  const panelHeight = diagram.state ? 34 + diagram.state.fields.length * 19 + (diagram.state.obligations.length > 0 ? 26 : 0) + 10 : 0;
   const feedbackHeight = panelHeight + 25;
   const top = 100 + (diagram.state ? feedbackHeight : 0);
-  let body = `<g transform="translate(28,${top})">`;
+  let body = `<g transform="translate(28,${top})">`, pills = "";
   // 边按 incoming0, outgoing0, incoming1, … 排列：第 i 条属于第 ⌊i/2⌋ 个端口。
   for (const [index, edge] of (laid.edges ?? []).entries()) {
     const port = esc(diagram.ports[Math.floor(index / 2)]!.name);
@@ -173,35 +222,92 @@ export async function boxSvg(diagram: BoxDiagram): Promise<DiagramSvg> {
   }
   body += `<rect x="${box.x}" y="${box.y}" width="${boxWidth}" height="${boxHeight}" rx="9" fill="#f2eff8" stroke="${CONTRACT}" stroke-width="2"/>`;
   if (diagram.state) {
-    const x = box.x, y = box.y, py = y - feedbackHeight - 10;
+    const x = box.x, y = box.y, py = y - feedbackHeight - 10, id = `state:${diagram.state.name}`;
     body += `<path d="M${x + boxWidth - 24},${y} V${y - feedbackHeight} H${x + 24} V${y}" fill="none" stroke="${MUTED}" stroke-width="1.7" marker-end="url(#arrow)"/>`;
-    body += `<g data-node="${esc(`state:${diagram.state.name}`)}"><rect x="${x + 36}" y="${py}" width="${panelWidth}" height="${panelHeight}" rx="6" fill="#fff" stroke="#d5d9de"/>`;
-    body += codeLines(x + 48, py + 6, stateLines);
-    body += obligationRow(x + 48, py + panelHeight - 12, diagram.state.obligations) + "</g>";
+    body += `<g data-node="${esc(id)}"><rect x="${x + 36}" y="${py}" width="${panelWidth}" height="${panelHeight}" rx="6" fill="#fff" stroke="#d5d9de"/>`;
+    body += text(x + 50, py + 24, [`${diagram.state.name} · state`], "start", 14, "bold");
+    diagram.state.fields.forEach((field, i) => { body += linkedText(x + 50, py + 46 + i * 19, [field], "start", 13, typeLink, id); });
+    if (diagram.state.obligations.length > 0) body += obligationRow(x + 50, py + panelHeight - 14, diagram.state.obligations);
+    body += "</g>";
+    let right = x + 36 + panelWidth - 10;
+    stateDrills.forEach((d, i) => { pills += drillPill(right, py + 18, d, id, i === 0); right -= drillWidth(d.kind) + 8; });
   }
-  blocks.forEach(({ port, lines, height: blockHeight }, index) => {
+  diagram.ports.forEach((port, index) => {
     const blockTop = box.y! + offsets[index]!, y = box.y! + anchor(index);
     if (index > 0) body += `<line x1="${box.x! + 12}" x2="${box.x! + boxWidth - 12}" y1="${blockTop}" y2="${blockTop}" stroke="#ddd5ea"/>`;
     // 整块都是这个端口的点击范围。
-    body += `<g data-node="${esc(port.name)}"><rect x="${box.x}" y="${blockTop}" width="${boxWidth}" height="${blockHeight}" fill="transparent"/>`;
+    body += `<g data-node="${esc(port.name)}"><rect x="${box.x}" y="${blockTop}" width="${boxWidth}" height="${blockHeight(port)}" fill="transparent"/>`;
     body += text(box.x! + 16, y + 5, [`${port.name}  · ${port.kind === "operation" ? "op" : "fn"}`], "start", 14, "bold");
-    body += obligationRow(box.x! + boxWidth - 16 - obligationRowWidth(port.obligations), y + 5, port.obligations);
-    body += codeLines(box.x! + 16, blockTop + PORT_HEAD + 4, lines);
+    const pillRight = box.x! + boxWidth - 12;
+    body += obligationRow(pillRight - drillWidth("promises") - 12 - obligationRowWidth(port.obligations), y + 5, port.obligations);
+    if (port.ext) body += text(box.x! + 16, y + 24, [`rd ${port.ext.rd.join(", ") || "—"}  |  wr ${port.ext.wr.join(", ") || "—"}`], "start", 12, "normal", MUTED);
     body += `<circle cx="${box.x}" cy="${y}" r="4" fill="${CONTRACT}"/><circle cx="${box.x! + boxWidth}" cy="${y}" r="4" fill="${CONTRACT}"/>`;
     // 参数类型靠右贴着线起点，结果类型隔开箭头尖；两者都与线留出 BOX_LABEL_GAP。
     for (const [id, label, side] of [[`input${index}`, port.inputs.join(" * ") || "()", "input"], [`output${index}`, port.output, "output"]] as const) {
       const node = laid.children!.find((node) => node.id === id)!, wrapped = wrap(label, 300);
       const baseline = node.y! + node.height! / 2 + 5 - (wrapped.length - 1) * 19 / 2;
-      body += side === "input" ? text(node.x! + node.width! - BOX_LABEL_GAP, baseline, wrapped, "end") : text(node.x! + BOX_LABEL_GAP, baseline, wrapped);
+      body += side === "input" ? linkedText(node.x! + node.width! - BOX_LABEL_GAP, baseline, wrapped, "end", 14, typeLink, port.name) : linkedText(node.x! + BOX_LABEL_GAP, baseline, wrapped, "start", 14, typeLink, port.name);
     }
     body += "</g>";
+    pills += drillPill(pillRight, y, promises(port.name), port.name, true);
   });
-  if (diagram.ports.length === 0) body += text(box.x + boxWidth / 2, box.y + 54, ["No exported operations / functions"], "middle");
-  body += "</g>";
-  // 图例两行：第一行是盒子的画法，第二行是证明义务的状态色。
-  const height = top + laid.height + 110 + LEGEND_ROW, row = height - 32 - LEGEND_ROW;
-  const legend = `<circle cx="35" cy="${row - 5}" r="4" fill="${CONTRACT}"/>${text(48, row, ["Port · exported operation / function"], "start", 12)}<path d="M300,${row - 5} h38" stroke="${MUTED}" marker-end="url(#arrow)"/>${text(348, row, ["Wire · parameter / result type"], "start", 12)}<path d="M570,${row} v-14 h30 v14" fill="none" stroke="${MUTED}" marker-end="url(#arrow)"/>${text(612, row, ["Feedback · state"], "start", 12)}${poLegend(28, height - 32)}`;
-  return frame(`Contract box · ${diagram.module}`, diagram.element, laid.width + 56, height, body, legend, 2);
+  if (diagram.ports.length === 0) body += text(box.x + boxWidth / 2, box.y + 44, ["No exported operations / functions"], "middle");
+  body += pills + "</g>";
+  // 图例三行：盒子的画法、下钻标注、证明义务的状态色。
+  const shapes: LegendEntry[] = [
+    { swatch: 20, label: "Port · exported operation / function", draw: (x, base) => `<circle cx="${x + 7}" cy="${base - 5}" r="4" fill="${CONTRACT}"/>` },
+    { swatch: 50, label: "Wire · parameter / result type", draw: (x, base) => `<path d="M${x},${base - 5} h38" stroke="${MUTED}" marker-end="url(#arrow)"/>` },
+    { swatch: 42, label: "Feedback · state", draw: (x, base) => `<path d="M${x},${base} v-14 h30 v14" fill="none" stroke="${MUTED}" marker-end="url(#arrow)"/>` },
+  ];
+  const opens = [drillLegend("promises"), ...(drills.access !== null ? [drillLegend("access")] : []), typeLinkLegend];
+  const height = top + laid.height + 110 + 2 * LEGEND_ROW;
+  const legend = legendRow(shapes, height - 32 - 2 * LEGEND_ROW) + legendRow(opens, height - 32 - LEGEND_ROW) + poLegend(28, height - 32);
+  return frame(`Contract box · ${diagram.module}`, diagram.element, Math.max(laid.width + 56, legendRowWidth(opens)), height, body, legend, 3);
+}
+
+const CARD_WIDTH = 760, CARD_HEAD = 36, CARD_GAP = 16;
+/** 承诺图里一张卡片的正文：签名、读写、pre、post，或状态的分量、inv 与初值。 */
+function cardLines(card: { readonly kind: "port"; readonly port: BoxDiagram["ports"][number] } | { readonly kind: "state"; readonly state: NonNullable<BoxDiagram["state"]> }, inner: number): CodeLine[] {
+  switch (card.kind) {
+    case "port": {
+      const p = card.port, arrow = p.kind === "operation" ? "==>" : "->";
+      return [
+        ...sizedWrap(`${p.inputs.join(" * ") || "()"} ${arrow} ${p.output}`, inner, 12).map((t): CodeLine => ({ label: null, text: t, size: 12, weight: "normal", fill: MUTED, mono: true, indent: 0 })),
+        ...(p.ext ? [plainLine(`rd ${p.ext.rd.join(", ") || "—"}  |  wr ${p.ext.wr.join(", ") || "—"}`, 12, "normal", MUTED)] : []),
+        ...(p.pre ? predicateBlock("pre", p.pre, inner) : [plainLine("no pre", 12, "normal", MUTED)]),
+        ...(p.post ? predicateBlock("post", p.post, inner) : [plainLine("no post", 12, "normal", MUTED)]),
+      ];
+    }
+    case "state": {
+      const s = card.state;
+      return [
+        ...s.fields.map((f): CodeLine => ({ label: null, text: f, size: 12, weight: "normal", fill: INK, mono: true, indent: 0 })),
+        ...(s.inv ? predicateBlock("inv", s.inv, inner) : [plainLine("no inv", 12, "normal", MUTED)]),
+        ...(s.init ? predicateBlock("initial", { text: s.init.value ?? `? (${s.init.clause})`, sample: null }, inner) : [plainLine("no init", 12, "normal", MUTED)]),
+      ];
+    }
+    default: return assertNever(card);
+  }
+}
+/** 承诺图：契约盒子下面一层，每个端口一张卡片写它的 pre、post、采样计数与证明义务，状态一张卡片写分量、inv 与初值。 */
+export function promisesSvg(diagram: BoxDiagram): DiagramSvg {
+  const inner = CARD_WIDTH - 32;
+  const cards = [
+    ...(diagram.state ? [{ id: `state:${diagram.state.name}`, title: `${diagram.state.name} · state`, fill: "#fff3ea", obligations: diagram.state.obligations, lines: cardLines({ kind: "state", state: diagram.state }, inner) }] : []),
+    ...diagram.ports.map((port) => ({ id: port.name, title: `${port.name} · ${port.kind === "operation" ? "op" : "fn"}`, fill: "#f2eff8", obligations: port.obligations, lines: cardLines({ kind: "port", port }, inner) })),
+  ];
+  let y = 0, body = "";
+  for (const card of cards) {
+    const h = CARD_HEAD + linesHeight(card.lines) + 14;
+    body += `<g data-node="${esc(card.id)}"><rect x="0" y="${y}" width="${CARD_WIDTH}" height="${h}" rx="8" fill="${card.fill}" stroke="${CONTRACT}" stroke-width="1.6"/>`;
+    body += text(16, y + 24, [card.title], "start", 14, "bold");
+    body += obligationRow(CARD_WIDTH - 16 - obligationRowWidth(card.obligations), y + 24, card.obligations);
+    body += codeLines(16, y + CARD_HEAD, card.lines) + "</g>";
+    y += h + CARD_GAP;
+  }
+  if (cards.length === 0) body += text(16, 24, ["No exported operations / functions and no state"], "start", 13, "normal", MUTED);
+  const height = 95 + Math.max(y, 40) + 100;
+  return frame(`Promises · ${diagram.module}`, `${diagram.element} · what each port promises (pre / post) and what the state always keeps (inv)`, CARD_WIDTH + 56, height, `<g transform="translate(28,95)">${body}</g>`, poLegend(28, height - 32));
 }
 /** 证明义务状态色的图例：每种状态一个色点。 */
 const PO_LEGEND = "Proof obligation:";
@@ -653,8 +759,11 @@ function c4Graph(diagram: C4Diagram, hierarchy: Hierarchy): ElkNode {
   };
 }
 
-/** hierarchies：参与挑选的分层方式；不给时按图里有没有框决定。 */
-export async function c4Svg(diagram: C4Diagram, hierarchies: readonly Hierarchy[] = hierarchiesOf(diagram)): Promise<DiagramSvg> {
+/**
+ * drills：节点 id → 它的下一层（自己的视图，否则契约盒子），在节点右上角画成下钻标注。
+ * hierarchies：参与挑选的分层方式；不给时按图里有没有框决定。
+ */
+export async function c4Svg(diagram: C4Diagram, drills: ReadonlyMap<string, Drill>, hierarchies: readonly Hierarchy[] = hierarchiesOf(diagram)): Promise<DiagramSvg> {
   const byId = new Map(diagram.nodes.map((node) => [node.id, node]));
   const tagKeys = [...new Set(diagram.nodes.filter((n) => n.boundary && n.tags.length > 0).map((n) => n.tags.map((t) => `#${t}`).join(" ")))].sort();
   const tint = (node: C4DiagramNode) => node.tags.length === 0 ? null : TAG_TINTS[tagKeys.indexOf(node.tags.map((t) => `#${t}`).join(" ")) % TAG_TINTS.length]!;
@@ -716,6 +825,14 @@ export async function c4Svg(diagram: C4Diagram, hierarchies: readonly Hierarchy[
     const { x, y, width, height } = box(node.id);
     nodes += `<g data-node="${esc(node.id)}">${c4Shape(node, x, y, width, height)}${c4NodeBody(node, x, y, width, icon)}</g>`;
   }
+  // 下钻标注骑在框的上边、靠右；画在最上层，不被线与标签盖住。
+  let pills = "";
+  for (const node of [...boundaries, ...leaves]) {
+    const d = drills.get(node.id);
+    if (d === undefined) continue;
+    const { x, y, width } = box(node.id);
+    pills += drillPill(x + width - (node.boundary ? 14 : 10), y, d, node.id, true);
+  }
   const area = extent([...ids.map(box), ...frameHeaders.map((h) => h.rect), ...labelBoxes.filter((r): r is Rect => r !== null)], routes);
 
   // 图例：一项是一个色块或图标加说明，排不下时换行。draw 的 base 是这一项文字的基线。
@@ -742,6 +859,8 @@ export async function c4Svg(diagram: C4Diagram, hierarchies: readonly Hierarchy[
   tagKeys.forEach((key, i) => items.push({ swatch: 30, label: `Deployment Node ${key}`, draw: frameSwatch(TAG_TINTS[i % TAG_TINTS.length]!.fill, TAG_TINTS[i % TAG_TINTS.length]!.stroke) }));
   if (diagram.groups.length) items.push({ swatch: 30, label: "Group", draw: (x, base) => `<rect x="${x}" y="${base - 13}" width="22" height="16" rx="3" fill="#eef2f6" stroke="#7d8b99" stroke-dasharray="2 2"/>` });
   items.push({ swatch: 30, label: "Call · initiator → callee", draw: (x, base) => `<path d="M${x},${base - 5} h22" stroke="#5d6b78" stroke-width="1.6" stroke-dasharray="5 3" marker-end="url(#arrow)"/>` });
+  const drillKinds = new Set([...drills.values()].map((d) => d.kind));
+  for (const kind of ["view", "box"] as const) if (drillKinds.has(kind)) items.push(drillLegend(kind));
   const width = Math.max(area.width + 56, 860);
   const placedItems: { readonly item: LegendItem; readonly x: number; readonly row: number }[] = [];
   let legendX = 28, row = 0;
@@ -756,7 +875,7 @@ export async function c4Svg(diagram: C4Diagram, hierarchies: readonly Hierarchy[
     const base = height - 32 - (rows - 1 - r) * LEGEND_ROW;
     return item.draw(x, base) + text(x + item.swatch, base, [item.label], "start", 12);
   }).join("");
-  return frame(diagram.title, diagram.description, width, height, `<g transform="translate(${28 - area.x},${95 - area.y})">${frames}${edges}${headers}${nodes}${labels}</g>`, legend, rows);
+  return frame(diagram.title, diagram.description, width, height, `<g transform="translate(${28 - area.x},${95 - area.y})">${frames}${edges}${headers}${nodes}${labels}${pills}</g>`, legend, rows);
 }
 
 const TIER_STYLE: Readonly<Record<LayerTier, { readonly name: string; readonly band: string; readonly fill: string; readonly stroke: string }>> = {
@@ -765,7 +884,8 @@ const TIER_STYLE: Readonly<Record<LayerTier, { readonly name: string; readonly b
   store: { name: "Data store", band: "#f0f8f2", fill: "#dcefe2", stroke: "#2f7d4f" },
 };
 
-export async function layersSvg(diagram: LayersDiagram): Promise<DiagramSvg> {
+/** drills：模块名 → 它的契约盒子，在模块框右上角画成下钻标注。 */
+export async function layersSvg(diagram: LayersDiagram, drills: ReadonlyMap<string, Drill>): Promise<DiagramSvg> {
   const width = 260, height = 74, gutter = 150;
   const labelLines = diagram.imports.map((i) => sizedWrap(i.names.join(", "), 170, 12));
   const graph: ElkNode = {
@@ -813,6 +933,8 @@ export async function layersSvg(diagram: LayersDiagram): Promise<DiagramSvg> {
     nodes += `<g data-node="${esc(m.module)}"><rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" rx="8" fill="${style.fill}" stroke="${style.stroke}" stroke-width="1.6"/>`;
     nodes += text(r.x + r.width / 2, r.y + 28, [m.module], "middle", 14, "bold");
     nodes += text(r.x + r.width / 2, r.y + 50, [`${m.title} · ${m.element}`], "middle", 12, "normal", MUTED) + "</g>";
+    const d = drills.get(m.module);
+    if (d !== undefined) labels += drillPill(r.x + r.width - 10, r.y, d, m.module, true);
   }
   if (diagram.modules.length === 0) nodes += text(20, 30, ["No contract modules"]);
   const height2 = area.y + area.height + 20 + 95 + 110;
@@ -822,7 +944,13 @@ export async function layersSvg(diagram: LayersDiagram): Promise<DiagramSvg> {
     legendX += 30 + sizedWidth(TIER_STYLE[tier].name, 12) + 34;
   }
   legend += `<path d="M${legendX},${height2 - 37} h22" stroke="#5d6b78" stroke-width="1.6" marker-end="url(#arrow)"/>` + text(legendX + 30, height2 - 32, ["Import · importer → imported, names imported"], "start", 12);
-  return frame("Contract layers", "Who imports whose definitions: imported modules sit lower; business above architecture; data stores deepest", totalWidth + 56, height2, `<g transform="translate(28,95)">${bands}${edges}${nodes}${labels}</g>`, legend);
+  legendX += 30 + sizedWidth("Import · importer → imported, names imported", 12) + 34;
+  if (drills.size > 0) {
+    const e = drillLegend("box");
+    legend += e.draw(legendX, height2 - 32) + text(legendX + e.swatch, height2 - 32, [e.label], "start", 12);
+    legendX += e.swatch + sizedWidth(e.label, 12) + 28;
+  }
+  return frame("Contract layers", "Who imports whose definitions: imported modules sit lower; business above architecture; data stores deepest", Math.max(totalWidth + 56, legendX), height2, `<g transform="translate(28,95)">${bands}${edges}${nodes}${labels}</g>`, legend);
 }
 
 type TypeRole = "own" | "state" | "imported";

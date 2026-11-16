@@ -14,10 +14,11 @@ import { type BoxDiagram, type BoxObligation, type BoxPredicate, projectBox } fr
 import { type C4Diagram, projectC4View, projectDeploymentView } from "./render/c4";
 import { type CompositionDiagram, projectComposition } from "./render/composition";
 import { type LayersDiagram, projectLayers } from "./render/layers";
-import { type DiagramSvg, accessSvg, boxSvg, c4Notation, c4Svg, compositionSvg, layersSvg, obligationTally, sampleText, typesSvg } from "./render/svg";
+import type { BoxDrills, Drill } from "./render/drill";
+import { type DiagramSvg, accessSvg, boxSvg, c4Notation, c4Svg, compositionSvg, layersSvg, obligationTally, promisesSvg, sampleText, typesSvg } from "./render/svg";
 import { type TypeShape, type TypesDiagram, projectTypes } from "./render/types";
 
-export type DiagramKind = "view" | "deployment" | "layers" | "box" | "types" | "access" | "composition";
+export type DiagramKind = "view" | "deployment" | "layers" | "box" | "promises" | "types" | "access" | "composition";
 
 /** 页面上一处可以跳去的图。 */
 export interface SiteLink { readonly label: string; readonly diagram: string }
@@ -115,12 +116,12 @@ export async function buildSite(structure: string): Promise<SiteBuild> {
       switch (view.type) {
         case "element": {
           const diagram = projectC4View(s, view);
-          diagrams.push(c4Entry(s, links, view, "view", diagram, await c4Svg(diagram)));
+          diagrams.push(c4Entry(s, links, view, "view", diagram, await c4Svg(diagram, links.drills(diagram, view.id))));
           break;
         }
         case "deployment": {
           const diagram = projectDeploymentView(s, view);
-          diagrams.push(c4Entry(s, links, view, "deployment", diagram, await c4Svg(diagram)));
+          diagrams.push(c4Entry(s, links, view, "deployment", diagram, await c4Svg(diagram, links.drills(diagram, view.id))));
           break;
         }
         case "dynamic":
@@ -131,15 +132,17 @@ export async function buildSite(structure: string): Promise<SiteBuild> {
     }
     if (contractModules.length > 0) {
       const layers = projectLayers(s, vdm.project, owner);
-      diagrams.push(layersEntry(links, layers, await layersSvg(layers)));
+      const toBox = new Map(layers.modules.map((l) => [l.module, { kind: "box", diagram: `box:${l.module}`, node: null } as const]));
+      diagrams.push(layersEntry(links, layers, await layersSvg(layers, toBox)));
     }
+    // 每个契约模块：盒子图，和它下面一层的承诺图、类型图、读写表（有状态时）。
     for (const m of contractModules) {
-      const box = projectBox(m, obligations);
-      diagrams.push(boxEntry(links, box, await boxSvg(box)));
-      const types = projectTypes(vdm.project, m.name, obligations);
+      const box = projectBox(m, obligations), types = projectTypes(vdm.project, m.name, obligations), table = tables.get(m.name);
+      const drills: BoxDrills = { promises: `promises:${m.name}`, access: table !== undefined ? `access:${m.name}` : null, types: `types:${m.name}`, typeIds: typeIdsByName(types) };
+      diagrams.push(boxEntry(links, box, await boxSvg(box, drills)));
+      diagrams.push(promisesEntry(box, promisesSvg(box)));
       diagrams.push(typesEntry(links, types, await typesSvg(types)));
-      const table = tables.get(m.name);
-      if (table) diagrams.push(accessEntry(links, table, accessSvg(table)));
+      if (table !== undefined) diagrams.push(accessEntry(links, table, accessSvg(table)));
     }
     for (const { diagram } of compositions) diagrams.push(compositionEntry(links, diagram, await compositionSvg(diagram)));
     return { kind: "ok", diagrams, diagnostics };
@@ -160,6 +163,30 @@ class Links {
     return this.moduleOf.get(fqn) ?? null;
   }
 
+  /** 元素的下一层：它自己的视图，没有时是它的契约盒子；都没有时为 null。 */
+  drill(fqn: string, here: string): Drill | null {
+    const own = this.s.views.find((v) => v.type === "element" && v.viewOf === fqn && v.id !== here);
+    if (own) return { kind: "view", diagram: own.id, node: null };
+    const module = this.module(fqn);
+    return module !== null ? { kind: "box", diagram: `box:${module}`, node: null } : null;
+  }
+
+  /** 一张 C4 图上每个节点的下钻标注（节点 id → 去处）。 */
+  drills(diagram: C4Diagram, here: string): Map<string, Drill> {
+    return new Map(diagram.nodes.flatMap((n) => { const d = n.element === null ? null : this.drill(n.element, here); return d === null ? [] : [[n.id, d] as const]; }));
+  }
+
+  /**
+   * 契约盒子图的上一级：画出这个元素、以它的父元素为对象的视图；没有时是画出它的最深一层视图；都没有时是契约分层图。
+   */
+  home(fqn: string): string {
+    const parent = this.s.elements.get(fqn)?.parent ?? null;
+    const showing = renderOrder(this.s.views).filter((v) => v.type === "element" && v.viewOf !== fqn && v.nodes.includes(fqn));
+    const depth = (v: C4View): number => v.viewOf === null ? 0 : v.viewOf.split(".").length;
+    const best = showing.find((v) => v.viewOf === parent) ?? showing.reduce<C4View | null>((a, v) => a === null || depth(v) > depth(a) ? v : a, null);
+    return best === null ? "layers" : best.id;
+  }
+
   ofElement(fqn: string, here: string): SiteLink[] {
     const module = this.module(fqn);
     return [...this.drillDown(fqn, here), ...(module !== null ? this.ofModule(module, here) : []), ...this.shownIn(fqn, here)];
@@ -178,6 +205,7 @@ class Links {
   ofModule(module: string, here: string): SiteLink[] {
     const out: SiteLink[] = [];
     if (`box:${module}` !== here) out.push({ label: `Contract box ${module}`, diagram: `box:${module}` });
+    if (`promises:${module}` !== here) out.push({ label: `Promises of ${module}`, diagram: `promises:${module}` });
     if (`types:${module}` !== here) out.push({ label: `Types of ${module}`, diagram: `types:${module}` });
     if (this.tables.has(module) && `access:${module}` !== here) out.push({ label: `Read / write table of ${module}`, diagram: `access:${module}` });
     for (const c of this.compositions)
@@ -261,6 +289,13 @@ const predicateFacts = (label: string, p: BoxPredicate | null): (readonly [strin
 const obligationFacts = (obligations: readonly BoxObligation[]): (readonly [string, string])[] =>
   [["Proof obligations", obligationTally(obligations)], ...[...obligations].sort((a, b) => a.number - b.number).map((o) => [`PO ${o.number}`, `${o.kind} · ${o.status}`] as const)];
 
+/** 类型名 → 类型图节点 id；同名的类型（不同模块）不收，线上的名字分不清指哪一个。 */
+function typeIdsByName(types: TypesDiagram): Map<string, string> {
+  const count = new Map<string, number>();
+  for (const n of types.nodes) count.set(n.name, (count.get(n.name) ?? 0) + 1);
+  return new Map(types.nodes.filter((n) => count.get(n.name) === 1).map((n) => [n.name, n.id]));
+}
+
 function boxEntry(links: Links, box: BoxDiagram, svg: DiagramSvg): SiteDiagram {
   const id = `box:${box.module}`, items: Record<string, SiteItem> = {};
   const moduleLinks = [{ label: "Contract layers", diagram: "layers" }, ...links.ofElement(box.element, id)];
@@ -270,9 +305,31 @@ function boxEntry(links: Links, box: BoxDiagram, svg: DiagramSvg): SiteDiagram {
       facts: [
         ["Inputs", port.inputs.join(" * ") || "()"], ["Output", port.output],
         ...(port.ext ? [["Reads", port.ext.rd.join(", ") || "—"] as const, ["Writes", port.ext.wr.join(", ") || "—"] as const] : []),
-        ...predicateFacts("pre", port.pre), ...predicateFacts("post", port.post), ...obligationFacts(port.obligations),
+        ["Proof obligations", obligationTally(port.obligations)],
       ],
       links: moduleLinks,
+    };
+  }
+  if (box.state) {
+    items[`state:${box.state.name}`] = {
+      title: box.state.name, kind: "State", description: "",
+      facts: [...box.state.fields.map((f) => ["Field", f] as const), ["Proof obligations", obligationTally(box.state.obligations)]],
+      links: moduleLinks,
+    };
+  }
+  return {
+    id, file: `box-${box.module}.png`, kind: "box", title: `Contract box · ${box.module}`, description: box.element, parent: links.home(box.element), svg, items,
+    edges: box.ports.flatMap((port) => [{ source: port.name, target: port.name, label: port.inputs.join(" * ") || "()", relations: [] }, { source: port.name, target: port.name, label: port.output, relations: [] }]),
+  };
+}
+
+function promisesEntry(box: BoxDiagram, svg: DiagramSvg): SiteDiagram {
+  const id = `promises:${box.module}`, items: Record<string, SiteItem> = {};
+  for (const port of box.ports) {
+    items[port.name] = {
+      title: port.name, kind: port.kind === "operation" ? "Port · operation" : "Port · function", description: "",
+      facts: [["Inputs", port.inputs.join(" * ") || "()"], ["Output", port.output], ...predicateFacts("pre", port.pre), ...predicateFacts("post", port.post), ...obligationFacts(port.obligations)],
+      links: [],
     };
   }
   if (box.state) {
@@ -283,13 +340,10 @@ function boxEntry(links: Links, box: BoxDiagram, svg: DiagramSvg): SiteDiagram {
         ...(box.state.init ? [["init", box.state.init.clause] as const, ["Initial value", box.state.init.value ?? "VDMJ could not compute it (see diagnostics)"] as const] : []),
         ...obligationFacts(box.state.obligations),
       ],
-      links: moduleLinks,
+      links: [],
     };
   }
-  return {
-    id, file: `box-${box.module}.png`, kind: "box", title: `Contract box · ${box.module}`, description: box.element, parent: "layers", svg, items,
-    edges: box.ports.flatMap((port) => [{ source: port.name, target: port.name, label: port.inputs.join(" * ") || "()", relations: [] }, { source: port.name, target: port.name, label: port.output, relations: [] }]),
-  };
+  return { id, file: `promises-${box.module}.png`, kind: "promises", title: `Promises · ${box.module}`, description: box.element, parent: `box:${box.module}`, svg, items, edges: [] };
 }
 
 function shapeFacts(shape: TypeShape): (readonly [string, string])[] {

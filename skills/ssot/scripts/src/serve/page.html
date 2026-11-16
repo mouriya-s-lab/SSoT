@@ -48,8 +48,9 @@
   #stage.focus [data-node]:not([data-frame]):not(.hot), #stage.focus [data-edge]:not(.hot) { opacity: .16; }
   #stage [data-edge].hot path[stroke="#5d6b78"], #stage [data-edge].hot path[stroke="#59636e"] { stroke: var(--hot); stroke-width: 2.6; }
   #stage [data-node].picked > :first-child { stroke: var(--hot) !important; stroke-width: 3 !important; }
-  #stage .badge { cursor: pointer; }
-  #stage .badge:hover circle { fill: #0b4884; }
+  #stage .drill { cursor: pointer; }
+  #stage g.drill:hover rect { filter: brightness(.82); }
+  #stage tspan.drill:hover { fill: var(--hot); }
   #hint { position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: var(--muted); background: rgba(255,255,255,.85); padding: 4px 8px; border-radius: 6px; pointer-events: none; }
   #tip { position: absolute; pointer-events: none; max-width: 360px; background: #1f2933; color: #fff; font-size: 12.5px; padding: 6px 9px; border-radius: 6px; display: none; z-index: 5; line-height: 1.45; }
   #tip b { color: #ffd8a8; }
@@ -94,13 +95,13 @@
     <div id="empty">正在构建…</div>
     <div id="problems"></div>
     <div id="tip"></div>
-    <div id="hint">拖动平移 · 滚轮平移 / ⌘ 或 Ctrl + 滚轮缩放 · 单击看详情 · 双击或点角标下钻 · Esc 取消</div>
+    <div id="hint">拖动平移 · 滚轮平移 / ⌘ 或 Ctrl + 滚轮缩放 · 单击看详情 · 点图上的标注或双击下钻 · Esc 取消</div>
   </main>
   <aside id="details"><div class="inner"></div></aside>
 </div>
 <script>
 "use strict";
-const KIND_TITLES = { view: "C4 视图", deployment: "部署", layers: "契约", box: "契约", types: "契约", access: "契约", composition: "行为组合" };
+const KIND_TITLES = { view: "C4 视图", deployment: "部署", layers: "契约", box: "契约", promises: "契约", types: "契约", access: "契约", composition: "行为组合" };
 const $ = (id) => document.getElementById(id);
 const canvas = $("canvas"), stage = $("stage"), details = $("details"), tip = $("tip");
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -140,6 +141,23 @@ function renderLists(filter = "") {
   const q = filter.trim().toLowerCase();
   const lists = $("lists");
   let html = "";
+  const entry = (d, depth) => `<a data-go="${esc(d.id)}" class="${current?.id === d.id ? "active" : ""}" style="padding-left:${18 + depth * 16}px">${esc(d.title)}<small>${esc(d.id)}</small></a>`;
+  // 不搜索时按上下级排成树：每张图缩进在它的上一级图下面，只有顶层的图分组加标题。
+  if (!q) {
+    const all = site?.diagrams ?? [], ids = new Set(all.map((d) => d.id)), children = new Map(), roots = [];
+    for (const d of all) {
+      if (d.parent && ids.has(d.parent)) { if (!children.has(d.parent)) children.set(d.parent, []); children.get(d.parent).push(d); }
+      else roots.push(d);
+    }
+    const walk = (d, depth) => { html += entry(d, depth); for (const c of children.get(d.id) ?? []) walk(c, depth + 1); };
+    let heading = null;
+    for (const r of roots) {
+      if (KIND_TITLES[r.kind] !== heading) { heading = KIND_TITLES[r.kind]; html += `<h3>${esc(heading)}</h3>`; }
+      walk(r, 0);
+    }
+    lists.innerHTML = html;
+    return;
+  }
   const groups = new Map();
   for (const d of site?.diagrams ?? []) {
     const title = KIND_TITLES[d.kind];
@@ -257,7 +275,6 @@ function show(diagram) {
   hovered = null;
   stage.innerHTML = diagram.svg;
   $("empty").style.display = "none";
-  addBadges();
   if (first) fit(); else apply();
   renderCrumbs();
   renderLists($("search").value);
@@ -266,35 +283,15 @@ function show(diagram) {
   document.title = `${diagram.title} · SSoT`;
 }
 
-/** 能下钻的节点右上角画一个角标，点它直接跳过去。 */
-function addBadges() {
-  for (const g of stage.querySelectorAll("[data-node]")) {
-    const item = current.items[g.dataset.node];
-    const target = item && primaryLink(item);
-    if (!target) continue;
-    const box = g.getBBox();
-    const ns = "http://www.w3.org/2000/svg";
-    const badge = document.createElementNS(ns, "g");
-    badge.setAttribute("class", "badge");
-    badge.dataset.open = target.diagram;
-    const x = box.x + box.width - 4, y = box.y + 4;
-    badge.innerHTML = `<title>${esc(target.label)}</title><circle cx="${x}" cy="${y}" r="11" fill="#1168bd" stroke="#fff" stroke-width="2"/><path d="M${x - 4},${y - 3} L${x},${y + 2} L${x + 4},${y - 3}" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
-    g.appendChild(badge);
-  }
-}
-/** 下钻的首选：元素自己的视图，其次是契约盒子、组合图。 */
-function primaryLink(item) {
-  return item.links.find((l) => l.label.startsWith("Open ")) ?? item.links.find((l) => l.label.startsWith("Contract box") || l.label.startsWith("Composed in")) ?? null;
-}
-
 // ---------- 悬停：高亮相连的线与节点 ----------
 function targetOf(e) {
   // 拖动时画布捕获了指针，事件的 target 是画布本身；按指针位置取真正的元素。
   const el = document.elementFromPoint(e.clientX, e.clientY);
   if (!el || !stage.contains(el)) return null;
   e = { target: el };
-  const badge = e.target.closest?.(".badge");
-  if (badge) return { type: "badge", id: badge.dataset.open };
+  // 图上的下钻标注（SVG 里 class="drill"）：打开下一层的图，并定位到其中的节点。
+  const drill = e.target.closest?.(".drill");
+  if (drill) return { type: "drill", id: drill.dataset.open, node: drill.dataset.openNode ?? null };
   const edge = e.target.closest?.("[data-edge]");
   if (edge) return { type: "edge", id: Number(edge.dataset.edge) };
   const header = e.target.closest?.("[data-header]");
@@ -326,8 +323,8 @@ function hover(e) {
   if (!current) return;
   const t = targetOf(e);
   const key = t ? `${t.type}:${t.id}` : null;
-  if (key !== hovered) { hovered = key; paint(t && t.type !== "badge" ? t : selected); }
-  if (t && t.type !== "badge") {
+  if (key !== hovered) { hovered = key; paint(t && t.type !== "drill" ? t : selected); }
+  if (t && t.type !== "drill") {
     const r = canvas.getBoundingClientRect();
     tip.innerHTML = tipText(t);
     tip.style.display = tip.innerHTML ? "block" : "none";
@@ -351,15 +348,15 @@ function tipText(t) {
 // ---------- 单击选中、双击下钻 ----------
 function click(e) {
   const t = targetOf(e);
-  if (t?.type === "badge") return go(t.id);
+  if (t?.type === "drill") return go(t.id, t.node);
   select(t);
   history.replaceState(null, "", `#/${encodeURIComponent(current.id)}${t?.type === "node" ? `?node=${encodeURIComponent(t.id)}` : ""}`);
 }
 canvas.addEventListener("dblclick", (e) => {
   const t = targetOf(e);
   if (t?.type !== "node") return;
-  const link = primaryLink(current.items[t.id] ?? { links: [] });
-  if (link) go(link.diagram);
+  const drill = stage.querySelector(`.drill[data-primary][data-of="${CSS.escape(t.id)}"]`);
+  if (drill) go(drill.dataset.open, drill.dataset.openNode ?? null);
 });
 function select(t) {
   selected = t;

@@ -115,7 +115,10 @@ async function verifyC4AndLayerProjections(stage: string, fixture: string): Prom
   });
   assert.deepEqual(deployed.edges.map((e) => `${e.source} -> ${e.target} ${e.label}`).sort(), ["core.api -> core.ledger writes", "core.api -> partner.pay charges", "core.edge.web -> core.api forwards"]);
   // 各框分开排版（nested）时，节点画在自己的框里，并排的框互不重叠。
-  const nested = (await c4Svg(deployed, ["nested"])).svg;
+  // 有下一层的节点画出下钻标注，PNG 里也看得见；没有下一层的节点不画。
+  const nested = (await c4Svg(deployed, new Map([["core.api", { kind: "box", diagram: "box:shop_api", node: null } as const]]), ["nested"])).svg;
+  assert.match(nested, /class="drill" data-open="box:shop_api" data-of="core\.api" data-primary=""/);
+  assert.equal(nested.match(/class="drill"/g)?.length, 1);
   const drawn = (id: string): Rect => {
     const m = new RegExp(`<g data-node="${id.replaceAll(".", "\\.")}"[^>]*><rect x="([-\\d.]+)" y="([-\\d.]+)" width="([\\d.]+)" height="([\\d.]+)"`).exec(nested);
     assert.ok(m, `图上没有画出 ${id}`);

@@ -137,8 +137,8 @@ Quint 接线（手写）──回放──▶ 只回放轨迹里出现的契约�
 | `ssot check <design>` | 全量检查：编译三种载体、生成链新鲜度、跨载体规则、模拟、覆盖目标、回放、证明义务 |
 | `ssot check <design> --scope <视图 id>` | 仍编译全部内容，模拟、回放、QuickCheck 只在该视图的切片闭包内运行，只报告归属于该视图节点的诊断 |
 | `ssot check <design> --scope <视图 id> --base <rev>` | 另列出 `<rev>` 之后落在该作用域之外的改动 |
-| `ssot serve <design> [--port N]` | 在本地网页（默认端口 5180）上交互浏览 `ssot render` 的同一批图，设计文件改动后自动重画；给人看设计用，评审仍以 `ssot render` 导出的 PNG 为准 |
-| `ssot render <design> [--out <目录>]` | 导出渲染图并按顺序列出 `<路径>\t<id>`：C4 视图（`index` → 逐层下钻 → 部署视图）、契约分层图（id `layers`，只在有契约模块时）、每个契约模块依次是盒子图（id `box:<模块名>`）、类型图（id `types:<模块名>`）与读写表（id `access:<模块名>`，只在模块有 `state` 时）、每个 Quint 模块的组合图（id `composition:<模块名>`） |
+| `ssot serve <design> [--port N]` | 在本地网页（默认端口 5180）上交互浏览 `ssot render` 的同一批图，侧栏按上下级排成树，点图上的下钻标注打开下一层，设计文件改动后自动重画；给人看设计用，评审仍以 `ssot render` 导出的 PNG 为准 |
+| `ssot render <design> [--out <目录>]` | 导出渲染图并按顺序列出 `<路径>\t<id>`：C4 视图（`index` → 逐层下钻 → 部署视图）、契约分层图（id `layers`，只在有契约模块时）、每个契约模块依次是盒子图（id `box:<模块名>`）和它下面一层的承诺图（id `promises:<模块名>`）、类型图（id `types:<模块名>`）与读写表（id `access:<模块名>`，只在模块有 `state` 时）、每个 Quint 模块的组合图（id `composition:<模块名>`） |
 | `ssot eval <design> <模块> '<表达式>' [--bind …]` | 在原样规格里求一个 VDM 表达式，用来构造违反实例 |
 | `ssot status <design> [--deadline 秒]` | 运行一次全量 `check`，报一项第五节所说的事实 `{skill, scope, reason}`；都没有时输出“没有前沿” |
 

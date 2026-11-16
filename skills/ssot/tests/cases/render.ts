@@ -11,6 +11,7 @@ import { compileLikeC4 } from "../../scripts/src/compile/likec4";
 import { elementOfModule } from "../../scripts/src/model";
 import { projectC4View, projectDeploymentView } from "../../scripts/src/render/c4";
 import { projectLayers } from "../../scripts/src/render/layers";
+import { type Point, type Rect, routeEdges } from "../../scripts/src/render/route";
 
 const C4_FIXTURE = `specification {
   element actor { notation 'Person' style { shape person } }
@@ -114,6 +115,48 @@ async function verifyC4AndLayerProjections(stage: string, fixture: string): Prom
   });
 }
 
+/**
+ * 连线路由：对齐的两个框连成一条直线；线不穿过别的节点；线头落在框边上；离开一个框只穿一次框边；两条线不共用一段。
+ * A、B 同在框 F 里且上下对齐，C 在 F 外，O 挡在 A 与 C 之间。
+ */
+function verifyRouting(): void {
+  const A: Rect = { x: 0, y: 0, width: 248, height: 150 }, B: Rect = { x: 0, y: 400, width: 248, height: 150 };
+  const C: Rect = { x: 600, y: 760, width: 248, height: 150 }, O: Rect = { x: 320, y: 300, width: 248, height: 150 };
+  const F: Rect = { x: -40, y: -60, width: 328, height: 650 };
+  const boxes = [A, B, C, O].map((rect) => ({ kind: "node" as const, rect }));
+  const edges = [{ source: 0, target: 1 }, { source: 0, target: 2 }, { source: 1, target: 2 }];
+  const routes = routeEdges({ boxes: [...boxes, { kind: "frame", rect: F }], headers: [], edges });
+  const rects = [A, B, C, O];
+  const inside = (r: Rect, p: Point): boolean => p.x > r.x && p.x < r.x + r.width && p.y > r.y && p.y < r.y + r.height;
+  const segments = (points: readonly Point[]): [Point, Point][] => points.slice(1).map((b, i) => [points[i]!, b]);
+  assert.deepEqual(routes[0], [{ x: 124, y: 150 }, { x: 124, y: 400 }], "上下对齐的两个框应连成正中一条直线");
+  for (const [k, route] of routes.entries()) {
+    const { source, target } = edges[k]!, s = rects[source]!, t = rects[target]!;
+    assert.equal(route[0]!.y, s.y + s.height, `第 ${k} 条线应从源框下边出发`);
+    assert.equal(route.at(-1)!.y, t.y, `第 ${k} 条线应进入目标框上边`);
+    for (const [a, b] of segments(route)) {
+      assert.ok(a.x === b.x || a.y === b.y, `第 ${k} 条线有斜段`);
+      // 线段上每隔 4 个单位取样，不应落在别的节点里。
+      const steps = Math.max(1, Math.ceil((Math.abs(a.x - b.x) + Math.abs(a.y - b.y)) / 4));
+      for (let n = 0; n <= steps; n++) {
+        const p = { x: a.x + (b.x - a.x) * n / steps, y: a.y + (b.y - a.y) * n / steps };
+        rects.forEach((r, m) => assert.ok(m === source || m === target || !inside(r, p), `第 ${k} 条线穿过了节点 ${m}`));
+      }
+    }
+  }
+  const flips = segments(routes[1]!).filter(([a, b]) => inside(F, a) !== inside(F, b)).length;
+  assert.equal(flips, 1, "从框里连到框外的线应只穿一次框边");
+  const all = routes.flatMap((route, k) => segments(route).map(([a, b]) => ({ k, a, b })));
+  for (const p of all) for (const q of all) {
+    if (p.k >= q.k) continue;
+    const vertical = p.a.x === p.b.x && q.a.x === q.b.x && p.a.x === q.a.x;
+    const horizontal = p.a.y === p.b.y && q.a.y === q.b.y && p.a.y === q.a.y;
+    const [lo, hi] = vertical ? [Math.max(Math.min(p.a.y, p.b.y), Math.min(q.a.y, q.b.y)), Math.min(Math.max(p.a.y, p.b.y), Math.max(q.a.y, q.b.y))]
+      : horizontal ? [Math.max(Math.min(p.a.x, p.b.x), Math.min(q.a.x, q.b.x)), Math.min(Math.max(p.a.x, p.b.x), Math.max(q.a.x, q.b.x))] : [0, 0];
+    assert.ok(hi <= lo, `第 ${p.k} 与第 ${q.k} 条线共用了一段`);
+  }
+}
+
 export async function verifyRenderProjections(): Promise<number> {
   const fixture = join(import.meta.dir, "..", "render");
   const stage = mkdtempSync("/tmp/ssot-render-fixture-");
@@ -202,6 +245,7 @@ export async function verifyRenderProjections(): Promise<number> {
     if (peekCompiled.kind !== "ok") throw new Error("peek.qnt compilation failed");
     const peekIr: unknown = await Bun.file(peekCompiled.module.typecheckOut).json();
     await verifyC4AndLayerProjections(stage, fixture);
+    verifyRouting();
     const peekDiagram = projectComposition(peekIr, peekCompiled.module, vdm.project);
     assert.deepEqual(peekDiagram, {
       module: "peek",
@@ -221,7 +265,7 @@ export async function verifyRenderProjections(): Promise<number> {
         { kind: "read", contract: "shop_worker", step: "peekFeedback" },
       ],
     });
-    return 21;
+    return 26;
   } finally {
     rmSync(stage, { recursive: true, force: true });
   }

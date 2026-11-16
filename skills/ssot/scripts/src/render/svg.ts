@@ -6,6 +6,7 @@ import type { BoxDiagram } from "./box";
 import type { C4Diagram, C4DiagramNode, C4NodeKind } from "./c4";
 import type { CompositionDiagram, CompositionNode } from "./composition";
 import { type LayerTier, type LayersDiagram, TIER_ORDER } from "./layers";
+import { type Point, type Rect, type RouteBox, type RouteRequest, routeCost, routeEdges } from "./route";
 
 export interface DiagramSvg { readonly width: number; readonly height: number; readonly svg: string }
 const INK = "#20252b", MUTED = "#59636e", BEHAVIOR = "#2a78d6", CONTRACT = "#eb6834";
@@ -32,7 +33,6 @@ function text(x: number, y: number, lines: readonly string[], anchor: "start" | 
 }
 const sizedWidth = (value: string, size: number): number => widthOf(value) * size / 14;
 const sizedWrap = (value: string, maxWidth: number, size: number): string[] => wrap(value, maxWidth * 14 / size);
-type Point = { readonly x: number; readonly y: number };
 /** 折线在拐点处用半径 r 的圆角连接；r 不超过相邻两段各自长度的一半。 */
 function roundedPath(points: readonly Point[], r = 10): string {
   if (points.length < 2) return "";
@@ -290,125 +290,227 @@ function c4NodeBody(node: C4DiagramNode, x: number, y: number, width: number): s
   return out;
 }
 
-type Rect = { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
 const overlaps = (a: Rect, b: Rect, gap = 3): boolean => a.x < b.x + b.width + gap && b.x < a.x + a.width + gap && a.y < b.y + b.height + gap && b.y < a.y + a.height + gap;
 
+type Segment = readonly [Point, Point];
+/** 轴对齐线段是否穿过矩形内部。 */
+const cuts = (r: Rect, [a, b]: Segment): boolean =>
+  Math.abs(a.x - b.x) < 0.5
+    ? a.x > r.x && a.x < r.x + r.width && Math.max(a.y, b.y) > r.y && Math.min(a.y, b.y) < r.y + r.height
+    : a.y > r.y && a.y < r.y + r.height && Math.max(a.x, b.x) > r.x && Math.min(a.x, b.x) < r.x + r.width;
+
 /**
- * ELK 把居中标签放在线旁，标签与线的对应靠目测。这里把每个标签压到它自己那段竖线的正中；
- * 与已放好的标签或节点相撞时沿这段竖线上下滑动，整段都放不下才退回 ELK 给的线旁位置。
+ * 标签不交给 ELK：ELK 把标签当作层里的占位节点，线为了绕开占位节点会多出拐弯。布局之后，每个标签压在
+ * 自己那条线最长的竖段正中，盖住的是自己的线；与已放好的标签、节点、框标题或别的线相撞时沿这段上下滑动，
+ * 这段放不下换次长的竖段，再不行换横段；压在线上都放不下，再贴在线的一侧找。哪里都不空，取与别的东西
+ * 重叠最少的位置。
  */
-function placeLabels(edges: readonly ElkExtendedEdge[], obstacles: readonly Rect[]): (Rect | null)[][] {
+function placeLabels(routes: readonly (readonly Point[])[], sizes: readonly ({ readonly width: number; readonly height: number } | null)[], obstacles: readonly Rect[]): (Rect | null)[] {
+  const segments = routes.map((points) => points.slice(1).map((b, i): Segment => [points[i]!, b]));
+  const length = ([a, b]: Segment): number => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
   const placed: Rect[] = [];
-  return edges.map((edge) => (edge.labels ?? []).map((label) => {
-    if (label.x === undefined || label.y === undefined || label.width === undefined || label.height === undefined) return null;
-    const width = label.width, height = label.height, mid = label.y + height / 2;
-    const free = (r: Rect): boolean => !placed.some((p) => overlaps(p, r)) && !obstacles.some((o) => overlaps(o, r, 0));
-    let chosen: Rect | null = null;
-    for (const points of sectionPoints(edge)) {
-      for (let i = 1; i < points.length && !chosen; i++) {
-        const a = points[i - 1]!, b = points[i]!;
-        if (Math.abs(a.x - b.x) >= 0.5 || mid < Math.min(a.y, b.y) || mid > Math.max(a.y, b.y)) continue;
-        const top = Math.min(a.y, b.y) + 6, bottom = Math.max(a.y, b.y) - height - 16, step = height + 6;
-        for (let k = 0; k <= 8 && !chosen; k++) {
-          for (const y of k === 0 ? [label.y] : [label.y - k * step, label.y + k * step]) {
-            const r = { x: a.x - width / 2, y, width, height };
-            if (y >= top && y <= bottom && free(r)) { chosen = r; break; }
-          }
-        }
+  return routes.map((_, index) => {
+    const size = sizes[index];
+    if (!size) return null;
+    const { width, height } = size, own = [...segments[index]!].sort((p, q) => length(q) - length(p));
+    const others = segments.flatMap((s, j) => j === index ? [] : s);
+    const area = (p: Rect, q: Rect): number => Math.max(0, Math.min(p.x + p.width, q.x + q.width) - Math.max(p.x, q.x)) * Math.max(0, Math.min(p.y + p.height, q.y + q.height) - Math.max(p.y, q.y));
+    const clutter = (r: Rect): number => placed.reduce((sum, p) => sum + area(p, r) + (overlaps(p, r) ? 1 : 0), 0)
+      + obstacles.reduce((sum, o) => sum + area(o, r), 0) + others.filter((s) => cuts(r, s)).length * 400;
+    /** 沿一段线滑动的各个位置：压在线上，或贴在线的两侧。 */
+    const along = (segment: Segment, side: "on" | "beside"): Rect[] => {
+      const [a, b] = segment, out: Rect[] = [];
+      if (Math.abs(a.x - b.x) < 0.5) {
+        const top = Math.min(a.y, b.y) + 6, bottom = Math.max(a.y, b.y) - height - 14, mid = (top + bottom) / 2;
+        const xs = side === "on" ? [a.x - width / 2] : [a.x + 6, a.x - width - 6];
+        for (let k = 0; k <= 16; k++) for (const y of k === 0 ? [mid] : [mid - k * 8, mid + k * 8]) if (y >= top && y <= bottom) for (const x of xs) out.push({ x, y, width, height });
+      } else {
+        const left = Math.min(a.x, b.x) + 8, right = Math.max(a.x, b.x) - width - 8, mid = (left + right) / 2;
+        const ys = side === "on" ? [a.y - height / 2] : [a.y - height - 4, a.y + 4];
+        for (let k = 0; k <= 16; k++) for (const x of k === 0 ? [mid] : [mid - k * 10, mid + k * 10]) if (x >= left && x <= right) for (const y of ys) out.push({ x, y, width, height });
       }
+      return out;
+    };
+    const vertical = own.filter(([a, b]) => Math.abs(a.x - b.x) < 0.5), horizontal = own.filter(([a, b]) => Math.abs(a.x - b.x) >= 0.5);
+    const ordered = [...vertical, ...horizontal];
+    const candidates = [...ordered.flatMap((s) => along(s, "on")), ...ordered.flatMap((s) => along(s, "beside"))];
+    const [a, b] = own[0]!;
+    let chosen: Rect = { x: (a.x + b.x) / 2 - width / 2, y: (a.y + b.y) / 2 - height / 2, width, height }, least = Infinity;
+    for (const r of candidates) {
+      const c = clutter(r);
+      if (c < least) { chosen = r; least = c; }
+      if (c === 0) break;
     }
-    chosen ??= { x: label.x, y: label.y, width, height };
     placed.push(chosen);
     return chosen;
-  }));
+  });
 }
 
-export async function c4Svg(diagram: C4Diagram): Promise<DiagramSvg> {
+/** 部署节点框在标题下面多写一行描述：信任边界靠它与标签说明。 */
+const frameNote = (node: C4DiagramNode): string[] => node.kind === "deploymentNode" && node.description ? sizedWrap(node.description, 420, 12) : [];
+
+/** 一行行标签文字在图上占的框。 */
+const labelSize = (lines: readonly string[]): { width: number; height: number } => ({ width: Math.max(...lines.map((line) => sizedWidth(line, 12))) + 14, height: lines.length * 16 + 8 });
+
+/**
+ * ELK 只摆节点，连线交给 route.ts 重走。摆法有几种：线头都收在框边正中时，ELK 把相连的框中线对齐；由 ELK 把线头
+ * 沿框边分散时，长线更容易各占一列。节点放置用网络单纯形或 Brandes–Köpf。每种摆法都摆一次、走一遍线，取线的
+ * 代价（长度、拐弯、交叉、重叠）最小的一种：哪种摆法好取决于图的形状，没有一种总是最好。
+ */
+const PLACEMENTS = [
+  { ports: "center", strategy: "NETWORK_SIMPLEX" },
+  { ports: "center", strategy: "BRANDES_KOEPF" },
+  { ports: "spread", strategy: "NETWORK_SIMPLEX" },
+  { ports: "spread", strategy: "BRANDES_KOEPF" },
+] as const satisfies readonly { readonly ports: "center" | "spread"; readonly strategy: "NETWORK_SIMPLEX" | "BRANDES_KOEPF" }[];
+type Placement = (typeof PLACEMENTS)[number];
+
+function placed(graph: ElkNode, placement: Placement): ElkNode {
+  const leaves = new Set<string>();
+  const visit = (node: ElkNode): ElkNode => {
+    if (node.children?.length) return { ...node, children: node.children.map(visit) };
+    leaves.add(node.id);
+    if (placement.ports === "spread") return node;
+    const width = node.width ?? 0, height = node.height ?? 0;
+    return {
+      ...node,
+      layoutOptions: { ...node.layoutOptions, "elk.portConstraints": "FIXED_POS" },
+      ports: [
+        { id: `${node.id}\u0000in`, x: width / 2, y: 0, width: 0, height: 0, layoutOptions: { "elk.port.side": "NORTH" } },
+        { id: `${node.id}\u0000out`, x: width / 2, y: height, width: 0, height: 0, layoutOptions: { "elk.port.side": "SOUTH" } },
+      ],
+    };
+  };
+  const children = (graph.children ?? []).map(visit);
+  const end = (id: string, port: "in" | "out"): string => placement.ports === "center" && leaves.has(id) ? `${id}\u0000${port}` : id;
+  const bk: Record<string, string> = placement.strategy === "BRANDES_KOEPF" ? { "elk.layered.nodePlacement.bk.fixedAlignment": "BALANCED", "elk.layered.nodePlacement.bk.edgeStraightening": "IMPROVE_STRAIGHTNESS" } : {};
+  return {
+    ...graph,
+    layoutOptions: { ...graph.layoutOptions, "elk.layered.nodePlacement.strategy": placement.strategy, ...bk },
+    children,
+    edges: (graph.edges ?? []).map((edge) => ({ ...edge, sources: edge.sources.map((id) => end(id, "out")), targets: edge.targets.map((id) => end(id, "in")) })),
+  };
+}
+
+/** 按每种摆法摆一次、走一遍线，返回线的代价最小的那次。request 由框的位置给出路由要的框、标题与线。 */
+async function bestLayout(graph: ElkNode, request: (box: (id: string) => Rect) => RouteRequest): Promise<{ readonly box: (id: string) => Rect; readonly routes: Point[][] }> {
   const { ELK } = await loadDiagramTools();
-  const byId = new Map(diagram.nodes.map((node) => [node.id, node]));
-  const tagKeys = [...new Set(diagram.nodes.filter((n) => n.boundary && n.tags.length > 0).map((n) => n.tags.map((t) => `#${t}`).join(" ")))].sort();
-  const tint = (node: C4DiagramNode) => node.tags.length === 0 ? null : TAG_TINTS[tagKeys.indexOf(node.tags.map((t) => `#${t}`).join(" ")) % TAG_TINTS.length]!;
-  /** 部署节点框在标题下面多写一行描述：信任边界靠它与标签说明。 */
-  const frameNote = (node: C4DiagramNode): string[] => node.kind === "deploymentNode" && node.description ? sizedWrap(node.description, 420, 12) : [];
+  const elk = new ELK();
+  const tried = await Promise.all(PLACEMENTS.map(async (placement) => {
+    const laid = await elk.layout(placed(graph, placement));
+    const at = new Map<string, ElkNode>();
+    const collect = (node: ElkNode): void => { at.set(node.id, node); for (const child of node.children ?? []) collect(child); };
+    collect(laid);
+    const box = (id: string): Rect => {
+      const n = at.get(id);
+      if (!n || n.x === undefined || n.y === undefined || n.width === undefined || n.height === undefined) throw new Error(`ELK 没有布置 ${id}`);
+      return { x: n.x, y: n.y, width: n.width, height: n.height };
+    };
+    const routes = routeEdges(request(box));
+    return { box, routes, cost: routeCost(routes) };
+  }));
+  return tried.reduce((best, next) => next.cost < best.cost ? next : best);
+}
+
+/** 框、线与标签合起来占的范围：线可能绕到 ELK 给的画布之外。 */
+function extent(rects: readonly Rect[], routes: readonly (readonly Point[])[]): Rect {
+  const xs = [...rects.flatMap((r) => [r.x, r.x + r.width]), ...routes.flat().map((p) => p.x)];
+  const ys = [...rects.flatMap((r) => [r.y, r.y + r.height]), ...routes.flat().map((p) => p.y)];
+  if (xs.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
+  const x = Math.min(...xs), y = Math.min(...ys);
+  return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
+}
+
+/** 边界与分组框的标题：画在连线之上、垫一块与框内同色的底；路由也要知道它占的地方。 */
+interface FrameHeader { readonly id: string; readonly x: number; readonly y: number; readonly title: string; readonly titleSize: number; readonly kind: string; readonly kindSize: number; readonly ink: string; readonly backing: string; readonly note: readonly string[]; readonly rect: Rect }
+function frameHeader(spec: Omit<FrameHeader, "rect">): FrameHeader {
+  const kindX = spec.x + sizedWidth(spec.title, spec.titleSize) + 10;
+  const width = Math.max(kindX - spec.x + sizedWidth(spec.kind, spec.kindSize), ...spec.note.map((line) => sizedWidth(line, 12))) + 12;
+  return { ...spec, rect: { x: spec.x - 6, y: spec.y - spec.titleSize - 2, width, height: spec.titleSize + 10 + spec.note.length * 17 } };
+}
+
+/**
+ * C4 图交给 ELK 的图：嵌套的边界与分组、叶子节点的尺寸与箭头。
+ * 同一张图的叶子取同一高度，同一层的框上下边都对齐；标签不进 ELK（见 placeLabels），层距留出放标签的竖段。
+ */
+function c4Graph(diagram: C4Diagram): ElkNode {
+  const leafHeight = Math.max(0, ...diagram.nodes.filter((node) => !node.boundary).map((node) => c4NodeText(node).height));
+  // 间距不会从父框继承：INCLUDE_CHILDREN 下框里的层距、节点距取的是框自己的设置，不写就是 ELK 的默认 20。
+  const spacing = {
+    "elk.spacing.nodeNode": "72", "elk.layered.spacing.nodeNodeBetweenLayers": "104", "elk.spacing.edgeNode": "26",
+    "elk.spacing.edgeEdge": "16", "elk.layered.spacing.edgeNodeBetweenLayers": "26", "elk.layered.spacing.edgeEdgeBetweenLayers": "14",
+  };
   const childrenOf = (container: string | null): ElkNode[] => [
     ...diagram.groups.filter((group) => group.parent === container).map((group): ElkNode => ({
       id: group.id,
-      layoutOptions: { "elk.padding": "[top=44,left=22,bottom=22,right=22]" },
+      layoutOptions: { ...spacing, "elk.padding": "[top=60,left=40,bottom=40,right=40]" },
       children: diagram.nodes.filter((node) => node.group === group.id).map(elkNode),
     })),
     ...diagram.nodes.filter((node) => node.parent === container && node.group === null).map(elkNode),
   ];
   function elkNode(node: C4DiagramNode): ElkNode {
     const partition: Record<string, string> = node.parent === null ? { "elk.partitioning.partition": node.kind === "person" ? "0" : "1" } : {};
-    if (node.boundary) return { id: node.id, layoutOptions: { ...partition, "elk.padding": `[top=${52 + frameNote(node).length * 17},left=26,bottom=26,right=26]` }, children: childrenOf(node.id) };
-    return { id: node.id, width: C4_NODE_WIDTH, height: c4NodeText(node).height, layoutOptions: partition };
+    if (node.boundary) return { id: node.id, layoutOptions: { ...spacing, ...partition, "elk.padding": `[top=${70 + frameNote(node).length * 17},left=40,bottom=40,right=40]` }, children: childrenOf(node.id) };
+    return { id: node.id, width: C4_NODE_WIDTH, height: leafHeight, layoutOptions: partition };
   }
-  const labelLines = diagram.edges.map((edge) => edge.label ? sizedWrap(edge.label, 150, 12) : ["[...]"]);
-  const graph: ElkNode = {
+  return {
     id: "root",
     layoutOptions: {
-      "elk.algorithm": "layered", "elk.direction": "DOWN", "elk.hierarchyHandling": "INCLUDE_CHILDREN",
-      "elk.edgeRouting": "ORTHOGONAL", "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
-      "elk.partitioning.activate": "true", "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
-      "elk.spacing.nodeNode": "56", "elk.layered.spacing.nodeNodeBetweenLayers": "72", "elk.spacing.edgeNode": "26",
-      "elk.spacing.edgeEdge": "16", "elk.layered.spacing.edgeNodeBetweenLayers": "26", "elk.layered.spacing.edgeEdgeBetweenLayers": "14",
-      "elk.spacing.edgeLabel": "4", "elk.edgeLabels.placement": "CENTER", "elk.edgeLabels.inline": "true",
+      "elk.algorithm": "layered", "elk.direction": "DOWN", "elk.hierarchyHandling": "INCLUDE_CHILDREN", "elk.edgeRouting": "ORTHOGONAL",
+      "elk.partitioning.activate": "true", "elk.layered.thoroughness": "100", ...spacing,
       "elk.json.shapeCoords": "ROOT", "elk.json.edgeCoords": "ROOT", "elk.padding": "[top=10,left=10,bottom=10,right=10]",
     },
     children: childrenOf(null),
-    edges: diagram.edges.map((edge, index) => {
-      const lines = labelLines[index]!;
-      return { id: `edge${index}`, sources: [edge.source], targets: [edge.target], labels: [{ id: `label${index}`, text: lines.join("\n"), width: Math.max(...lines.map((line) => sizedWidth(line, 12))) + 14, height: lines.length * 16 + 8 }] };
+    edges: diagram.edges.map((edge, index) => ({ id: `edge${index}`, sources: [edge.source], targets: [edge.target] })),
+  };
+}
+
+export async function c4Svg(diagram: C4Diagram): Promise<DiagramSvg> {
+  const byId = new Map(diagram.nodes.map((node) => [node.id, node]));
+  const tagKeys = [...new Set(diagram.nodes.filter((n) => n.boundary && n.tags.length > 0).map((n) => n.tags.map((t) => `#${t}`).join(" ")))].sort();
+  const tint = (node: C4DiagramNode) => node.tags.length === 0 ? null : TAG_TINTS[tagKeys.indexOf(node.tags.map((t) => `#${t}`).join(" ")) % TAG_TINTS.length]!;
+  const depth = (id: string): number => { let d = 0, p = byId.get(id)?.parent ?? null; while (p !== null) { d++; p = byId.get(p)?.parent ?? null; } return d; };
+  const boundaries = diagram.nodes.filter((n) => n.boundary).sort((a, b) => depth(a.id) - depth(b.id)), leaves = diagram.nodes.filter((n) => !n.boundary);
+  const headersAt = (box: (id: string) => Rect): FrameHeader[] => [
+    ...boundaries.map((node) => {
+      const { x, y } = box(node.id), paint = tint(node), tags = node.tags.map((t) => ` #${t}`).join("");
+      return frameHeader({ id: node.id, x: x + 16, y: y + 26, title: node.title, titleSize: 15, kind: `[${C4_STYLE[node.kind].notation}${node.technology ? `: ${node.technology}` : ""}]${tags}`, kindSize: 12, ink: paint?.ink ?? "#26323f", backing: paint?.fill ?? "#f6f9fc", note: frameNote(node) });
     }),
-  };
-  const laid = await new ELK().layout(graph);
-  if (laid.width === undefined || laid.height === undefined) throw new Error(`ELK 没有布置视图 ${diagram.view}`);
-  const placed = new Map<string, ElkNode>();
-  const collect = (node: ElkNode): void => { placed.set(node.id, node); for (const child of node.children ?? []) collect(child); };
-  collect(laid);
-  const box = (id: string): { x: number; y: number; width: number; height: number } => {
-    const at = placed.get(id);
-    if (!at || at.x === undefined || at.y === undefined || at.width === undefined || at.height === undefined) throw new Error(`ELK 没有布置 ${id}`);
-    return { x: at.x, y: at.y, width: at.width, height: at.height };
-  };
-  // 边界与分组的标题画在连线之上、垫一块与框内同色的底：穿进框的连线从标题后面经过，标题不被线划穿。
+    // 分组框是半透明的 #eef2f6；标题底色取它叠在父框（#f6f9fc）或白底上的结果。
+    ...diagram.groups.map((group) => { const { x, y } = box(group.id); return frameHeader({ id: group.id, x: x + 14, y: y + 24, title: group.name, titleSize: 13, kind: "[Group]", kindSize: 11.5, ink: "#3b4754", backing: group.parent === null ? "#f4f6f9" : "#f1f4f8", note: [] }); }),
+  ];
+  const ids = [...leaves.map((n) => n.id), ...boundaries.map((n) => n.id), ...diagram.groups.map((g) => g.id)];
+  const indexOf = (id: string): number => { const k = ids.indexOf(id); if (k < 0) throw new Error(`视图 ${diagram.view} 的连线引用了图上没有的 ${id}`); return k; };
+  const { box, routes } = await bestLayout(c4Graph(diagram), (box) => ({
+    boxes: ids.map((id, k): RouteBox => ({ kind: k < leaves.length ? "node" : "frame", rect: box(id) })),
+    headers: headersAt(box).map((h) => h.rect),
+    edges: diagram.edges.map((edge) => ({ source: indexOf(edge.source), target: indexOf(edge.target) })),
+  }));
+  const frameHeaders = headersAt(box);
   // 每个节点、分组与箭头各包在一个带 data-* 的 <g> 里，ssot serve 的页面靠它们做高亮、跳转与详情。
   let frames = "", headers = "", edges = "", nodes = "", labels = "";
-  const headerRects: Rect[] = [];
-  const header = (id: string, x: number, y: number, title: string, titleSize: number, kind: string, kindSize: number, ink: string, backing: string, note: readonly string[]): void => {
-    const kindX = x + sizedWidth(title, titleSize) + 10;
-    const width = Math.max(kindX - x + sizedWidth(kind, kindSize), ...note.map((line) => sizedWidth(line, 12))) + 12;
-    const rect = { x: x - 6, y: y - titleSize - 2, width, height: titleSize + 10 + note.length * 17 };
-    headerRects.push(rect);
-    headers += `<g data-header="${esc(id)}"><rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="4" fill="${backing}"/>` + text(x, y, [title], "start", titleSize, "bold", ink) + text(kindX, y, [kind], "start", kindSize, "normal", MUTED)
-      + (note.length ? text(x, y + 19, note, "start", 12, "normal", MUTED) : "") + "</g>";
-  };
-  const depth = (id: string): number => { let d = 0, p = byId.get(id)?.parent ?? null; while (p !== null) { d++; p = byId.get(p)?.parent ?? null; } return d; };
-  for (const node of [...diagram.nodes].filter((n) => n.boundary).sort((a, b) => depth(a.id) - depth(b.id))) {
+  for (const node of boundaries) {
     const { x, y, width, height } = box(node.id), paint = tint(node);
-    const fill = paint?.fill ?? "#f6f9fc";
-    frames += `<g data-node="${esc(node.id)}" data-frame=""><rect x="${x}" y="${y}" width="${width}" height="${height}" rx="10" fill="${fill}" stroke="${paint?.stroke ?? "#5b6b7c"}" stroke-width="1.6" stroke-dasharray="9 5"/></g>`;
-    const tags = node.tags.map((t) => ` #${t}`).join("");
-    header(node.id, x + 16, y + 26, node.title, 15, `[${C4_STYLE[node.kind].notation}${node.technology ? `: ${node.technology}` : ""}]${tags}`, 12, paint?.ink ?? "#26323f", fill, frameNote(node));
+    frames += `<g data-node="${esc(node.id)}" data-frame=""><rect x="${x}" y="${y}" width="${width}" height="${height}" rx="10" fill="${paint?.fill ?? "#f6f9fc"}" stroke="${paint?.stroke ?? "#5b6b7c"}" stroke-width="1.6" stroke-dasharray="9 5"/></g>`;
   }
   for (const group of diagram.groups) {
     const { x, y, width, height } = box(group.id);
     frames += `<g data-group="${esc(group.id)}"><rect x="${x}" y="${y}" width="${width}" height="${height}" rx="8" fill="#eef2f6" fill-opacity="0.65" stroke="#7d8b99" stroke-width="1.3" stroke-dasharray="3 4"/></g>`;
-    // 分组框是半透明的 #eef2f6；底色取它叠在父框（#f6f9fc）或白底上的结果。
-    header(group.id, x + 14, y + 24, group.name, 13, "[Group]", 11.5, "#3b4754", group.parent === null ? "#f4f6f9" : "#f1f4f8", []);
   }
-  const leaves = diagram.nodes.filter((n) => !n.boundary);
-  const labelBoxes = placeLabels(laid.edges ?? [], [...leaves.map((n) => box(n.id)), ...headerRects]);
-  for (const [index, edge] of (laid.edges ?? []).entries()) {
+  // 穿进框的连线从标题后面经过，标题不被线划穿。
+  for (const h of frameHeaders) {
+    const kindX = h.x + sizedWidth(h.title, h.titleSize) + 10;
+    headers += `<g data-header="${esc(h.id)}"><rect x="${h.rect.x}" y="${h.rect.y}" width="${h.rect.width}" height="${h.rect.height}" rx="4" fill="${h.backing}"/>` + text(h.x, h.y, [h.title], "start", h.titleSize, "bold", h.ink) + text(kindX, h.y, [h.kind], "start", h.kindSize, "normal", MUTED)
+      + (h.note.length ? text(h.x, h.y + 19, h.note, "start", 12, "normal", MUTED) : "") + "</g>";
+  }
+  const labelLines = diagram.edges.map((edge) => edge.label ? sizedWrap(edge.label, 150, 12) : ["[...]"]);
+  const labelBoxes = placeLabels(routes, labelLines.map(labelSize), [...leaves.map((n) => box(n.id)), ...frameHeaders.map((h) => h.rect)]);
+  for (const [index, points] of routes.entries()) {
     const model = diagram.edges[index]!, attrs = `data-edge="${index}" data-source="${esc(model.source)}" data-target="${esc(model.target)}"`;
-    edges += `<g ${attrs}>`;
-    for (const points of sectionPoints(edge)) {
-      const d = roundedPath(points, 12);
-      edges += `<path d="${d}" fill="none" stroke="transparent" stroke-width="12"/><path d="${d}" fill="none" stroke="#5d6b78" stroke-width="1.6" stroke-dasharray="7 4" marker-end="url(#arrow)"/>`;
-    }
-    edges += "</g>";
-    for (const r of labelBoxes[index] ?? []) {
-      if (!r) continue;
+    const d = roundedPath(points, 12);
+    edges += `<g ${attrs}><path d="${d}" fill="none" stroke="transparent" stroke-width="12"/><path d="${d}" fill="none" stroke="#5d6b78" stroke-width="1.6" stroke-dasharray="7 4" marker-end="url(#arrow)"/></g>`;
+    const r = labelBoxes[index];
+    if (r) {
       labels += `<g ${attrs}><rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" rx="4" fill="#ffffff" stroke="#c9d1d9"/>`;
       labels += text(r.x + r.width / 2, r.y + 16, labelLines[index]!, "middle", 12, "normal", "#2b3640") + "</g>";
     }
@@ -417,7 +519,8 @@ export async function c4Svg(diagram: C4Diagram): Promise<DiagramSvg> {
     const { x, y, width, height } = box(node.id);
     nodes += `<g data-node="${esc(node.id)}">${c4Shape(node, x, y, width, height)}${c4NodeBody(node, x, y, width)}</g>`;
   }
-  const height = laid.height + 95 + 110;
+  const area = extent([...ids.map(box), ...frameHeaders.map((h) => h.rect), ...labelBoxes.filter((r): r is Rect => r !== null)], routes);
+  const height = area.height + 95 + 110;
   const kinds = [...new Set(diagram.nodes.filter((n) => !n.boundary).map((n) => n.kind))];
   let legendX = 28, legend = "";
   const legendItem = (swatch: string, label: string): void => {
@@ -437,7 +540,7 @@ export async function c4Svg(diagram: C4Diagram): Promise<DiagramSvg> {
   tagKeys.forEach((key, i) => legendItem(frameSwatch(TAG_TINTS[i % TAG_TINTS.length]!.fill, TAG_TINTS[i % TAG_TINTS.length]!.stroke), `Deployment Node ${key}`));
   if (diagram.groups.length) legendItem(`<rect x="${legendX}" y="${height - 45}" width="22" height="16" rx="3" fill="#eef2f6" stroke="#7d8b99" stroke-dasharray="2 2"/>`, "Group");
   legendItem(`<path d="M${legendX},${height - 37} h22" stroke="#5d6b78" stroke-width="1.6" stroke-dasharray="5 3" marker-end="url(#arrow)"/>`, "Call · initiator → callee");
-  return frame(diagram.title, diagram.description, Math.max(laid.width + 56, legendX + 28), height, `<g transform="translate(28,95)">${frames}${edges}${headers}${nodes}${labels}</g>`, legend);
+  return frame(diagram.title, diagram.description, Math.max(area.width + 56, legendX + 28), height, `<g transform="translate(${28 - area.x},${95 - area.y})">${frames}${edges}${headers}${nodes}${labels}</g>`, legend);
 }
 
 const TIER_STYLE: Readonly<Record<LayerTier, { readonly name: string; readonly band: string; readonly fill: string; readonly stroke: string }>> = {
@@ -447,32 +550,29 @@ const TIER_STYLE: Readonly<Record<LayerTier, { readonly name: string; readonly b
 };
 
 export async function layersSvg(diagram: LayersDiagram): Promise<DiagramSvg> {
-  const { ELK } = await loadDiagramTools();
   const width = 260, height = 74, gutter = 150;
   const labelLines = diagram.imports.map((i) => sizedWrap(i.names.join(", "), 170, 12));
   const graph: ElkNode = {
     id: "root",
     layoutOptions: {
-      "elk.algorithm": "layered", "elk.direction": "DOWN", "elk.edgeRouting": "ORTHOGONAL", "elk.partitioning.activate": "true",
-      "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX", "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
-      "elk.spacing.nodeNode": "48", "elk.layered.spacing.nodeNodeBetweenLayers": "84", "elk.spacing.edgeNode": "24", "elk.spacing.edgeEdge": "14",
-      "elk.edgeLabels.placement": "CENTER", "elk.padding": "[top=26,left=20,bottom=26,right=20]",
+      "elk.algorithm": "layered", "elk.direction": "DOWN", "elk.edgeRouting": "ORTHOGONAL", "elk.partitioning.activate": "true", "elk.layered.thoroughness": "100",
+      "elk.spacing.nodeNode": "48", "elk.layered.spacing.nodeNodeBetweenLayers": "104", "elk.spacing.edgeNode": "24", "elk.spacing.edgeEdge": "14",
+      "elk.padding": "[top=26,left=20,bottom=26,right=20]",
     },
     children: diagram.modules.map((m) => ({ id: m.module, width, height, layoutOptions: { "elk.partitioning.partition": String(TIER_ORDER.indexOf(m.tier)) } })),
-    edges: diagram.imports.map((i, index) => {
-      const lines = labelLines[index]!;
-      return { id: `import${index}`, sources: [i.from], targets: [i.to], labels: [{ id: `names${index}`, text: lines.join("\n"), width: Math.max(...lines.map((line) => sizedWidth(line, 12))) + 14, height: lines.length * 16 + 8 }] };
-    }),
+    edges: diagram.imports.map((i, index) => ({ id: `import${index}`, sources: [i.from], targets: [i.to] })),
   };
-  const laid = await new ELK().layout(graph);
-  if (laid.width === undefined || laid.height === undefined) throw new Error("ELK 没有布置契约分层图");
-  const placed = new Map((laid.children ?? []).map((child) => [child.id, child]));
-  const at = (module: string): Rect => {
-    const n = placed.get(module);
-    if (!n || n.x === undefined || n.y === undefined) throw new Error(`ELK 没有布置模块 ${module}`);
-    return { x: n.x + gutter, y: n.y, width, height };
-  };
-  const totalWidth = laid.width + gutter;
+  const ids = diagram.modules.map((m) => m.module);
+  const { box, routes: raw } = await bestLayout(graph, (box) => ({
+    boxes: ids.map((id): RouteBox => ({ kind: "node", rect: box(id) })),
+    headers: [],
+    edges: diagram.imports.map((i) => ({ source: ids.indexOf(i.from), target: ids.indexOf(i.to) })),
+  }));
+  // 模块右移出左侧的层名栏。
+  const at = (module: string): Rect => { const r = box(module); return { ...r, x: r.x + gutter }; };
+  const routes = raw.map((points) => points.map((p) => ({ x: p.x + gutter, y: p.y })));
+  const area = extent(ids.map(at), routes);
+  const totalWidth = area.x + area.width + 20;
   let bands = "", edges = "", nodes = "", labels = "";
   for (const tier of TIER_ORDER) {
     const members = diagram.modules.filter((m) => m.tier === tier).map((m) => at(m.module));
@@ -481,22 +581,13 @@ export async function layersSvg(diagram: LayersDiagram): Promise<DiagramSvg> {
     bands += `<rect x="0" y="${top}" width="${totalWidth}" height="${bottom - top}" rx="8" fill="${TIER_STYLE[tier].band}" stroke="${TIER_STYLE[tier].stroke}" stroke-opacity="0.35"/>`;
     bands += text(16, top + 26, [TIER_STYLE[tier].name], "start", 14, "bold", TIER_STYLE[tier].stroke);
   }
-  const shifted = (laid.edges ?? []).map((edge) => ({
-    ...edge,
-    sections: (edge.sections ?? []).map((s) => ({ ...s, startPoint: { x: s.startPoint.x + gutter, y: s.startPoint.y }, endPoint: { x: s.endPoint.x + gutter, y: s.endPoint.y }, bendPoints: s.bendPoints?.map((p) => ({ x: p.x + gutter, y: p.y })) })),
-    labels: (edge.labels ?? []).map((l) => ({ ...l, x: (l.x ?? 0) + gutter })),
-  }));
-  const labelBoxes = placeLabels(shifted, diagram.modules.map((m) => at(m.module)));
-  for (const [index, edge] of shifted.entries()) {
+  const labelBoxes = placeLabels(routes, labelLines.map(labelSize), diagram.modules.map((m) => at(m.module)));
+  for (const [index, points] of routes.entries()) {
     const model = diagram.imports[index]!, attrs = `data-edge="${index}" data-source="${esc(model.from)}" data-target="${esc(model.to)}"`;
-    edges += `<g ${attrs}>`;
-    for (const points of sectionPoints(edge)) {
-      const d = roundedPath(points, 12);
-      edges += `<path d="${d}" fill="none" stroke="transparent" stroke-width="12"/><path d="${d}" fill="none" stroke="#5d6b78" stroke-width="1.6" marker-end="url(#arrow)"/>`;
-    }
-    edges += "</g>";
-    for (const r of labelBoxes[index] ?? []) {
-      if (!r) continue;
+    const d = roundedPath(points, 12);
+    edges += `<g ${attrs}><path d="${d}" fill="none" stroke="transparent" stroke-width="12"/><path d="${d}" fill="none" stroke="#5d6b78" stroke-width="1.6" marker-end="url(#arrow)"/></g>`;
+    const r = labelBoxes[index];
+    if (r) {
       labels += `<g ${attrs}><rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" rx="4" fill="#ffffff" stroke="#c9d1d9"/>`;
       labels += text(r.x + r.width / 2, r.y + 16, labelLines[index]!, "middle", 12, "normal", "#2b3640") + "</g>";
     }
@@ -508,7 +599,7 @@ export async function layersSvg(diagram: LayersDiagram): Promise<DiagramSvg> {
     nodes += text(r.x + r.width / 2, r.y + 50, [`${m.title} · ${m.element}`], "middle", 12, "normal", MUTED) + "</g>";
   }
   if (diagram.modules.length === 0) nodes += text(20, 30, ["No contract modules"]);
-  const height2 = laid.height + 95 + 110;
+  const height2 = area.y + area.height + 20 + 95 + 110;
   let legendX = 28, legend = "";
   for (const tier of TIER_ORDER) {
     legend += `<rect x="${legendX}" y="${height2 - 45}" width="22" height="16" rx="3" fill="${TIER_STYLE[tier].fill}" stroke="${TIER_STYLE[tier].stroke}"/>` + text(legendX + 30, height2 - 32, [TIER_STYLE[tier].name], "start", 12);

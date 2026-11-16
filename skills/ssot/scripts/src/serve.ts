@@ -67,7 +67,7 @@ export async function serve(design: string, structure: string, port: number): Pr
       const url = new URL(request.url);
       switch (url.pathname) {
         case "/":
-          return new Response(Bun.file(PAGE), { headers: { "content-type": "text/html; charset=utf-8" } });
+          return new Response(Bun.file(PAGE), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
         case "/api/site":
           return Response.json({
             version: published.version, building: published.building, failed: published.failed, diagnostics: published.diagnostics,

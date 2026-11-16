@@ -2,9 +2,9 @@
 // 纵向顺序按调用方向（发起方在上），由布局从箭头计算；作者不写任何布局或样式。
 import type { C4Element, C4View, Structure } from "../compile/likec4";
 import { assertNever } from "../diag";
-import { hasTag, parseElementKind } from "../model";
+import { TAG_EXTERNAL, hasTag, parseElementKind } from "../model";
 
-export type C4NodeKind = "person" | "system" | "external" | "container" | "component";
+export type C4NodeKind = "person" | "system" | "external" | "container" | "store" | "component";
 
 export interface C4DiagramNode {
   readonly id: string;
@@ -47,8 +47,9 @@ function nodeKind(e: C4Element): C4NodeKind {
   if (kind === null) throw new Error(`元素 ${e.fqn} 的种类 '${e.kind}' 不在约定内；先运行 ssot check`);
   switch (kind) {
     case "actor": return "person";
-    case "system": return hasTag(e, "external") ? "external" : "system";
+    case "system": return hasTag(e, TAG_EXTERNAL) ? "external" : "system";
     case "container": return "container";
+    case "store": return "store";
     case "component": return "component";
     default: return assertNever(kind);
   }

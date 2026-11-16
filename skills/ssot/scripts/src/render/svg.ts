@@ -215,6 +215,7 @@ const C4_STYLE: Readonly<Record<C4NodeKind, { readonly notation: string; readonl
   system: { notation: "Software System", fill: "#1168bd", stroke: "#0b4884", ink: "#ffffff", sub: "#d6e6f6" },
   external: { notation: "External Software System", fill: "#8b8f94", stroke: "#6b6f74", ink: "#ffffff", sub: "#eef0f2" },
   container: { notation: "Container", fill: "#438dd5", stroke: "#2e6faf", ink: "#ffffff", sub: "#e6f0fa" },
+  store: { notation: "Container: Data Store", fill: "#438dd5", stroke: "#2e6faf", ink: "#ffffff", sub: "#e6f0fa" },
   component: { notation: "Component", fill: "#85bbf0", stroke: "#5d9bd6", ink: "#0b2540", sub: "#1f4468" },
 };
 const C4_NODE_WIDTH = 248, C4_PERSON_HEAD = 30, C4_STORE_CAP = 12;
@@ -225,8 +226,17 @@ function c4NodeText(node: C4DiagramNode): C4NodeText {
   const title = sizedWrap(node.title, C4_NODE_WIDTH - 28, 15);
   const type = `[${style.notation}${node.technology ? `: ${node.technology}` : ""}]`;
   const description = node.description ? sizedWrap(node.description, C4_NODE_WIDTH - 28, 13) : [];
-  const head = node.kind === "person" ? C4_PERSON_HEAD : 0;
-  return { title, type, description, height: head + 22 + title.length * 20 + 18 + (description.length ? 8 + description.length * 18 : 0) + 14 };
+  return { title, type, description, height: c4Head(node.kind) + 22 + title.length * 20 + 18 + (description.length ? 8 + description.length * 18 : 0) + 14 + (node.kind === "store" ? C4_STORE_CAP : 0) };
+}
+
+/** 形状在文字上方占去的高度：人的头、数据存储圆柱的顶面。 */
+function c4Head(kind: C4NodeKind): number {
+  return kind === "person" ? C4_PERSON_HEAD : kind === "store" ? 2 * C4_STORE_CAP : 0;
+}
+
+function cylinder(x: number, y: number, width: number, height: number, cap: number, paint: string): string {
+  const rx = width / 2;
+  return `<path d="M${x},${y + cap} A${rx},${cap} 0 0 1 ${x + width},${y + cap} V${y + height - cap} A${rx},${cap} 0 0 1 ${x},${y + height - cap} Z" ${paint}/><ellipse cx="${x + rx}" cy="${y + cap}" rx="${rx}" ry="${cap}" ${paint}/>`;
 }
 
 function c4Shape(node: C4DiagramNode, x: number, y: number, width: number, height: number): string {
@@ -239,6 +249,8 @@ function c4Shape(node: C4DiagramNode, x: number, y: number, width: number, heigh
     }
     case "system": case "external": case "container":
       return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="8" ${paint}${node.kind === "external" ? ' stroke-dasharray="6 3"' : ""}/>`;
+    case "store":
+      return cylinder(x, y, width, height, C4_STORE_CAP, paint);
     case "component":
       return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="4" ${paint}/>`;
     default: return assertNever(node.kind);
@@ -247,7 +259,7 @@ function c4Shape(node: C4DiagramNode, x: number, y: number, width: number, heigh
 
 function c4NodeBody(node: C4DiagramNode, x: number, y: number, width: number): string {
   const style = C4_STYLE[node.kind], content = c4NodeText(node), cx = x + width / 2;
-  let top = y + (node.kind === "person" ? C4_PERSON_HEAD + 4 : 0) + 24;
+  let top = y + c4Head(node.kind) + (node.kind === "person" ? 4 : 0) + 24;
   let out = text(cx, top, content.title, "middle", 15, "bold", style.ink);
   top += (content.title.length - 1) * 20 + 19;
   out += text(cx, top, [content.type], "middle", 11.5, "normal", style.sub);
@@ -365,7 +377,13 @@ export async function c4Svg(diagram: C4Diagram): Promise<DiagramSvg> {
     legend += swatch + text(legendX + 30, height - 32, [label], "start", 12);
     legendX += 30 + sizedWidth(label, 12) + 34;
   };
-  for (const kind of kinds) legendItem(`<rect x="${legendX}" y="${height - 45}" width="22" height="16" rx="3" fill="${C4_STYLE[kind].fill}" stroke="${C4_STYLE[kind].stroke}"${kind === "external" ? ' stroke-dasharray="4 2"' : ""}/>`, C4_STYLE[kind].notation);
+  for (const kind of kinds) {
+    const swatchPaint = `fill="${C4_STYLE[kind].fill}" stroke="${C4_STYLE[kind].stroke}"`;
+    const swatch = kind === "store"
+      ? cylinder(legendX, height - 47, 22, 20, 4, swatchPaint)
+      : `<rect x="${legendX}" y="${height - 45}" width="22" height="16" rx="3" ${swatchPaint}${kind === "external" ? ' stroke-dasharray="4 2"' : ""}/>`;
+    legendItem(swatch, C4_STYLE[kind].notation);
+  }
   if (diagram.nodes.some((n) => n.boundary)) legendItem(`<rect x="${legendX}" y="${height - 45}" width="22" height="16" rx="3" fill="#f6f9fc" stroke="#5b6b7c" stroke-dasharray="4 2"/>`, "Boundary · element opened in this view");
   if (diagram.groups.length) legendItem(`<rect x="${legendX}" y="${height - 45}" width="22" height="16" rx="3" fill="#eef2f6" stroke="#7d8b99" stroke-dasharray="2 2"/>`, "Group");
   legendItem(`<path d="M${legendX},${height - 37} h22" stroke="#5d6b78" stroke-width="1.6" stroke-dasharray="5 3" marker-end="url(#arrow)"/>`, "Call · initiator → callee");

@@ -95,7 +95,7 @@ export const mutations: readonly Mutation[] = [
 ];
 
 export function verifyStructureProjections(): number {
-  const index: C4View = { id: "index", type: "element", viewOf: null, nodes: [], declared: true, at: null };
+  const index: C4View = { id: "index", type: "element", viewOf: null, title: null, description: "", nodes: [], edges: [], declared: true, at: null };
   const structure: Structure = { elements: new Map(), relations: [], views: [index, index], spec: { elementKinds: [], relationKinds: [], tags: [] } };
   assert.equal(structureRules(structure).filter((d) => d.rule === "struct.views").length, 1, "duplicate projected index");
   assert.equal(structureRules({ ...structure, views: [index] }).length, 0, "unique projected index");

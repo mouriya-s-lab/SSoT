@@ -10,6 +10,8 @@ export interface C4Element {
   readonly title: string;
   readonly description: string;
   readonly kind: string;
+  /** null：元素没有写 technology。 */
+  readonly technology: string | null;
   readonly parent: string | null;
   readonly children: readonly string[];
   readonly tags: readonly string[];
@@ -33,13 +35,26 @@ export interface C4Relation {
 
 export type ViewType = "element" | "dynamic" | "deployment";
 
+/** 视图里画出的一条箭头：LikeC4 把关系提升到视图里可见的最近祖先之后的结果。 */
+export interface C4ViewEdge {
+  readonly source: string;
+  readonly target: string;
+  /** null：合并了多条关系且没有一条直接连在这两个节点之间。 */
+  readonly label: string | null;
+}
+
 
 export interface C4View {
   readonly id: string;
   readonly type: ViewType;
   readonly viewOf: string | null;
+  readonly title: string | null;
+  /** 视图自己的 description；没写时为空串。 */
+  readonly description: string;
   /** 计算后（展开 include 规则）的元素节点。 */
   readonly nodes: readonly string[];
+  /** 计算后的箭头，端点都是 nodes 里的元素。 */
+  readonly edges: readonly C4ViewEdge[];
   /** false：LikeC4 自动生成的视图（没有源位置）。 */
   readonly declared: boolean;
   readonly at: Position | null;
@@ -99,6 +114,7 @@ export async function compileLikeC4(dir: string): Promise<C4Result> {
         title: e.title,
         description: e.description.text ?? "",
         kind: e.kind,
+        technology: e.technology ?? null,
         parent: e.parent?.id ?? null,
         children: [...e.children()].map((c) => c.id),
         tags: [...e.tags],
@@ -123,7 +139,10 @@ export async function compileLikeC4(dir: string): Promise<C4Result> {
         id: v.id,
         type: viewType(v._type),
         viewOf: v.viewOf?.id ?? null,
+        title: v.title ?? null,
+        description: v.$view.description?.txt ?? "",
         nodes: [...v.nodes()].flatMap((n) => (n.element ? [n.element.id] : [])),
+        edges: [...v.edges()].flatMap((e) => (e.source.element && e.target.element ? [{ source: e.source.element.id, target: e.target.element.id, label: e.label ?? null }] : [])),
         declared: at !== null,
         at,
       };

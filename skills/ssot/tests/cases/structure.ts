@@ -174,7 +174,7 @@ export const mutations: readonly Mutation[] = [
 ];
 
 export function verifyStructureProjections(): number {
-  const index: C4View = { id: "index", type: "element", viewOf: null, title: null, description: "", nodes: [], edges: [], writtenRules: [], declared: true, at: null };
+  const index: C4View = { id: "index", type: "element", viewOf: null, title: null, description: "", nodes: [], edges: [], deployment: null, writtenRules: [], declared: true, at: null };
   const structure: Structure = { elements: new Map(), relations: [], views: [index, index], viewBlockRules: [], spec: { elementKinds: [], relationKinds: [], tags: [] } };
   const viewDiagnostics = (s: Structure): number => structureRules(s).filter((d) => d.rule === "struct.views").length;
   assert.equal(viewDiagnostics(structure), 1, "duplicate projected index");
@@ -182,7 +182,7 @@ export function verifyStructureProjections(): number {
   assert.equal(viewDiagnostics({ ...structure, views: [{ ...index, writtenRules: [{ kind: "autoLayout", at: null }] }] }), 1, "written layout rule");
   assert.equal(viewDiagnostics({ ...structure, views: [index], viewBlockRules: [{ kind: "globalStyle", at: null }] }), 1, "block style rule");
   const scoped = (id: string, viewOf: string): C4View => ({ ...index, id, viewOf });
-  const deployment: C4View = { ...index, id: "deploy", type: "deployment" };
+  const deployment: C4View = { ...index, id: "deploy", type: "deployment", deployment: { placements: [], edges: [] } };
   assert.deepEqual(renderOrder([deployment, scoped("z", "b"), scoped("deep", "a.b"), scoped("a", "a"), index]).map((v) => v.id), ["index", "a", "z", "deep", "deploy"]);
   return 5;
 }

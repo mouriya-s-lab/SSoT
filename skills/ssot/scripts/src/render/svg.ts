@@ -89,7 +89,11 @@ export async function boxSvg(diagram: BoxDiagram): Promise<DiagramSvg> {
   const feedbackHeight = stateLines.length * 19 + 35;
   const top = 100 + (diagram.state ? feedbackHeight : 0);
   let body = `<g transform="translate(28,${top})">`;
-  for (const edge of laid.edges ?? []) body += flowPath(edge, "flow");
+  // 边按 incoming0, outgoing0, incoming1, … 排列：第 i 条属于第 ⌊i/2⌋ 个端口。
+  for (const [index, edge] of (laid.edges ?? []).entries()) {
+    const port = esc(diagram.ports[Math.floor(index / 2)]!.name);
+    body += `<g data-edge="${index}" data-source="${port}" data-target="${port}">${flowPath(edge, "flow")}</g>`;
+  }
   body += `<rect x="${box.x}" y="${box.y}" width="${boxWidth}" height="${boxHeight}" rx="9" fill="#f2eff8" stroke="${CONTRACT}" stroke-width="2"/>`;
   if (diagram.state) {
     const x = box.x, y = box.y;
@@ -99,6 +103,7 @@ export async function boxSvg(diagram: BoxDiagram): Promise<DiagramSvg> {
   }
   diagram.ports.forEach((port, index) => {
     const y = box.y! + 35 + index * rowHeight;
+    body += `<g data-node="${esc(port.name)}">`;
     body += text(box.x! + 16, y - 6, [`${port.name}  · ${port.kind === "operation" ? "op" : "fn"}`], "start", 14, "bold");
     if (port.ext) body += text(box.x! + 16, y + 15, wrap(`rd ${port.ext.rd.join(", ") || "—"}  |  wr ${port.ext.wr.join(", ") || "—"}`, boxWidth - 32), "start", 12);
     body += `<circle cx="${box.x}" cy="${y}" r="4" fill="${CONTRACT}"/><circle cx="${box.x! + boxWidth}" cy="${y}" r="4" fill="${CONTRACT}"/>`;
@@ -108,6 +113,7 @@ export async function boxSvg(diagram: BoxDiagram): Promise<DiagramSvg> {
       const baseline = node.y! + node.height! / 2 + 5 - (lines.length - 1) * 19 / 2;
       body += side === "input" ? text(node.x! + node.width! - BOX_LABEL_GAP, baseline, lines, "end") : text(node.x! + BOX_LABEL_GAP, baseline, lines);
     }
+    body += "</g>";
   });
   if (diagram.ports.length === 0) body += text(box.x + boxWidth / 2, box.y + 54, ["No exported operations / functions"], "middle");
   body += "</g>";
@@ -131,7 +137,7 @@ export async function compositionSvg(diagram: CompositionDiagram): Promise<Diagr
   const key = (kind: CompositionNode["kind"], id: string): string => `${kind}:${id}`;
   const calls = new Map<string, StepCall[]>();
   const callsOf = (step: string): StepCall[] => calls.get(step) ?? calls.set(step, []).get(step)!;
-  const flows: { readonly source: string; readonly target: string; readonly kind: "flow" | "update" }[] = [];
+  const flows: { readonly source: string; readonly target: string; readonly from: string; readonly to: string; readonly kind: "flow" | "update" }[] = [];
   const stepPorts = new Map<string, ElkPort[]>();
   const stepPort = (step: string, side: "WEST" | "EAST"): string => {
     const ports = stepPorts.get(step) ?? stepPorts.set(step, []).get(step)!, id = `${key("step", step)}.${ports.length}`;
@@ -140,9 +146,9 @@ export async function compositionSvg(diagram: CompositionDiagram): Promise<Diagr
   };
   for (const edge of diagram.edges) {
     switch (edge.kind) {
-      case "take": flows.push({ source: `${key("wire", edge.wire)}.out`, target: stepPort(edge.step, "WEST"), kind: "flow" }); break;
-      case "put": flows.push({ source: stepPort(edge.step, "EAST"), target: `${key("wire", edge.wire)}.in`, kind: "flow" }); break;
-      case "update": flows.push({ source: stepPort(edge.step, "EAST"), target: `${key("wire", edge.wire)}.in`, kind: "update" }); break;
+      case "take": flows.push({ source: `${key("wire", edge.wire)}.out`, target: stepPort(edge.step, "WEST"), from: key("wire", edge.wire), to: key("step", edge.step), kind: "flow" }); break;
+      case "put": flows.push({ source: stepPort(edge.step, "EAST"), target: `${key("wire", edge.wire)}.in`, from: key("step", edge.step), to: key("wire", edge.wire), kind: "flow" }); break;
+      case "update": flows.push({ source: stepPort(edge.step, "EAST"), target: `${key("wire", edge.wire)}.in`, from: key("step", edge.step), to: key("wire", edge.wire), kind: "update" }); break;
       case "call": callsOf(edge.step).push({ kind: "call", text: `${edge.contract}.${edge.operations.join(", ")}` }); break;
       case "read": callsOf(edge.step).push({ kind: "read", text: `${edge.contract}` }); break;
       default: assertNever(edge);
@@ -175,13 +181,17 @@ export async function compositionSvg(diagram: CompositionDiagram): Promise<Diagr
   const laid = await new ELK().layout(graph);
   if (laid.width === undefined || laid.height === undefined) throw new Error(`ELK 没有布置组合图 ${diagram.module}`);
   let body = '<g transform="translate(28,95)">';
-  for (const [index, edge] of (laid.edges ?? []).entries()) body += flowPath(edge, flows[index]!.kind);
+  for (const [index, edge] of (laid.edges ?? []).entries()) {
+    const flow = flows[index]!;
+    body += `<g data-edge="${index}" data-source="${esc(flow.from)}" data-target="${esc(flow.to)}">${flowPath(edge, flow.kind)}</g>`;
+  }
   const placed = new Map((laid.children ?? []).map((child) => [child.id, child]));
   for (const node of diagram.nodes) {
     if (node.kind === "contract") continue;
     const at = placed.get(key(node.kind, node.id));
     if (!at || at.x === undefined || at.y === undefined || at.width === undefined || at.height === undefined) throw new Error(`ELK 没有布置 ${node.kind} ${node.id}`);
     const { x, y, width, height } = at;
+    body += `<g data-node="${esc(key(node.kind, node.id))}">`;
     switch (node.kind) {
       case "step": {
         const lines = callLines(node.id);
@@ -197,6 +207,7 @@ export async function compositionSvg(diagram: CompositionDiagram): Promise<Diagr
         break;
       default: assertNever(node);
     }
+    body += "</g>";
   }
   if (children.length === 0) body += text(20, 30, ["No steps or wires"]);
   body += "</g>";
@@ -217,7 +228,15 @@ const C4_STYLE: Readonly<Record<C4NodeKind, { readonly notation: string; readonl
   container: { notation: "Container", fill: "#438dd5", stroke: "#2e6faf", ink: "#ffffff", sub: "#e6f0fa" },
   store: { notation: "Container: Data Store", fill: "#438dd5", stroke: "#2e6faf", ink: "#ffffff", sub: "#e6f0fa" },
   component: { notation: "Component", fill: "#85bbf0", stroke: "#5d9bd6", ink: "#0b2540", sub: "#1f4468" },
+  deploymentNode: { notation: "Deployment Node", fill: "#f6f9fc", stroke: "#5b6b7c", ink: "#26323f", sub: MUTED },
 };
+/** 带标签的部署节点框按标签组合取色，图例逐个列出；没有标签的部署节点与逻辑边界同色。 */
+const TAG_TINTS: readonly { readonly fill: string; readonly stroke: string; readonly ink: string }[] = [
+  { fill: "#fdf2ef", stroke: "#b5523b", ink: "#7a2e1d" },
+  { fill: "#f4f0fb", stroke: "#6f4fb0", ink: "#45307a" },
+  { fill: "#eef7f1", stroke: "#2f7d4f", ink: "#1d5233" },
+  { fill: "#fdf8e8", stroke: "#a07a12", ink: "#6a510b" },
+];
 const C4_NODE_WIDTH = 248, C4_PERSON_HEAD = 30, C4_STORE_CAP = 12;
 
 interface C4NodeText { readonly title: string[]; readonly type: string; readonly description: string[]; readonly height: number }
@@ -249,6 +268,8 @@ function c4Shape(node: C4DiagramNode, x: number, y: number, width: number, heigh
     }
     case "system": case "external": case "container":
       return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="8" ${paint}${node.kind === "external" ? ' stroke-dasharray="6 3"' : ""}/>`;
+    case "deploymentNode":
+      return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="10" ${paint} stroke-dasharray="9 5"/>`;
     case "store":
       return cylinder(x, y, width, height, C4_STORE_CAP, paint);
     case "component":
@@ -303,6 +324,10 @@ function placeLabels(edges: readonly ElkExtendedEdge[], obstacles: readonly Rect
 export async function c4Svg(diagram: C4Diagram): Promise<DiagramSvg> {
   const { ELK } = await loadDiagramTools();
   const byId = new Map(diagram.nodes.map((node) => [node.id, node]));
+  const tagKeys = [...new Set(diagram.nodes.filter((n) => n.boundary && n.tags.length > 0).map((n) => n.tags.map((t) => `#${t}`).join(" ")))].sort();
+  const tint = (node: C4DiagramNode) => node.tags.length === 0 ? null : TAG_TINTS[tagKeys.indexOf(node.tags.map((t) => `#${t}`).join(" ")) % TAG_TINTS.length]!;
+  /** 部署节点框在标题下面多写一行描述：信任边界靠它与标签说明。 */
+  const frameNote = (node: C4DiagramNode): string[] => node.kind === "deploymentNode" && node.description ? sizedWrap(node.description, 420, 12) : [];
   const childrenOf = (container: string | null): ElkNode[] => [
     ...diagram.groups.filter((group) => group.parent === container).map((group): ElkNode => ({
       id: group.id,
@@ -313,7 +338,7 @@ export async function c4Svg(diagram: C4Diagram): Promise<DiagramSvg> {
   ];
   function elkNode(node: C4DiagramNode): ElkNode {
     const partition: Record<string, string> = node.parent === null ? { "elk.partitioning.partition": node.kind === "person" ? "0" : "1" } : {};
-    if (node.boundary) return { id: node.id, layoutOptions: { ...partition, "elk.padding": "[top=52,left=26,bottom=26,right=26]" }, children: childrenOf(node.id) };
+    if (node.boundary) return { id: node.id, layoutOptions: { ...partition, "elk.padding": `[top=${52 + frameNote(node).length * 17},left=26,bottom=26,right=26]` }, children: childrenOf(node.id) };
     return { id: node.id, width: C4_NODE_WIDTH, height: c4NodeText(node).height, layoutOptions: partition };
   }
   const labelLines = diagram.edges.map((edge) => edge.label ? sizedWrap(edge.label, 150, 12) : ["[...]"]);
@@ -345,38 +370,50 @@ export async function c4Svg(diagram: C4Diagram): Promise<DiagramSvg> {
     return { x: at.x, y: at.y, width: at.width, height: at.height };
   };
   // 边界与分组的标题画在连线之上、垫一块与框内同色的底：穿进框的连线从标题后面经过，标题不被线划穿。
+  // 每个节点、分组与箭头各包在一个带 data-* 的 <g> 里，ssot serve 的页面靠它们做高亮、跳转与详情。
   let frames = "", headers = "", edges = "", nodes = "", labels = "";
   const headerRects: Rect[] = [];
-  const header = (x: number, y: number, title: string, titleSize: number, kind: string, kindSize: number, ink: string, backing: string): void => {
-    const kindX = x + sizedWidth(title, titleSize) + 10, rect = { x: x - 6, y: y - titleSize - 2, width: kindX - x + sizedWidth(kind, kindSize) + 12, height: titleSize + 10 };
+  const header = (id: string, x: number, y: number, title: string, titleSize: number, kind: string, kindSize: number, ink: string, backing: string, note: readonly string[]): void => {
+    const kindX = x + sizedWidth(title, titleSize) + 10;
+    const width = Math.max(kindX - x + sizedWidth(kind, kindSize), ...note.map((line) => sizedWidth(line, 12))) + 12;
+    const rect = { x: x - 6, y: y - titleSize - 2, width, height: titleSize + 10 + note.length * 17 };
     headerRects.push(rect);
-    headers += `<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="4" fill="${backing}"/>` + text(x, y, [title], "start", titleSize, "bold", ink) + text(kindX, y, [kind], "start", kindSize, "normal", MUTED);
+    headers += `<g data-header="${esc(id)}"><rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="4" fill="${backing}"/>` + text(x, y, [title], "start", titleSize, "bold", ink) + text(kindX, y, [kind], "start", kindSize, "normal", MUTED)
+      + (note.length ? text(x, y + 19, note, "start", 12, "normal", MUTED) : "") + "</g>";
   };
   const depth = (id: string): number => { let d = 0, p = byId.get(id)?.parent ?? null; while (p !== null) { d++; p = byId.get(p)?.parent ?? null; } return d; };
   for (const node of [...diagram.nodes].filter((n) => n.boundary).sort((a, b) => depth(a.id) - depth(b.id))) {
-    const { x, y, width, height } = box(node.id);
-    frames += `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="10" fill="#f6f9fc" stroke="#5b6b7c" stroke-width="1.6" stroke-dasharray="9 5"/>`;
-    header(x + 16, y + 26, node.title, 15, `[${C4_STYLE[node.kind].notation}${node.technology ? `: ${node.technology}` : ""}]`, 12, "#26323f", "#f6f9fc");
+    const { x, y, width, height } = box(node.id), paint = tint(node);
+    const fill = paint?.fill ?? "#f6f9fc";
+    frames += `<g data-node="${esc(node.id)}"><rect x="${x}" y="${y}" width="${width}" height="${height}" rx="10" fill="${fill}" stroke="${paint?.stroke ?? "#5b6b7c"}" stroke-width="1.6" stroke-dasharray="9 5"/></g>`;
+    const tags = node.tags.map((t) => ` #${t}`).join("");
+    header(node.id, x + 16, y + 26, node.title, 15, `[${C4_STYLE[node.kind].notation}${node.technology ? `: ${node.technology}` : ""}]${tags}`, 12, paint?.ink ?? "#26323f", fill, frameNote(node));
   }
   for (const group of diagram.groups) {
     const { x, y, width, height } = box(group.id);
-    frames += `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="8" fill="#eef2f6" fill-opacity="0.65" stroke="#7d8b99" stroke-width="1.3" stroke-dasharray="3 4"/>`;
+    frames += `<g data-group="${esc(group.id)}"><rect x="${x}" y="${y}" width="${width}" height="${height}" rx="8" fill="#eef2f6" fill-opacity="0.65" stroke="#7d8b99" stroke-width="1.3" stroke-dasharray="3 4"/></g>`;
     // 分组框是半透明的 #eef2f6；底色取它叠在父框（#f6f9fc）或白底上的结果。
-    header(x + 14, y + 24, group.name, 13, "[Group]", 11.5, "#3b4754", group.parent === null ? "#f4f6f9" : "#f1f4f8");
+    header(group.id, x + 14, y + 24, group.name, 13, "[Group]", 11.5, "#3b4754", group.parent === null ? "#f4f6f9" : "#f1f4f8", []);
   }
   const leaves = diagram.nodes.filter((n) => !n.boundary);
   const labelBoxes = placeLabels(laid.edges ?? [], [...leaves.map((n) => box(n.id)), ...headerRects]);
   for (const [index, edge] of (laid.edges ?? []).entries()) {
-    for (const points of sectionPoints(edge)) edges += `<path d="${roundedPath(points, 12)}" fill="none" stroke="#5d6b78" stroke-width="1.6" stroke-dasharray="7 4" marker-end="url(#arrow)"/>`;
+    const model = diagram.edges[index]!, attrs = `data-edge="${index}" data-source="${esc(model.source)}" data-target="${esc(model.target)}"`;
+    edges += `<g ${attrs}>`;
+    for (const points of sectionPoints(edge)) {
+      const d = roundedPath(points, 12);
+      edges += `<path d="${d}" fill="none" stroke="transparent" stroke-width="12"/><path d="${d}" fill="none" stroke="#5d6b78" stroke-width="1.6" stroke-dasharray="7 4" marker-end="url(#arrow)"/>`;
+    }
+    edges += "</g>";
     for (const r of labelBoxes[index] ?? []) {
       if (!r) continue;
-      labels += `<rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" rx="4" fill="#ffffff" stroke="#c9d1d9"/>`;
-      labels += text(r.x + r.width / 2, r.y + 16, labelLines[index]!, "middle", 12, "normal", "#2b3640");
+      labels += `<g ${attrs}><rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" rx="4" fill="#ffffff" stroke="#c9d1d9"/>`;
+      labels += text(r.x + r.width / 2, r.y + 16, labelLines[index]!, "middle", 12, "normal", "#2b3640") + "</g>";
     }
   }
   for (const node of leaves) {
     const { x, y, width, height } = box(node.id);
-    nodes += c4Shape(node, x, y, width, height) + c4NodeBody(node, x, y, width);
+    nodes += `<g data-node="${esc(node.id)}">${c4Shape(node, x, y, width, height)}${c4NodeBody(node, x, y, width)}</g>`;
   }
   const height = laid.height + 95 + 110;
   const kinds = [...new Set(diagram.nodes.filter((n) => !n.boundary).map((n) => n.kind))];
@@ -389,10 +426,13 @@ export async function c4Svg(diagram: C4Diagram): Promise<DiagramSvg> {
     const swatchPaint = `fill="${C4_STYLE[kind].fill}" stroke="${C4_STYLE[kind].stroke}"`;
     const swatch = kind === "store"
       ? cylinder(legendX, height - 47, 22, 20, 4, swatchPaint)
-      : `<rect x="${legendX}" y="${height - 45}" width="22" height="16" rx="3" ${swatchPaint}${kind === "external" ? ' stroke-dasharray="4 2"' : ""}/>`;
+      : `<rect x="${legendX}" y="${height - 45}" width="22" height="16" rx="3" ${swatchPaint}${kind === "external" || kind === "deploymentNode" ? ' stroke-dasharray="4 2"' : ""}/>`;
     legendItem(swatch, C4_STYLE[kind].notation);
   }
-  if (diagram.nodes.some((n) => n.boundary)) legendItem(`<rect x="${legendX}" y="${height - 45}" width="22" height="16" rx="3" fill="#f6f9fc" stroke="#5b6b7c" stroke-dasharray="4 2"/>`, "Boundary · element opened in this view");
+  const frameSwatch = (fill: string, stroke: string): string => `<rect x="${legendX}" y="${height - 45}" width="22" height="16" rx="3" fill="${fill}" stroke="${stroke}" stroke-dasharray="4 2"/>`;
+  if (diagram.nodes.some((n) => n.boundary && n.kind !== "deploymentNode")) legendItem(frameSwatch("#f6f9fc", "#5b6b7c"), "Boundary · element opened in this view");
+  if (diagram.nodes.some((n) => n.boundary && n.kind === "deploymentNode" && n.tags.length === 0)) legendItem(frameSwatch("#f6f9fc", "#5b6b7c"), "Deployment Node");
+  tagKeys.forEach((key, i) => legendItem(frameSwatch(TAG_TINTS[i % TAG_TINTS.length]!.fill, TAG_TINTS[i % TAG_TINTS.length]!.stroke), `Deployment Node ${key}`));
   if (diagram.groups.length) legendItem(`<rect x="${legendX}" y="${height - 45}" width="22" height="16" rx="3" fill="#eef2f6" stroke="#7d8b99" stroke-dasharray="2 2"/>`, "Group");
   legendItem(`<path d="M${legendX},${height - 37} h22" stroke="#5d6b78" stroke-width="1.6" stroke-dasharray="5 3" marker-end="url(#arrow)"/>`, "Call · initiator → callee");
   return frame(diagram.title, diagram.description, Math.max(laid.width + 56, legendX + 28), height, `<g transform="translate(28,95)">${frames}${edges}${headers}${nodes}${labels}</g>`, legend);
@@ -446,18 +486,24 @@ export async function layersSvg(diagram: LayersDiagram): Promise<DiagramSvg> {
   }));
   const labelBoxes = placeLabels(shifted, diagram.modules.map((m) => at(m.module)));
   for (const [index, edge] of shifted.entries()) {
-    for (const points of sectionPoints(edge)) edges += `<path d="${roundedPath(points, 12)}" fill="none" stroke="#5d6b78" stroke-width="1.6" marker-end="url(#arrow)"/>`;
+    const model = diagram.imports[index]!, attrs = `data-edge="${index}" data-source="${esc(model.from)}" data-target="${esc(model.to)}"`;
+    edges += `<g ${attrs}>`;
+    for (const points of sectionPoints(edge)) {
+      const d = roundedPath(points, 12);
+      edges += `<path d="${d}" fill="none" stroke="transparent" stroke-width="12"/><path d="${d}" fill="none" stroke="#5d6b78" stroke-width="1.6" marker-end="url(#arrow)"/>`;
+    }
+    edges += "</g>";
     for (const r of labelBoxes[index] ?? []) {
       if (!r) continue;
-      labels += `<rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" rx="4" fill="#ffffff" stroke="#c9d1d9"/>`;
-      labels += text(r.x + r.width / 2, r.y + 16, labelLines[index]!, "middle", 12, "normal", "#2b3640");
+      labels += `<g ${attrs}><rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" rx="4" fill="#ffffff" stroke="#c9d1d9"/>`;
+      labels += text(r.x + r.width / 2, r.y + 16, labelLines[index]!, "middle", 12, "normal", "#2b3640") + "</g>";
     }
   }
   for (const m of diagram.modules) {
     const r = at(m.module), style = TIER_STYLE[m.tier];
-    nodes += `<rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" rx="8" fill="${style.fill}" stroke="${style.stroke}" stroke-width="1.6"/>`;
+    nodes += `<g data-node="${esc(m.module)}"><rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" rx="8" fill="${style.fill}" stroke="${style.stroke}" stroke-width="1.6"/>`;
     nodes += text(r.x + r.width / 2, r.y + 28, [m.module], "middle", 14, "bold");
-    nodes += text(r.x + r.width / 2, r.y + 50, [`${m.title} · ${m.element}`], "middle", 12, "normal", MUTED);
+    nodes += text(r.x + r.width / 2, r.y + 50, [`${m.title} · ${m.element}`], "middle", 12, "normal", MUTED) + "</g>";
   }
   if (diagram.modules.length === 0) nodes += text(20, 30, ["No contract modules"]);
   const height2 = laid.height + 95 + 110;

@@ -41,6 +41,19 @@ export interface C4ViewEdge {
   readonly target: string;
   /** null：合并了多条关系且没有一条直接连在这两个节点之间。 */
   readonly label: string | null;
+  /** 这条箭头合并的模型关系（C4Relation.id）。 */
+  readonly relations: readonly string[];
+}
+
+/** 部署视图里画出的部署节点或实例；id 是部署模型里的路径（如 `coreNet.ledger`）。 */
+export type C4DeploymentPlacement =
+  | { readonly kind: "node"; readonly id: string; readonly title: string; readonly nodeKind: string; readonly parent: string | null; readonly tags: readonly string[]; readonly description: string; readonly technology: string | null }
+  | { readonly kind: "instance"; readonly id: string; readonly title: string; readonly element: string; readonly parent: string | null; readonly tags: readonly string[]; readonly description: string; readonly technology: string | null };
+
+/** 部署视图计算后的节点与箭头，端点是部署路径。 */
+export interface C4DeploymentLayout {
+  readonly placements: readonly C4DeploymentPlacement[];
+  readonly edges: readonly C4ViewEdge[];
 }
 
 /** 元素视图里会定下图的样子、因而禁止由作者书写的规则。 */
@@ -63,6 +76,8 @@ export interface C4View {
   readonly nodes: readonly string[];
   /** 计算后的箭头，端点都是 nodes 里的元素。 */
   readonly edges: readonly C4ViewEdge[];
+  /** 部署视图的部署节点、实例与它们之间的箭头；不是部署视图时为 null。 */
+  readonly deployment: C4DeploymentLayout | null;
   /** 元素视图里作者写下的规则（按源码次序）；部署视图只由 LikeC4 导出，这里为空。 */
   readonly writtenRules: readonly C4ViewRule[];
   /** false：LikeC4 自动生成的视图（没有源位置）。 */
@@ -233,7 +248,14 @@ export async function compileLikeC4(dir: string): Promise<C4Result> {
         title: v.title ?? null,
         description: v.$view.description?.txt ?? "",
         nodes: [...v.nodes()].flatMap((n) => (n.element ? [n.element.id] : [])),
-        edges: [...v.edges()].flatMap((e) => (e.source.element && e.target.element ? [{ source: e.source.element.id, target: e.target.element.id, label: e.label ?? null }] : [])),
+        edges: [...v.edges()].flatMap((e) => (e.source.element && e.target.element ? [{ source: e.source.element.id, target: e.target.element.id, label: e.label ?? null, relations: [...e.$edge.relations] }] : [])),
+        deployment: v.isDeploymentView() ? {
+          placements: [...v.nodes()].map((n): C4DeploymentPlacement => {
+            const common = { id: n.id, title: n.title, parent: n.parent?.id ?? null, tags: [...n.tags], description: n.description.text ?? "", technology: n.technology ?? null };
+            return n.element ? { kind: "instance", element: n.element.id, ...common } : { kind: "node", nodeKind: n.kind, ...common };
+          }),
+          edges: [...v.edges()].map((e) => ({ source: e.source.id, target: e.target.id, label: e.label ?? null, relations: [...e.$edge.relations] })),
+        } : null,
         writtenRules: written.views.get(v.id) ?? [],
         declared: at !== null,
         at,

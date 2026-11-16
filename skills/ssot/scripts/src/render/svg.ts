@@ -1,10 +1,10 @@
-import type { ElkExtendedEdge, ElkNode } from "elkjs/lib/elk-api";
+import type { ElkExtendedEdge, ElkNode, ElkPort } from "elkjs/lib/elk-api";
 import type { Browser } from "playwright-core";
 import { assertNever } from "../diag";
 import { loadDiagramTools } from "../install";
 import type { BoxDiagram } from "./box";
 import type { C4Diagram, C4DiagramNode, C4NodeKind } from "./c4";
-import type { CompositionDiagram, CompositionEdge, CompositionNode } from "./composition";
+import type { CompositionDiagram, CompositionNode } from "./composition";
 import { type LayerTier, type LayersDiagram, TIER_ORDER } from "./layers";
 
 export interface DiagramSvg { readonly width: number; readonly height: number; readonly svg: string }
@@ -26,7 +26,7 @@ function wrap(value: string, maxWidth: number): string[] {
   if (line) lines.push(line.trimEnd());
   return lines.length > 0 ? lines : [""];
 }
-function text(x: number, y: number, lines: readonly string[], anchor: "start" | "middle" = "start", size = 14, weight = "normal", fill = INK): string {
+function text(x: number, y: number, lines: readonly string[], anchor: "start" | "middle" | "end" = "start", size = 14, weight = "normal", fill = INK): string {
   const lead = Math.round(size * 1.36);
   return `<text x="${x}" y="${y}" text-anchor="${anchor}" font-size="${size}" font-weight="${weight}" fill="${fill}">${lines.map((line, index) => `<tspan x="${x}" dy="${index === 0 ? 0 : lead}">${esc(line)}</tspan>`).join("")}</text>`;
 }
@@ -55,21 +55,15 @@ function sectionPoints(edge: ElkExtendedEdge): Point[][] {
 }
 function frame(title: string, subtitle: string, width: number, height: number, body: string, legend: string): DiagramSvg {
   const w = Math.ceil(Math.max(width, 860)), h = Math.ceil(height);
-  return { width: w, height: h, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" font-family="Arial, sans-serif" font-size="14"><defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse"><path d="M0,0 L9,4.5 L0,9 z" fill="${MUTED}"/></marker><marker id="contract-arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse"><path d="M0,0 L9,4.5 L0,9 z" fill="${CONTRACT}"/></marker></defs><rect width="100%" height="100%" fill="#fff"/>${text(28, 34, [title], "start", 21, "bold")}${text(28, 59, [subtitle], "start", 14)}${body}<line x1="28" x2="${w - 28}" y1="${h - 65}" y2="${h - 65}" stroke="#dde1e5"/>${legend}</svg>` };
+  return { width: w, height: h, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" font-family="Arial, sans-serif" font-size="14"><defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse"><path d="M0,0 L9,4.5 L0,9 z" fill="${MUTED}"/></marker></defs><rect width="100%" height="100%" fill="#fff"/>${text(28, 34, [title], "start", 21, "bold")}${text(28, 59, [subtitle], "start", 14)}${body}<line x1="28" x2="${w - 28}" y1="${h - 65}" y2="${h - 65}" stroke="#dde1e5"/>${legend}</svg>` };
 }
-function edgePath(edge: ElkExtendedEdge, kind: CompositionEdge["kind"] | "port"): string {
-  let style: string;
-  switch (kind) {
-    case "take": case "put": case "port": style = `stroke="${MUTED}" marker-end="url(#arrow)"`; break;
-    case "update": style = `stroke="${MUTED}" marker-start="url(#arrow)" marker-end="url(#arrow)"`; break;
-    case "call": style = `stroke="${MUTED}" stroke-dasharray="8 4" marker-end="url(#arrow)"`; break;
-    case "read": style = `stroke="${CONTRACT}" stroke-dasharray="3 3" marker-end="url(#contract-arrow)"`; break;
-    default: return assertNever(kind);
-  }
-  if (!edge.sections?.length) throw new Error(`ELK 没有布置连线 ${edge.id}`);
-  return edge.sections.map((section) => `<polyline points="${[section.startPoint, ...(section.bendPoints ?? []), section.endPoint].map((point) => `${point.x},${point.y}`).join(" ")}" fill="none" stroke-width="1.7" ${style}/>`).join("");
+function flowPath(edge: ElkExtendedEdge, kind: "flow" | "update"): string {
+  const markers = kind === "update" ? 'marker-start="url(#arrow)" marker-end="url(#arrow)"' : 'marker-end="url(#arrow)"';
+  return sectionPoints(edge).map((points) => `<path d="${roundedPath(points, 8)}" fill="none" stroke="${MUTED}" stroke-width="1.7" ${markers}/>`).join("")
+    + (edge.junctionPoints ?? []).map((point) => `<circle cx="${point.x}" cy="${point.y}" r="3.5" fill="${MUTED}"/>`).join("");
 }
 
+const BOX_LABEL_GAP = 14;
 export async function boxSvg(diagram: BoxDiagram): Promise<DiagramSvg> {
   const { ELK } = await loadDiagramTools();
   const rowHeight = 64, boxWidth = Math.max(320, ...diagram.ports.map((port) => widthOf(port.name) + 48));
@@ -80,8 +74,8 @@ export async function boxSvg(diagram: BoxDiagram): Promise<DiagramSvg> {
       { id: `in${index}`, x: 0, y: 35 + index * rowHeight, width: 0, height: 0, layoutOptions: { "elk.port.side": "WEST" } },
       { id: `out${index}`, x: boxWidth, y: 35 + index * rowHeight, width: 0, height: 0, layoutOptions: { "elk.port.side": "EAST" } },
     ]) }, ...diagram.ports.flatMap((port, index) => [
-      { id: `input${index}`, width: Math.max(80, Math.min(300, widthOf(port.inputs.join(" * ") || "()"))), height: wrap(port.inputs.join(" * ") || "()", 300).length * 19 + 8 },
-      { id: `output${index}`, width: Math.max(80, Math.min(300, widthOf(port.output))), height: wrap(port.output, 300).length * 19 + 8 },
+      { id: `input${index}`, width: Math.min(300, widthOf(port.inputs.join(" * ") || "()")) + BOX_LABEL_GAP, height: wrap(port.inputs.join(" * ") || "()", 300).length * 19 + 8 },
+      { id: `output${index}`, width: Math.min(300, widthOf(port.output)) + BOX_LABEL_GAP, height: wrap(port.output, 300).length * 19 + 8 },
     ])],
     edges: diagram.ports.flatMap((_, index) => [
       { id: `incoming${index}`, sources: [`input${index}`], targets: [`in${index}`] },
@@ -95,7 +89,7 @@ export async function boxSvg(diagram: BoxDiagram): Promise<DiagramSvg> {
   const feedbackHeight = stateLines.length * 19 + 35;
   const top = 100 + (diagram.state ? feedbackHeight : 0);
   let body = `<g transform="translate(28,${top})">`;
-  for (const edge of laid.edges ?? []) body += edgePath(edge, "port");
+  for (const edge of laid.edges ?? []) body += flowPath(edge, "flow");
   body += `<rect x="${box.x}" y="${box.y}" width="${boxWidth}" height="${boxHeight}" rx="9" fill="#f2eff8" stroke="${CONTRACT}" stroke-width="2"/>`;
   if (diagram.state) {
     const x = box.x, y = box.y;
@@ -108,9 +102,11 @@ export async function boxSvg(diagram: BoxDiagram): Promise<DiagramSvg> {
     body += text(box.x! + 16, y - 6, [`${port.name}  · ${port.kind === "operation" ? "op" : "fn"}`], "start", 14, "bold");
     if (port.ext) body += text(box.x! + 16, y + 15, wrap(`rd ${port.ext.rd.join(", ") || "—"}  |  wr ${port.ext.wr.join(", ") || "—"}`, boxWidth - 32), "start", 12);
     body += `<circle cx="${box.x}" cy="${y}" r="4" fill="${CONTRACT}"/><circle cx="${box.x! + boxWidth}" cy="${y}" r="4" fill="${CONTRACT}"/>`;
-    for (const [id, label] of [[`input${index}`, port.inputs.join(" * ") || "()"], [`output${index}`, port.output]] as const) {
-      const node = laid.children!.find((node) => node.id === id)!;
-      body += text(node.x!, node.y! + 15, wrap(label, 300));
+    // 参数类型靠右贴着线起点，结果类型隔开箭头尖；两者都与线留出 BOX_LABEL_GAP。
+    for (const [id, label, side] of [[`input${index}`, port.inputs.join(" * ") || "()", "input"], [`output${index}`, port.output, "output"]] as const) {
+      const node = laid.children!.find((node) => node.id === id)!, lines = wrap(label, 300);
+      const baseline = node.y! + node.height! / 2 + 5 - (lines.length - 1) * 19 / 2;
+      body += side === "input" ? text(node.x! + node.width! - BOX_LABEL_GAP, baseline, lines, "end") : text(node.x! + BOX_LABEL_GAP, baseline, lines);
     }
   });
   if (diagram.ports.length === 0) body += text(box.x + boxWidth / 2, box.y + 54, ["No exported operations / functions"], "middle");
@@ -120,70 +116,98 @@ export async function boxSvg(diagram: BoxDiagram): Promise<DiagramSvg> {
   return frame(`Contract box · ${diagram.module}`, diagram.element, laid.width + 56, height, body, legend);
 }
 
+type StepCall = { readonly kind: "call" | "read"; readonly text: string };
+
+/**
+ * 契约调用与读取写进发起它的步骤框，不画成连到契约节点的线：每个步骤都连向同一两个契约节点，
+ * 这些线横穿整张变量连线图，交叉数由契约节点决定而不由组合本身决定。
+ * 变量是总线：每个变量只有左侧一个写入端口、右侧一个读出端口，同一变量的线在端口处汇成一束。
+ * 步骤侧每条线独占端口（读入在左，写出与 update 在右）；步骤若也共用端口，ELK 会把经过同一步骤的
+ * 不同变量的线并进同一条竖线，读图时分不清哪条线去哪个变量。update 按“步骤 → 变量”参与分层，
+ * 与 put 同向，双向箭头表示步骤也读它。
+ */
 export async function compositionSvg(diagram: CompositionDiagram): Promise<DiagramSvg> {
   const { ELK } = await loadDiagramTools();
   const key = (kind: CompositionNode["kind"], id: string): string => `${kind}:${id}`;
-  const typeLines = (node: CompositionNode): string[] => node.kind === "wire" ? wrap(node.type, 260) : [];
-  const size = (node: CompositionNode): { width: number; height: number } => {
-    switch (node.kind) {
-      case "step": return { width: Math.max(150, widthOf(node.id) + 40), height: 52 };
-      case "wire": return { width: Math.max(widthOf(node.id) + 32, ...typeLines(node).map((line) => widthOf(line) * 0.9 + 32)), height: 30 + typeLines(node).length * 17 };
-      case "contract": return { width: Math.max(170, widthOf(node.id) + 40), height: 60 };
-      default: return assertNever(node);
-    }
+  const calls = new Map<string, StepCall[]>();
+  const callsOf = (step: string): StepCall[] => calls.get(step) ?? calls.set(step, []).get(step)!;
+  const flows: { readonly source: string; readonly target: string; readonly kind: "flow" | "update" }[] = [];
+  const stepPorts = new Map<string, ElkPort[]>();
+  const stepPort = (step: string, side: "WEST" | "EAST"): string => {
+    const ports = stepPorts.get(step) ?? stepPorts.set(step, []).get(step)!, id = `${key("step", step)}.${ports.length}`;
+    ports.push({ id, layoutOptions: { "elk.port.side": side } });
+    return id;
   };
-  const ends = (edge: CompositionEdge): [string, string] => {
+  for (const edge of diagram.edges) {
     switch (edge.kind) {
-      case "take": case "update": return [key("wire", edge.wire), key("step", edge.step)];
-      case "put": return [key("step", edge.step), key("wire", edge.wire)];
-      case "call": return [key("step", edge.step), key("contract", edge.contract)];
-      case "read": return [key("contract", edge.contract), key("step", edge.step)];
-      default: return assertNever(edge);
+      case "take": flows.push({ source: `${key("wire", edge.wire)}.out`, target: stepPort(edge.step, "WEST"), kind: "flow" }); break;
+      case "put": flows.push({ source: stepPort(edge.step, "EAST"), target: `${key("wire", edge.wire)}.in`, kind: "flow" }); break;
+      case "update": flows.push({ source: stepPort(edge.step, "EAST"), target: `${key("wire", edge.wire)}.in`, kind: "update" }); break;
+      case "call": callsOf(edge.step).push({ kind: "call", text: `${edge.contract}.${edge.operations.join(", ")}` }); break;
+      case "read": callsOf(edge.step).push({ kind: "read", text: `${edge.contract}` }); break;
+      default: assertNever(edge);
     }
-  };
-  const labelLines = diagram.edges.map((edge) => edge.kind === "call" ? wrap(edge.operations.join(", "), 240) : []);
+  }
+  const callLines = (step: string): { readonly kind: StepCall["kind"]; readonly line: string }[] =>
+    (calls.get(step) ?? []).flatMap((call) => sizedWrap(`${call.kind === "call" ? "calls" : "reads"} ${call.text}`, 300, 12).map((line) => ({ kind: call.kind, line })));
+  const typeLines = (node: CompositionNode): string[] => node.kind === "wire" ? wrap(node.type, 260) : [];
+  const children: ElkNode[] = [];
+  for (const node of diagram.nodes) {
+    switch (node.kind) {
+      case "step": {
+        const lines = callLines(node.id);
+        children.push({ id: key("step", node.id), width: Math.max(150, widthOf(node.id) + 40, ...lines.map(({ line }) => sizedWidth(line, 12) + 28)), height: lines.length ? 44 + lines.length * 16 : 52, layoutOptions: { "elk.portConstraints": "FIXED_SIDE" }, ports: stepPorts.get(node.id) ?? [] });
+        break;
+      }
+      case "wire":
+        children.push({ id: key("wire", node.id), width: Math.max(widthOf(node.id) + 32, ...typeLines(node).map((line) => widthOf(line) * 0.9 + 32)), height: 30 + typeLines(node).length * 17, layoutOptions: { "elk.portConstraints": "FIXED_SIDE" }, ports: [{ id: `${key("wire", node.id)}.in`, layoutOptions: { "elk.port.side": "WEST" } }, { id: `${key("wire", node.id)}.out`, layoutOptions: { "elk.port.side": "EAST" } }] });
+        break;
+      case "contract": break;
+      default: assertNever(node);
+    }
+  }
   const graph: ElkNode = {
-    id: "root", layoutOptions: { "elk.algorithm": "layered", "elk.direction": "RIGHT", "elk.edgeRouting": "ORTHOGONAL", "elk.spacing.nodeNode": "28", "elk.layered.spacing.nodeNodeBetweenLayers": "60", "elk.spacing.edgeNode": "18", "elk.spacing.edgeEdge": "12", "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX", "elk.padding": "[top=20,left=20,bottom=20,right=20]" },
-    children: diagram.nodes.map((node) => ({ id: key(node.kind, node.id), ...size(node) })),
-    edges: diagram.edges.map((edge, index) => {
-      const [source, target] = ends(edge), lines = labelLines[index]!;
-      return { id: `edge${index}`, sources: [source], targets: [target], labels: lines.length ? [{ text: lines.join("\n"), width: Math.max(...lines.map(widthOf)) * 0.9, height: lines.length * 17 + 6 }] : [] };
-    }),
+    id: "root",
+    layoutOptions: { "elk.algorithm": "layered", "elk.direction": "RIGHT", "elk.edgeRouting": "ORTHOGONAL", "elk.layered.thoroughness": "100", "elk.spacing.nodeNode": "28", "elk.layered.spacing.nodeNodeBetweenLayers": "60", "elk.spacing.edgeNode": "18", "elk.spacing.edgeEdge": "12", "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX", "elk.padding": "[top=20,left=20,bottom=20,right=20]" },
+    children,
+    edges: flows.map((flow, index) => ({ id: `flow${index}`, sources: [flow.source], targets: [flow.target] })),
   };
   const laid = await new ELK().layout(graph);
   if (laid.width === undefined || laid.height === undefined) throw new Error(`ELK 没有布置组合图 ${diagram.module}`);
   let body = '<g transform="translate(28,95)">';
-  for (const [index, edge] of (laid.edges ?? []).entries()) {
-    body += edgePath(edge, diagram.edges[index]!.kind);
-    for (const label of edge.labels ?? []) {
-      body += `<rect x="${label.x! - 4}" y="${label.y! - 2}" width="${label.width! + 8}" height="${label.height! + 4}" rx="3" fill="#fff"/>`;
-      body += text(label.x!, label.y! + 13, labelLines[index]!, "start", 12);
-    }
-  }
+  for (const [index, edge] of (laid.edges ?? []).entries()) body += flowPath(edge, flows[index]!.kind);
   const placed = new Map((laid.children ?? []).map((child) => [child.id, child]));
   for (const node of diagram.nodes) {
+    if (node.kind === "contract") continue;
     const at = placed.get(key(node.kind, node.id));
     if (!at || at.x === undefined || at.y === undefined || at.width === undefined || at.height === undefined) throw new Error(`ELK 没有布置 ${node.kind} ${node.id}`);
     const { x, y, width, height } = at;
     switch (node.kind) {
-      case "step":
-        body += `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="8" fill="#eef4fa" stroke="${BEHAVIOR}" stroke-width="2"/>${text(x + width / 2, y + height / 2 + 5, [node.id], "middle", 14, "bold")}`;
+      case "step": {
+        const lines = callLines(node.id);
+        body += `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="8" fill="#eef4fa" stroke="${BEHAVIOR}" stroke-width="2"/>`;
+        if (lines.length === 0) { body += text(x + width / 2, y + height / 2 + 5, [node.id], "middle", 14, "bold"); break; }
+        body += text(x + width / 2, y + 22, [node.id], "middle", 14, "bold") + `<line x1="${x}" x2="${x + width}" y1="${y + 32}" y2="${y + 32}" stroke="${BEHAVIOR}" stroke-opacity="0.35"/>`;
+        lines.forEach(({ kind, line }, i) => { body += text(x + 14, y + 50 + i * 16, [line], "start", 12, kind === "call" ? "bold" : "normal", CONTRACT); });
         break;
+      }
       case "wire":
         body += `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${Math.min(15, height / 2)}" fill="#fff" stroke="${MUTED}" stroke-width="1.4"/>${text(x + width / 2, y + 19, [node.id], "middle", 13, "bold")}`;
         body += `<text x="${x + width / 2}" y="${y + 36}" text-anchor="middle" font-size="11" fill="${MUTED}">${typeLines(node).map((line, i) => `<tspan x="${x + width / 2}" dy="${i === 0 ? 0 : 17}">${esc(line)}</tspan>`).join("")}</text>`;
         break;
-      case "contract":
-        body += `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="#f2eff8" stroke="${CONTRACT}" stroke-width="2" stroke-dasharray="7 3"/>${text(x + width / 2, y + height / 2 + 5, [node.id], "middle", 14, "bold")}`;
-        break;
       default: assertNever(node);
     }
   }
-  if (diagram.nodes.length === 0) body += text(20, 30, ["No steps, wires or contract calls"]);
+  if (children.length === 0) body += text(20, 30, ["No steps or wires"]);
   body += "</g>";
   const height = Math.max(laid.height + 210, 330);
-  const legend = `<rect x="28" y="${height - 48}" width="20" height="16" rx="4" fill="#eef4fa" stroke="${BEHAVIOR}"/>${text(58, height - 34, ["Step · action in step"], "start", 12)}<rect x="230" y="${height - 48}" width="26" height="16" rx="8" fill="#fff" stroke="${MUTED}"/>${text(266, height - 34, ["Wire · var : type"], "start", 12)}<rect x="420" y="${height - 48}" width="20" height="16" fill="#f2eff8" stroke="${CONTRACT}" stroke-dasharray="4 2"/>${text(450, height - 34, ["Contract box"], "start", 12)}<path d="M560,${height - 40} h35" stroke="${MUTED}" marker-end="url(#arrow)"/>${text(605, height - 34, ["Take / Put"], "start", 12)}<path d="M690,${height - 40} h35" stroke="${MUTED}" marker-start="url(#arrow)" marker-end="url(#arrow)"/>${text(735, height - 34, ["Update · reads and writes"], "start", 12)}<path d="M930,${height - 40} h35" stroke="${MUTED}" stroke-dasharray="8 4" marker-end="url(#arrow)"/>${text(975, height - 34, ["Call · operations"], "start", 12)}<path d="M1125,${height - 40} h35" stroke="${CONTRACT}" stroke-dasharray="3 3" marker-end="url(#contract-arrow)"/>${text(1170, height - 34, ["Read · feedback"], "start", 12)}`;
-  return frame(`Composition · ${diagram.module}`, "Steps as boxes, behavior variables as wires, generated contract calls", Math.max(laid.width + 56, 1340), height, body, legend);
+  const legend = `<rect x="28" y="${height - 48}" width="20" height="16" rx="4" fill="#eef4fa" stroke="${BEHAVIOR}"/>${text(58, height - 34, ["Step · action in step"], "start", 12)}`
+    + `<rect x="230" y="${height - 48}" width="26" height="16" rx="8" fill="#fff" stroke="${MUTED}"/>${text(266, height - 34, ["Wire · var : type"], "start", 12)}`
+    + `<path d="M420,${height - 40} h35" stroke="${MUTED}" marker-end="url(#arrow)"/>${text(465, height - 34, ["Take / Put"], "start", 12)}`
+    + `<path d="M560,${height - 40} h35" stroke="${MUTED}" marker-start="url(#arrow)" marker-end="url(#arrow)"/>${text(605, height - 34, ["Update · reads and writes"], "start", 12)}`
+    + `<circle cx="800" cy="${height - 40}" r="3.5" fill="${MUTED}"/>${text(812, height - 34, ["Shared wire"], "start", 12)}`
+    + text(920, height - 34, ["calls box.operation"], "start", 12, "bold", CONTRACT) + text(1060, height - 34, ["reads box · feedback"], "start", 12, "normal", CONTRACT);
+  return frame(`Composition · ${diagram.module}`, "Steps as boxes, behavior variables as wires; contract calls and reads listed in the step that makes them", Math.max(laid.width + 56, 1240), height, body, legend);
 }
 
 const C4_STYLE: Readonly<Record<C4NodeKind, { readonly notation: string; readonly fill: string; readonly stroke: string; readonly ink: string; readonly sub: string }>> = {

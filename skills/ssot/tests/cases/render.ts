@@ -7,7 +7,6 @@ import { format, global } from "../../scripts/src/diag";
 import { generateContract } from "../../scripts/src/gen/contract";
 import { projectBox, vdmTypeName } from "../../scripts/src/render/box";
 import { projectComposition } from "../../scripts/src/render/composition";
-import { compositionSvg } from "../../scripts/src/render/svg";
 
 export async function verifyRenderProjections(): Promise<number> {
   const fixture = join(import.meta.dir, "..", "render");
@@ -115,9 +114,6 @@ export async function verifyRenderProjections(): Promise<number> {
         { kind: "read", contract: "shop_worker", step: "peekFeedback" },
       ],
     });
-    const renderedSvg = await compositionSvg(peekDiagram);
-    assert.equal(renderedSvg.svg.includes('marker-end="url(#contract-arrow)"'), true);
-    assert.equal(renderedSvg.svg.includes("Read · feedback"), true);
     return 13;
   } finally {
     rmSync(stage, { recursive: true, force: true });

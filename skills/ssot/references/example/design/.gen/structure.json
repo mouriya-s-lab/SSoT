@@ -7,6 +7,7 @@
       "parent": null,
       "children": [],
       "tags": [],
+      "group": null,
       "business": false,
       "contract": null
     },
@@ -20,6 +21,7 @@
         "checkout.service"
       ],
       "tags": [],
+      "group": null,
       "business": false,
       "contract": null
     },
@@ -31,6 +33,7 @@
       "tags": [
         "contract"
       ],
+      "group": null,
       "business": false,
       "contract": {
         "module": "checkout_inventory"
@@ -44,6 +47,7 @@
       "tags": [
         "contract"
       ],
+      "group": null,
       "business": false,
       "contract": {
         "module": "checkout_ledger"
@@ -61,6 +65,7 @@
         "checkout.service.pricing"
       ],
       "tags": [],
+      "group": null,
       "business": false,
       "contract": null
     },
@@ -70,6 +75,7 @@
       "parent": "checkout.service",
       "children": [],
       "tags": [],
+      "group": "Request entry",
       "business": false,
       "contract": null
     },
@@ -79,6 +85,7 @@
       "parent": "checkout.service",
       "children": [],
       "tags": [],
+      "group": "Order lifecycle",
       "business": false,
       "contract": null
     },
@@ -88,6 +95,7 @@
       "parent": "checkout.service",
       "children": [],
       "tags": [],
+      "group": "Order lifecycle",
       "business": false,
       "contract": null
     },
@@ -97,6 +105,7 @@
       "parent": "checkout.service",
       "children": [],
       "tags": [],
+      "group": null,
       "business": false,
       "contract": null
     },
@@ -106,6 +115,7 @@
       "parent": "checkout.service",
       "children": [],
       "tags": [],
+      "group": "Request entry",
       "business": false,
       "contract": null
     },
@@ -117,6 +127,7 @@
       "tags": [
         "external"
       ],
+      "group": null,
       "business": false,
       "contract": null
     }

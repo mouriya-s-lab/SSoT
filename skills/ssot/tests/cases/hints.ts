@@ -83,7 +83,7 @@ function architecture(relations: readonly C4Relation[] = []): Structure {
     { fqn: "user", kind: "actor", parent: null, children: [], tags: [], metadata: {}, at: null },
     { fqn: "outside", kind: "system", parent: null, children: [], tags: [], metadata: {}, at: null },
   ];
-  return { elements: new Map(elements.map((e) => [e.fqn, { ...e, title: e.fqn, description: "", technology: null }])), relations, views: [], spec: { elementKinds: ["actor", "system", "container", "component"], relationKinds: [], tags: ["contract", "business"] } };
+  return { elements: new Map(elements.map((e) => [e.fqn, { ...e, title: e.fqn, description: "", technology: null }])), relations, views: [], viewBlockRules: [], spec: { elementKinds: ["actor", "system", "container", "component"], relationKinds: [], tags: ["contract", "business"] } };
 }
 
 export function verifyProjections(): number {

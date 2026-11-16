@@ -1,6 +1,6 @@
 ---
 name: ssot-verify-contract
-description: SSoT 契约评审清单（一个带 contract 标签的元素的盒子）：先只看盒子图判断端口与反馈线，再带着 hint.* 提示读模块，判断精度、状态机、最小性、所有权与身份，并用 ssot eval 为每个 pre、post、inv 求违反实例；评审者没看过设计，只报告不修改。与 ssot-vdm 一起读，先读 ssot。
+description: SSoT 契约评审清单（一个带 contract 标签的元素的盒子）：先只看盒子图判断端口与反馈线，再看契约分层图判断定义被谁引用、架构是否引用了业务，再带着 hint.* 提示读模块，判断精度、状态机、最小性、所有权与身份，并用 ssot eval 为每个 pre、post、inv 求违反实例；评审者没看过设计，只报告不修改。与 ssot-vdm 一起读，先读 ssot。
 ---
 
 # ssot-verify-contract：评审一个盒子
@@ -9,8 +9,8 @@ description: SSoT 契约评审清单（一个带 contract 标签的元素的盒�
 
 | 项 | 内容 |
 |---|---|
-| 输入 | `scope`；本模块的盒子图路径；设计目录路径；`ssot check <design> --scope <V>` 的诊断 |
-| 可读 | 盒子图；本模块全文；E 在 `structure/*.c4` 里的描述、关系与标签；本模块附着的需求编号在 `requirements.md` 里的原文；本模块 import 的模块的导出签名；接这个盒子的模块里引用本模块名字的地方（只看引用处，不评那些模块）；交给你的诊断 |
+| 输入 | `scope`；本模块的盒子图路径；契约分层图路径（`layers.png`）；设计目录路径；`ssot check <design> --scope <V>` 的诊断 |
+| 可读 | 盒子图；契约分层图；本模块全文；E 在 `structure/*.c4` 里的描述、关系与标签；本模块附着的需求编号在 `requirements.md` 里的原文；本模块 import 的模块的导出签名；接这个盒子的模块里引用本模块名字的地方（只看引用处，不评那些模块）；交给你的诊断 |
 | 可改 | 无。`ssot eval` 的结果只出现在本次交付里 |
 | 可运行 | `ssot eval <design> <本模块名> '<表达式>' [--bind …]`；没给诊断时运行 `ssot check <design> --scope <V>` |
 | 输出 | 发现（见「交付」） |
@@ -18,31 +18,41 @@ description: SSoT 契约评审清单（一个带 contract 标签的元素的盒�
 
 ## 派发
 
-会话运行 `ssot render <design>` 与 `ssot check <design> --scope <V>`，按 `ssot` 第九节派一个新的 `ssot:reviewer`，交给它本 skill 名、`scope`、盒子图路径、设计目录路径与诊断。原样交付它的发现。下面各节写给评审者。
+会话运行 `ssot render <design>` 与 `ssot check <design> --scope <V>`，按 `ssot` 第九节派一个新的 `ssot:reviewer`，交给它本 skill 名、`scope`、盒子图路径、契约分层图路径、设计目录路径与诊断。原样交付它的发现。下面各节写给评审者。
 
 ## 一、先只看盒子图
 
 不读模块，先看图：这个盒子有哪些端口、线上传什么、反馈线上记着什么、每个端口读写反馈线的哪一段。问：端口是不是只有承诺所需的几个；反馈线上是不是只有这个盒子守住的事实；有没有看起来像阶段的分量。图上读不懂的记为问题。
 
-## 二、再看整体
+## 二、看契约分层图
+
+`layers.png` 按知识依赖画出带 `#contract` 的模块：被 import 的模块在下，业务元素的模块在上，架构居中，`store` 的模块最深；箭头从 import 方指向被 import 方。用它回答三件事：
+
+- 本模块定义的名字被谁引用：指向本模块的箭头合起来就是改动波及的范围；
+- 架构不引用业务是否守住：从架构模块出发的箭头不得落在业务模块上；
+- 本模块画在哪一层，与它在结构里的种类和 `#business` 标签是否一致。
+
+图上读不懂，或箭头与本模块的 import 对不上，记为发现。层级本身不对（这个元素不该是 `store`、不该带 `#business`）交给 `ssot-write-level` 与 E 的父元素的视图；import 本身的问题归 `ssot-write-contract` 与本 `scope`。
+
+## 三、再看整体
 
 回答：附着在本模块上的需求或交给它的担心，要求 E 的端口承诺什么？为此这个盒子应该有哪些端口、持有什么反馈、守什么不变量？再对照实际的模块。
 
-## 三、求违反实例
+## 四、求违反实例
 
 对本模块每个 `pre`、`post`、`inv` 与承诺性质的函数各做一次：读出它要守住的约束；写一个违反它的具体值或调用（`pre_op(…)`、`post_op(…)`、`inv_T(…)`），优先用边界值；用 `ssot eval` 求值。规格接受了这个违反实例，就是一条发现，附上表达式与输出。求值报错不等于规格拒绝：看报错是不是因为违反了约束本身。
 
-## 四、清单
+## 五、清单
 
 按 `ssot-vdm`「十」逐项判断；每条 info（`hint.*`、MAYBE 等未解决的证明义务）写出你的判断：是问题，还是不构成问题（写理由）。
 
-## 五、交付
+## 六、交付
 
 只交付发现，一条一项：
 
 - 清单项名；
-- 位置：盒子图上的端口或反馈线，或 `contract/<文件>.vdmsl:<行>` 与定义名；
+- 位置：盒子图上的端口或反馈线、分层图上的箭头，或 `contract/<文件>.vdmsl:<行>` 与定义名；
 - 观察到的事实，以及它为什么构成问题；违反实例附上 `ssot eval` 的表达式与输出；
-- 应由哪个 skill、哪个 `scope` 修：本模块的问题是 `ssot-write-contract` 与本 `scope`；定义属于另一个带 `#contract` 的元素时是那个元素的 `ssot-write-contract`；结构问题是 `ssot-write-level` 与 E 的父元素的视图；需求编号附错了是 `ssot-write-contract` 与本 `scope`，落点本身有问题是 `ssot-judge`。
+- 应由哪个 skill、哪个 `scope` 修：本模块的问题是 `ssot-write-contract` 与本 `scope`；定义属于另一个带 `#contract` 的元素时是那个元素的 `ssot-write-contract`；结构问题是 `ssot-write-level` 与 E 的父元素的视图；本模块画在分层图上的层与它在结构里的种类、`#business` 标签不一致时，同样是结构问题；需求编号附错了是 `ssot-write-contract` 与本 `scope`，落点本身有问题是 `ssot-judge`。
 
 没有发现时写明“未发现问题”，并列出你求过违反实例的谓词与函数。不改文件。

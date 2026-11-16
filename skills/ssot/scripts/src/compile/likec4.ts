@@ -43,6 +43,14 @@ export interface C4ViewEdge {
   readonly label: string | null;
 }
 
+/** 元素视图里会定下图的样子、因而禁止由作者书写的规则。 */
+export type ViewRuleKind = "group" | "rank" | "autoLayout" | "style" | "globalStyle";
+
+/** 作者在源码里写下的一条视图规则；逻辑视图的形状、颜色、图例、分组与纵向顺序由 `ssot render` 计算。 */
+export interface C4ViewRule {
+  readonly kind: ViewRuleKind;
+  readonly at: Position | null;
+}
 
 export interface C4View {
   readonly id: string;
@@ -55,6 +63,8 @@ export interface C4View {
   readonly nodes: readonly string[];
   /** 计算后的箭头，端点都是 nodes 里的元素。 */
   readonly edges: readonly C4ViewEdge[];
+  /** 元素视图里作者写下的规则（按源码次序）；部署视图只由 LikeC4 导出，这里为空。 */
+  readonly writtenRules: readonly C4ViewRule[];
   /** false：LikeC4 自动生成的视图（没有源位置）。 */
   readonly declared: boolean;
   readonly at: Position | null;
@@ -64,6 +74,8 @@ export interface Structure {
   readonly elements: ReadonlyMap<string, C4Element>;
   readonly relations: readonly C4Relation[];
   readonly views: readonly C4View[];
+  /** `views { ... }` 块里写在视图之外的样式规则；它们作用到块内的每张视图。 */
+  readonly viewBlockRules: readonly C4ViewRule[];
   readonly spec: {
     readonly elementKinds: readonly string[];
     readonly relationKinds: readonly string[];
@@ -91,6 +103,84 @@ function viewType(t: string): ViewType {
     default:
       throw new Error(`LikeC4 返回了未知的视图类型 ${t}`);
   }
+}
+
+type UnknownRecord = Readonly<Record<string, unknown>>;
+
+function asRecord(value: unknown): UnknownRecord | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as UnknownRecord) : null;
+}
+
+/** 计算视图里不保留 view 规则；作者写过哪些规则只能读工作区文档的解析结果。 */
+const RULE_KINDS: Readonly<Record<string, ViewRuleKind>> = {
+  ViewRuleGroup: "group",
+  ViewRuleRank: "rank",
+  ViewRuleAutoLayout: "autoLayout",
+  ViewRuleStyle: "style",
+  ViewRuleGlobalStyle: "globalStyle",
+};
+
+/** 只挑元素、不改图的样子，不是禁止项。 */
+const HARMLESS_RULE_TYPES: Readonly<Record<string, true>> = {
+  ViewRulePredicate: true,
+  ViewRuleGlobalPredicateRef: true,
+};
+
+function rulePosition(node: UnknownRecord, file: string): Position | null {
+  const start = asRecord(asRecord(asRecord(node.$cstNode)?.range)?.start);
+  const [line, character] = [start?.line, start?.character];
+  if (typeof line !== "number" || typeof character !== "number") return null;
+  return { file, line: line + 1, col: character + 1 };
+}
+
+function viewRule(rule: unknown, file: string): C4ViewRule | null {
+  const node = asRecord(rule);
+  const type = node?.$type;
+  if (node === null || typeof type !== "string") throw new Error("LikeC4 的视图规则没有 $type");
+  if (HARMLESS_RULE_TYPES[type] === true) return null;
+  const kind = RULE_KINDS[type];
+  if (kind === undefined) throw new Error(`LikeC4 返回了未知的视图规则 ${type}；无法判定作者写了什么`);
+  return { kind, at: rulePosition(node, file) };
+}
+
+function documentsOf(compiler: unknown): readonly unknown[] {
+  const services = asRecord(asRecord(asRecord(compiler)?.languageServices)?.services);
+  const documents = asRecord(asRecord(asRecord(services?.shared)?.workspace)?.LangiumDocuments);
+  const all = documents?.all;
+  if (all === null || typeof all !== "object" || !(Symbol.iterator in all))
+    throw new Error("LikeC4 没有暴露工作区文档，无法检查视图里写下的规则");
+  return [...(all as Iterable<unknown>)];
+}
+
+/** 元素视图声明里的规则按视图 id 收集；`views` 块里视图之外的样式规则另收一份。 */
+function writtenViewRules(compiler: unknown): { readonly views: ReadonlyMap<string, readonly C4ViewRule[]>; readonly blocks: readonly C4ViewRule[] } {
+  const views = new Map<string, readonly C4ViewRule[]>();
+  const blocks: C4ViewRule[] = [];
+  for (const document of documentsOf(compiler)) {
+    const doc = asRecord(document);
+    const ast = asRecord(asRecord(doc?.parseResult)?.value);
+    if (ast?.$type !== "LikeC4Grammar") continue;
+    const uri = typeof doc?.uri === "string" ? doc.uri : doc?.uri === undefined ? null : String(doc.uri);
+    if (uri === null || !uri.startsWith("file:")) continue;
+    const file = fileURLToPath(uri);
+    for (const declared of Array.isArray(ast.views) ? ast.views : []) {
+      const block = asRecord(declared);
+      for (const rule of Array.isArray(block?.styles) ? block.styles : []) {
+        const mapped = viewRule(rule, file);
+        if (mapped !== null) blocks.push(mapped);
+      }
+      for (const declaredView of Array.isArray(block?.views) ? block.views : []) {
+        const view = asRecord(declaredView);
+        if (view?.$type !== "ElementView" || typeof view.name !== "string") continue;
+        const body = asRecord(view.body);
+        views.set(view.name, (Array.isArray(body?.rules) ? body.rules : []).flatMap((rule) => {
+          const mapped = viewRule(rule, file);
+          return mapped === null ? [] : [mapped];
+        }));
+      }
+    }
+  }
+  return { views, blocks };
 }
 
 export async function compileLikeC4(dir: string): Promise<C4Result> {
@@ -133,6 +223,7 @@ export async function compileLikeC4(dir: string): Promise<C4Result> {
       metadata: r.metadata ?? {},
       at: position(ls.locate({ relation: r.id })),
     }));
+    const written = writtenViewRules(compiler);
     const views: C4View[] = [...model.views()].map((v) => {
       const at = position(ls.locate({ view: v.id }));
       return {
@@ -143,10 +234,14 @@ export async function compileLikeC4(dir: string): Promise<C4Result> {
         description: v.$view.description?.txt ?? "",
         nodes: [...v.nodes()].flatMap((n) => (n.element ? [n.element.id] : [])),
         edges: [...v.edges()].flatMap((e) => (e.source.element && e.target.element ? [{ source: e.source.element.id, target: e.target.element.id, label: e.label ?? null }] : [])),
+        writtenRules: written.views.get(v.id) ?? [],
         declared: at !== null,
         at,
       };
     });
+    const elementViewIds = new Set(views.filter((v) => v.type === "element").map((v) => v.id));
+    for (const id of written.views.keys())
+      if (!elementViewIds.has(id)) throw new Error(`LikeC4 的视图声明 ${id} 没有对应的元素视图`);
     const spec = model.specification;
     return {
       kind: "ok",
@@ -155,6 +250,7 @@ export async function compileLikeC4(dir: string): Promise<C4Result> {
         elements,
         relations,
         views,
+        viewBlockRules: written.blocks,
         spec: {
           elementKinds: Object.keys(spec.elements ?? {}),
           relationKinds: Object.keys(spec.relationships ?? {}),

@@ -10,7 +10,7 @@
 
 其余模块尚无故障观测。
 
-**结构。** 上下文图（`index`）与容器图（`checkoutView`）是默认的导航图。`Order Service` 画了组件图（`serviceView`），因为上述观测都涉及 `Order Service` 内部：读图的人需要看清履约（`Fulfillment`）与取消（`Cancellation`）是 `Order Service` 里的哪两块、各自连接哪些容器（`structure/checkout.c4`）。
+**结构。** 上下文图（`index`）与容器图（`checkoutView`）是默认的导航图。`Order Service` 画了组件图（`serviceView`），因为上述观测都涉及 `Order Service` 内部：读图的人需要看清履约（`Fulfillment`）与取消（`Cancellation`）是 `Order Service` 里的哪两块、各自连接哪些容器（`structure/checkout.c4`）。五个组件按职责分成 `Request entry`（`API`、`Pricing`）与 `Order lifecycle`（`Fulfillment`、`Cancellation`）两组，`Notifier` 独立：分组写在元素的 `metadata group` 上，三张逻辑图按这一处声明画出同一组。
 
 **往下写的位置只有两个盒子和一张接线图**，深入三问的回答与支撑精度的观测如下：
 
@@ -24,4 +24,4 @@
 
 **其余位置保持不可见。** `API`、`Pricing`、`Notifier` 与外部 `Payment Gateway` 没有 `#contract`，也不出现在接线图里：它们要么是标准范式，要么尚无运行时故障观测。`Fulfillment` 与 `Cancellation` 只作为接线图里的顺接步骤与取消收束过程出现，不单独立 VDM 盒子：它们的隐患在跨边界交错上，不在自身某一个端口的数据契约上。`requirements.md` 中的 `REQ-1` 至 `REQ-4` 没有附着到 VDM 或 Quint，它们由 C4 结构回答或留给代码实现。
 
-**渲染。** `ssot render design` 导出 4 张 C4 视图、2 张 VDM 盒子图（`box:checkout_inventory`、`box:checkout_ledger`）与 1 张 Quint 组合图（`composition:cancellation`）。
+**渲染。** `ssot render design` 导出 4 张 C4 视图（`index` → `checkoutView` → `serviceView` → `deployed`）、1 张契约分层图（`layers`，两个契约模块 `checkout_ledger` 与 `checkout_inventory` 的 import 关系）、2 张 VDM 盒子图（`box:checkout_inventory`、`box:checkout_ledger`）与 1 张 Quint 组合图（`composition:cancellation`）。

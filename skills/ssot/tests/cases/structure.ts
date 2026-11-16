@@ -38,7 +38,7 @@ export const mutations: readonly Mutation[] = [
   },
   {
     id: "struct-nesting-store-under-container", expect: "struct.nesting", description: "store 不能嵌在 container 里", regen: true,
-    edits: [{ file: C4, find: "      technology 'HTTP'", replace: "      technology 'HTTP'\n      cache = store 'Cache'" }, { file: C4, find: view, replace: "  view apiLayer of shop.api { include * }\n" + view }],
+    edits: [{ file: C4, find: "        group 'Applications'\n      }\n    }\n    reports = container", replace: "        group 'Applications'\n      }\n      cache = store 'Cache'\n    }\n    reports = container" }, { file: C4, find: view, replace: "  view apiLayer of shop.api { include * }\n" + view }],
     outputIncludes: ["store 的父元素必须是 system"],
   },
   {
@@ -69,6 +69,51 @@ export const mutations: readonly Mutation[] = [
   {
     id: "struct-nesting-actor-children", expect: "struct.nesting", description: "actor 不能有子元素", regen: true,
     edits: [{ file: C4, find: top, replace: "  user = actor 'User' { nested = system 'Nested' }" }], outputIncludes: ["actor 不能有子元素"],
+  },
+  {
+    id: "struct-group-valid", expect: "struct.group", description: "同一父元素下的兄弟共用一个组名通过", edits: [], regen: false, expectPass: true,
+    outputExcludes: ["/struct.group]"],
+  },
+  {
+    id: "struct-group-cross-parent", expect: "struct.group", description: "同名分组的成员必须同父，不能跨层", regen: true,
+    edits: [
+      { file: C4, find: "        group 'Applications'\n      }\n    }\n    ledger = container", replace: "        group 'Applications'\n      }\n      writer = component 'Writer' {\n        metadata {\n          group 'Applications'\n        }\n      }\n    }\n    ledger = container" },
+      { file: C4, find: view, replace: "  view reportsLayer of reports { include * }\n" + view },
+    ],
+    outputIncludes: ["同一分组的成员只在这一个父元素下的兄弟之间"],
+  },
+  {
+    id: "struct-views-autolayout", expect: "struct.views", description: "元素视图不写 autoLayout", regen: true,
+    edits: [{ file: C4, find: "  view index {\n    include *", replace: "  view index {\n    autoLayout TopBottom\n    include *" }],
+    outputIncludes: ["元素视图不写 autoLayout"],
+  },
+  {
+    id: "struct-views-group", expect: "struct.views", description: "元素视图不写 group：分组是模型事实", regen: true,
+    edits: [{ file: C4, find: "  view shopLayer of shop {\n    include *", replace: "  view shopLayer of shop {\n    include *\n    group 'Back office' {\n      include reports\n    }" }],
+    outputIncludes: ["元素视图不写 group"],
+  },
+  {
+    id: "struct-views-rank", expect: "struct.views", description: "元素视图不写 rank", regen: true,
+    edits: [{ file: C4, find: "  view shopLayer of shop {\n    include *", replace: "  view shopLayer of shop {\n    include *\n    rank same { api, reports }" }],
+    outputIncludes: ["元素视图不写 rank"],
+  },
+  {
+    id: "struct-views-style", expect: "struct.views", description: "元素视图的形状与颜色由 ssot render 绘制", regen: true,
+    edits: [{ file: C4, find: "  view index {\n    include *", replace: "  view index {\n    include *\n    style shop { color red }" }],
+    outputIncludes: ["元素视图不写 样式（style）"],
+  },
+  {
+    id: "struct-views-global-style", expect: "struct.views", description: "global style 不再用于逻辑视图", regen: true,
+    edits: [
+      { file: C4, find: "views {\n", replace: "global {\n  styleGroup theme {\n    style * { color primary }\n  }\n}\n\nviews {\n" },
+      { file: C4, find: "  view index {\n    include *", replace: "  view index {\n    global style theme\n    include *" },
+    ],
+    outputIncludes: ["元素视图不写 全局样式（global style）"],
+  },
+  {
+    id: "struct-views-block-style", expect: "struct.views", description: "views 块里不写样式规则", regen: true,
+    edits: [{ file: C4, find: "views {\n", replace: "views {\n  style * { color red }\n" }],
+    outputIncludes: ["views 块里不写 样式（style）"],
   },
   {
     id: "contract-module-nonleaf", expect: "contract.module", description: "非叶 system 不得标记 #contract", regen: true,
@@ -129,12 +174,15 @@ export const mutations: readonly Mutation[] = [
 ];
 
 export function verifyStructureProjections(): number {
-  const index: C4View = { id: "index", type: "element", viewOf: null, title: null, description: "", nodes: [], edges: [], declared: true, at: null };
-  const structure: Structure = { elements: new Map(), relations: [], views: [index, index], spec: { elementKinds: [], relationKinds: [], tags: [] } };
-  assert.equal(structureRules(structure).filter((d) => d.rule === "struct.views").length, 1, "duplicate projected index");
+  const index: C4View = { id: "index", type: "element", viewOf: null, title: null, description: "", nodes: [], edges: [], writtenRules: [], declared: true, at: null };
+  const structure: Structure = { elements: new Map(), relations: [], views: [index, index], viewBlockRules: [], spec: { elementKinds: [], relationKinds: [], tags: [] } };
+  const viewDiagnostics = (s: Structure): number => structureRules(s).filter((d) => d.rule === "struct.views").length;
+  assert.equal(viewDiagnostics(structure), 1, "duplicate projected index");
   assert.equal(structureRules({ ...structure, views: [index] }).length, 0, "unique projected index");
+  assert.equal(viewDiagnostics({ ...structure, views: [{ ...index, writtenRules: [{ kind: "autoLayout", at: null }] }] }), 1, "written layout rule");
+  assert.equal(viewDiagnostics({ ...structure, views: [index], viewBlockRules: [{ kind: "globalStyle", at: null }] }), 1, "block style rule");
   const scoped = (id: string, viewOf: string): C4View => ({ ...index, id, viewOf });
   const deployment: C4View = { ...index, id: "deploy", type: "deployment" };
   assert.deepEqual(renderOrder([deployment, scoped("z", "b"), scoped("deep", "a.b"), scoped("a", "a"), index]).map((v) => v.id), ["index", "a", "z", "deep", "deploy"]);
-  return 3;
+  return 5;
 }

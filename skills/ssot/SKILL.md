@@ -137,7 +137,7 @@ Quint 接线（手写）──回放──▶ 只回放轨迹里出现的契约�
 | `ssot check <design>` | 全量检查：编译三种载体、生成链新鲜度、跨载体规则、模拟、覆盖目标、回放、证明义务 |
 | `ssot check <design> --scope <视图 id>` | 仍编译全部内容，模拟、回放、QuickCheck 只在该视图的切片闭包内运行，只报告归属于该视图节点的诊断 |
 | `ssot check <design> --scope <视图 id> --base <rev>` | 另列出 `<rev>` 之后落在该作用域之外的改动 |
-| `ssot render <design> [--out <目录>]` | 导出渲染图并按顺序列出 `<路径>\t<id>`：C4 视图（`index` → 逐层下钻 → 部署视图）、每个契约模块的盒子图（id `box:<模块名>`）、每个 Quint 模块的组合图（id `composition:<模块名>`） |
+| `ssot render <design> [--out <目录>]` | 导出渲染图并按顺序列出 `<路径>\t<id>`：C4 视图（`index` → 逐层下钻 → 部署视图）、契约分层图（id `layers`，只在有契约模块时）、每个契约模块的盒子图（id `box:<模块名>`）、每个 Quint 模块的组合图（id `composition:<模块名>`） |
 | `ssot eval <design> <模块> '<表达式>' [--bind …]` | 在原样规格里求一个 VDM 表达式，用来构造违反实例 |
 | `ssot status <design> [--deadline 秒]` | 运行一次全量 `check`，报一项第五节所说的事实 `{skill, scope, reason}`；都没有时输出“没有前沿” |
 
@@ -155,7 +155,7 @@ Quint 接线（手写）──回放──▶ 只回放轨迹里出现的契约�
 
 - **`ssot:reviewer`**：没看过设计的评审者。只交给它要执行的 verify skill 名、`scope` 与评审材料，不给你的推理、草稿或期望的结论：
   - 结构：`ssot render` 列出的 C4 图片路径与顺序，不给设计目录、诊断或需求；
-  - 契约：该模块的盒子图路径，加设计目录路径与 `check --scope` 的诊断；
+  - 契约：该模块的盒子图路径与 `ssot render` 列出的契约分层图路径（`layers.png`），加设计目录路径与 `check --scope` 的诊断；
   - 行为：该模块的组合图路径，加设计目录路径与 `check --scope` 的诊断。
 - **`ssot:reader`**：替你读原始来源（旧设计、旧说明），只交出概念、原文明说的需求与出处。用于 `ssot-requirement` 与 `ssot-migrate-read`。
 

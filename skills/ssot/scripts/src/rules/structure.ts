@@ -1,8 +1,9 @@
 // 跨载体之前的结构规则：只看 LikeC4 模型。
-import type { C4Element, Structure } from "../compile/likec4";
-import { type Diagnostic, assertNever, diag, element, relation, view } from "../diag";
+import type { C4Element, Structure, ViewRuleKind } from "../compile/likec4";
+import { type Diagnostic, assertNever, diag, element, global, relation, view } from "../diag";
 import {
   ELEMENT_KINDS,
+  GROUP_METADATA,
   TAG_BUSINESS,
   TAG_EXTERNAL,
   ancestors,
@@ -11,6 +12,15 @@ import {
   parseElementKind,
   within,
 } from "../model";
+
+/** 元素视图里禁止书写的规则，按写法称呼。 */
+const RULE_NAMES: Readonly<Record<ViewRuleKind, string>> = {
+  group: "group",
+  rank: "rank",
+  autoLayout: "autoLayout",
+  style: "样式（style）",
+  globalStyle: "全局样式（global style）",
+};
 
 const ID = /^[A-Za-z][A-Za-z0-9]*$/;
 
@@ -85,6 +95,25 @@ function external(s: Structure): Diagnostic[] {
   return out;
 }
 
+/** 分组是模型事实：`metadata group` 相同的元素是同一父元素下的兄弟，分组不嵌套。 */
+function groups(s: Structure): Diagnostic[] {
+  const out: Diagnostic[] = [];
+  const members = new Map<string, { readonly parent: string | null; readonly fqn: string }>();
+  for (const e of s.elements.values()) {
+    const named = e.metadata[GROUP_METADATA];
+    if (named === undefined) continue;
+    if (typeof named !== "string" || named.trim() === "") {
+      out.push(diag("struct.group", element(e.fqn), e.at, `metadata ${GROUP_METADATA} 只能写一个非空的组名`));
+      continue;
+    }
+    const first = members.get(named);
+    if (first === undefined) members.set(named, { parent: e.parent, fqn: e.fqn });
+    else if (first.parent !== e.parent)
+      out.push(diag("struct.group", element(e.fqn), e.at, `与 ${first.fqn} 同名分组 '${named}'，但不在同一父元素下；同一分组的成员只在这一个父元素下的兄弟之间`));
+  }
+  return out;
+}
+
 function layering(s: Structure): Diagnostic[] {
   const out: Diagnostic[] = [];
   for (const e of s.elements.values()) {
@@ -116,6 +145,8 @@ function views(s: Structure): Diagnostic[] {
       default:
         return assertNever(v.type);
     }
+    for (const rule of v.writtenRules)
+      out.push(diag("struct.views", view(v.id), rule.at ?? v.at, `元素视图不写 ${RULE_NAMES[rule.kind]} 规则：图的形状、颜色、图例、分组与纵向顺序都由 ssot render 计算`));
     if (v.viewOf === null) {
       if (v.id !== "index") {
         out.push(diag("struct.views", view(v.id), v.at, "顶层视图只能有一个，id 为 index；其他元素视图必须写 `of <元素>`"));
@@ -139,6 +170,8 @@ function views(s: Structure): Diagnostic[] {
     if (vs.length === 0) out.push(diag("struct.views", element(e.fqn), e.at, `有子元素的元素 ${e.fqn} 没有 view of`));
     if (vs.length > 1) out.push(diag("struct.views", element(e.fqn), e.at, `${e.fqn} 有多个 view of：${vs.join(", ")}`));
   }
+  for (const rule of s.viewBlockRules)
+    out.push(diag("struct.views", global, rule.at, `views 块里不写 ${RULE_NAMES[rule.kind]} 规则：逻辑视图由 ssot render 绘制，部署视图在视图里按节点路径写样式与 notation`));
   return out;
 }
 
@@ -165,5 +198,5 @@ function scopedViewContents(s: Structure, of: C4Element, id: string, nodes: read
 }
 
 export function structureRules(s: Structure): Diagnostic[] {
-  return [...kinds(s), ...nesting(s), ...external(s), ...ids(s), ...layering(s), ...views(s)];
+  return [...kinds(s), ...nesting(s), ...external(s), ...groups(s), ...ids(s), ...layering(s), ...views(s)];
 }

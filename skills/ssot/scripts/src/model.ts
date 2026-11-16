@@ -8,6 +8,8 @@ export type ElementKind = (typeof ELEMENT_KINDS)[number];
 export const TAG_CONTRACT = "contract";
 export const TAG_BUSINESS = "business";
 export const TAG_EXTERNAL = "external";
+/** 元素 metadata 里声明所属分组的键：分组是模型事实，每张逻辑图都按这一处声明画出。 */
+export const GROUP_METADATA = "group";
 
 export function parseElementKind(k: string): ElementKind | null {
   return ELEMENT_KINDS.find((kind) => kind === k) ?? null;

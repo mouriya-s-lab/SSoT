@@ -1,25 +1,13 @@
 specification {
-  element actor {
-    notation 'Person'
-    style {
-      shape person
-    }
-  }
-  element system {
-    notation 'Software System'
-  }
-  element container {
-    notation 'Container'
-  }
+  element actor
+  element system
+  element container
   element store {
-    notation 'Container: Data Store'
     style {
       shape storage
     }
   }
-  element component {
-    notation 'Component'
-  }
+  element component
 
   tag external
   tag contract
@@ -42,15 +30,27 @@ model {
 
       api = component 'API' {
         description '受理买家下单与取消请求的唯一入口'
+        metadata {
+          group 'Request entry'
+        }
       }
       pricing = component 'Pricing' {
         description '计算商品金额、优惠与税费'
+        metadata {
+          group 'Request entry'
+        }
       }
       fulfillment = component 'Fulfillment' {
         description '推进订单项完成锁库、扣款与成交结算'
+        metadata {
+          group 'Order lifecycle'
+        }
       }
       cancellation = component 'Cancellation' {
         description '撤销未完成订单，释放库存并记录取消结果'
+        metadata {
+          group 'Order lifecycle'
+        }
       }
       notifier = component 'Notifier' {
         description '汇总订单结算结果并生成买家通知'
@@ -115,18 +115,7 @@ deployment {
   }
 }
 
-global {
-  styleGroup theme {
-    style element.tag = #external {
-      color muted
-      notation 'External Software System'
-    }
-  }
-}
-
 views {
-  global style theme
-
   view index {
     title 'checkout 系统上下文'
     description 'checkout 为谁服务，又调用哪些外部系统'

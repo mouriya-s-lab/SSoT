@@ -17,7 +17,7 @@ description: SSoT 写一个元素的一层（LikeC4）：写出它的直接子�
 |---|---|
 | 输入 | `scope`；交给本切片的 `reason`（需要某个元素、某个元素要成为带 `#contract` 的底层元素、评审的发现） |
 | 可读 | `structure/*.c4` 里：E 本身、E 在上一层声明的关系、E 的现有直接子元素、与 E 有关系的外部元素、`views` 块；`requirements.md`；`ssot check`、`ssot render` 的输出。不读 `contract/`、`behavior/`、`.gen/contract.qnt` |
-| 可改 | `structure/*.c4` 里：E 的直接子元素（种类、id、标题、描述、`technology`、标签）、本层声明的关系、V 的视图；E 带 `#contract` 而本层要给它子元素时，去掉 E 的 `#contract`。不改 E 的种类、id、标题、描述与上一层关系，不改孙辈元素、别的元素与别的视图，不碰 `contract/`、`behavior/`、`.gen/` |
+| 可改 | `structure/*.c4` 里：E 的直接子元素（种类、id、标题、描述、`technology`、标签、`metadata group`）、本层声明的关系、V 的视图；E 带 `#contract` 而本层要给它子元素时，去掉 E 的 `#contract`。不改 E 的种类、id、标题、描述与上一层关系，不改孙辈元素、别的元素与别的视图，不碰 `contract/`、`behavior/`、`.gen/` |
 | 可运行 | `ssot gen <design>`；`ssot check <design> --scope <V>`（交付前加 `--base <开始时的提交>`）；`ssot render <design>` |
 | 输出 | 改了哪些元素与关系；`check --scope` 的结果；交给结构评审的材料：`ssot render` 列出的 C4 图片路径与顺序 |
 | 上抛 | 第四步的情形：交回观察到的事实，给 E 的父元素的视图（E 在顶层时为 `index`） |
@@ -34,10 +34,10 @@ description: SSoT 写一个元素的一层（LikeC4）：写出它的直接子�
 
 ## 二、写子元素、本层关系与视图
 
-1. **子元素。** 种类按 C4 层级：system 的子元素是 container 与 store（数据存储），container 的子元素是 component；store 不展开。每个子元素一句职责描述；container 与 store 写 `technology`。按职责与运行单元划分，不按执行步骤、角色或文件切；同层的兄弟各管一块，不重叠。
+1. **子元素。** 种类按 C4 层级：system 的子元素是 container 与 store（数据存储），container 的子元素是 component；store 不展开。每个子元素一句职责描述；container 与 store 写 `technology`。按职责与运行单元划分，不按执行步骤、角色或文件切；同层的兄弟各管一块，不重叠。几个兄弟属于同一个子系统或团队时，给它们写同一个 `metadata group`；同一分组的成员只能是同一父元素下的兄弟，不在视图里分组。
 2. **外部元素。** 外部系统与别人负责的部分不展开，是带 `#external` 的顶层 system；本系统拥有、托管在别处的存储是本系统的 store。
 3. **本层关系。** 关系连在子元素之间，以及子元素与 E 在上一层有关系的外部元素 X 之间（写 X 本身，不写 X 的子元素）。标题用本层的说法，短动词短语，顺箭头读成一句话。从外部元素指向子元素的关系也由本层声明，不改 X。
-4. **视图。** 有 E 时写 `view <V> of E`，带 `title` 与 `description`，`include *`；V 是 `index` 时写顶层视图 `view index`，不带 `of`。视图使用全局样式（`global style theme`）。
+4. **视图。** 有 E 时写 `view <V> of E`，带 `title` 与 `description`，`include *`；V 是 `index` 时写顶层视图 `view index`，不带 `of`。视图只到这里：形状、颜色、图例、分组与纵向顺序由 `ssot render` 画出，不写样式、布局与分组规则。
 5. **契约标记。** `#contract` 只在 `reason` 说明某个子元素已经决定写 VDM 盒子时加，只加在没有子元素的元素上。E 本来带 `#contract`、本层按结构自己的理由给了它子元素时，去掉 E 的 `#contract`：原来的盒子不再对应一个底层元素，不预设由哪个子元素继承。输出里写明这一点，之后接 `ssot-judge`，对原盒子的担心与新的子元素重新判断：可能由某个子元素、几个子元素的接线承担，也可能不再需要盒子（这时原模块由 `ssot-write-contract` 删除）。
 
 不预建：没有职责的子元素、没有调用的关系、为将来准备的标签都不写。

@@ -13,6 +13,8 @@ import { projectC4View, projectDeploymentView } from "../../scripts/src/render/c
 import { projectLayers } from "../../scripts/src/render/layers";
 import { type Point, type Rect, routeEdges } from "../../scripts/src/render/route";
 import { c4Svg } from "../../scripts/src/render/svg";
+import { nodeIcon } from "../../scripts/src/render/icon";
+import type { C4DiagramNode } from "../../scripts/src/render/c4";
 
 const C4_FIXTURE = `specification {
   element actor { notation 'Person' style { shape person } }
@@ -137,6 +139,23 @@ async function verifyC4AndLayerProjections(stage: string, fixture: string): Prom
     ],
     imports: [{ from: "shop_api", to: "shop_ledger", names: ["OrderId"] }],
   });
+}
+
+/** 节点图标：写明的 icon 优先，其次 technology 里最先出现的技术（按词匹配），最后按种类。 */
+function verifyIcons(): void {
+  const node = (kind: C4DiagramNode["kind"], technology: string | null, icon: string | null = null): C4DiagramNode =>
+    ({ id: "n", element: null, title: "n", kind, technology, icon, tags: [], description: "", parent: null, group: null, boundary: false });
+  const url = (n: C4DiagramNode) => { const i = nodeIcon(n, "Container"); return `${i.source} ${i.url}`; };
+  assert.equal(url(node("container", "Go daemon", "aws:lambda")), "declared aws:lambda");
+  assert.equal(url(node("container", "NSH 应用（Rust），macOS 原生与 web")), "technology tech:rust");
+  assert.equal(url(node("container", "无头 omp（RPC 模式）与 TypeScript 插件")), "technology tech:typescript-icon");
+  assert.equal(url(node("container", "Google Cloud Run")), "kind bootstrap:box-seam");
+  assert.equal(url(node("container", "JavaScript SPA")), "technology tech:javascript");
+  assert.equal(url(node("container", "GitHub 仓库")), "technology tech:github-icon");
+  assert.equal(url(node("container", "Volume")), "technology bootstrap:hdd");
+  assert.equal(url(node("store", null)), "kind bootstrap:database");
+  assert.equal(url(node("deploymentNode", "stack")), "kind bootstrap:stack");
+  assert.equal(url(node("container", "Go daemon", "none")), "technology tech:go");
 }
 
 /**
@@ -270,6 +289,7 @@ export async function verifyRenderProjections(): Promise<number> {
     const peekIr: unknown = await Bun.file(peekCompiled.module.typecheckOut).json();
     await verifyC4AndLayerProjections(stage, fixture);
     verifyRouting();
+    verifyIcons();
     const peekDiagram = projectComposition(peekIr, peekCompiled.module, vdm.project);
     assert.deepEqual(peekDiagram, {
       module: "peek",

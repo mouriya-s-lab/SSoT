@@ -12,6 +12,8 @@ export interface C4Element {
   readonly kind: string;
   /** null：元素没有写 technology。 */
   readonly technology: string | null;
+  /** 元素或其种类在 style 里声明的 icon（如 tech:go）；null：没有声明。 */
+  readonly icon: string | null;
   readonly parent: string | null;
   readonly children: readonly string[];
   readonly tags: readonly string[];
@@ -47,7 +49,7 @@ export interface C4ViewEdge {
 
 /** 部署视图里画出的部署节点或实例；id 是部署模型里的路径（如 `coreNet.ledger`）。 */
 export type C4DeploymentPlacement =
-  | { readonly kind: "node"; readonly id: string; readonly title: string; readonly nodeKind: string; readonly parent: string | null; readonly tags: readonly string[]; readonly description: string; readonly technology: string | null }
+  | { readonly kind: "node"; readonly id: string; readonly title: string; readonly nodeKind: string; readonly icon: string | null; readonly parent: string | null; readonly tags: readonly string[]; readonly description: string; readonly technology: string | null }
   | { readonly kind: "instance"; readonly id: string; readonly title: string; readonly element: string; readonly parent: string | null; readonly tags: readonly string[]; readonly description: string; readonly technology: string | null };
 
 /** 部署视图计算后的节点与箭头，端点是部署路径。 */
@@ -223,6 +225,7 @@ export async function compileLikeC4(dir: string): Promise<C4Result> {
         description: e.description.text ?? "",
         kind: e.kind,
         technology: e.technology ?? null,
+        icon: e.icon ?? null,
         parent: e.parent?.id ?? null,
         children: [...e.children()].map((c) => c.id),
         tags: [...e.tags],
@@ -258,13 +261,13 @@ export async function compileLikeC4(dir: string): Promise<C4Result> {
             // 折叠后的部署节点在视图里也带着那个实例的元素，种类按部署模型判定，不按视图节点有没有元素判定。
             const placements: C4DeploymentPlacement[] = [...v.nodes()].map((n): C4DeploymentPlacement => {
               const common = { id: n.id, title: n.title, parent: n.deployment?.parent?.id ?? null, tags: [...n.tags], description: n.description.text ?? "", technology: n.technology ?? null };
-              return n.deployment?.isInstance() ? { kind: "instance", element: n.deployment.element.id, ...common } : { kind: "node", nodeKind: n.kind, ...common };
+              return n.deployment?.isInstance() ? { kind: "instance", element: n.deployment.element.id, ...common } : { kind: "node", nodeKind: n.kind, icon: n.deployment?.icon ?? null, ...common };
             });
             const shown = new Set(placements.map((p) => p.id));
             for (const n of [...v.nodes()]) {
               for (let p = n.deployment?.parent ?? null; p !== null && !shown.has(p.id); p = p.parent) {
                 shown.add(p.id);
-                placements.push({ kind: "node", id: p.id, title: p.title, nodeKind: p.kind, parent: p.parent?.id ?? null, tags: [...p.tags], description: p.description.text ?? "", technology: p.technology ?? null });
+                placements.push({ kind: "node", id: p.id, title: p.title, nodeKind: p.kind, icon: p.icon ?? null, parent: p.parent?.id ?? null, tags: [...p.tags], description: p.description.text ?? "", technology: p.technology ?? null });
               }
             }
             return placements;

@@ -74,7 +74,7 @@ function module(definitions: readonly VdmDefinition[], overrides: Partial<VdmMod
 }
 
 function architecture(relations: readonly C4Relation[] = []): Structure {
-  const elements: readonly Omit<C4Element, "title" | "description" | "technology">[] = [
+  const elements: readonly Omit<C4Element, "title" | "description" | "technology" | "icon">[] = [
     { fqn: "shop", kind: "system", parent: null, children: ["shop.ledger", "shop.api", "shop.other"], tags: [], metadata: {}, at: null },
     { fqn: "shop.ledger", kind: "container", parent: "shop", children: [], tags: ["contract"], metadata: {}, at: null },
     { fqn: "shop.api", kind: "container", parent: "shop", children: ["shop.api.child"], tags: ["business", "contract"], metadata: {}, at: null },
@@ -83,7 +83,7 @@ function architecture(relations: readonly C4Relation[] = []): Structure {
     { fqn: "user", kind: "actor", parent: null, children: [], tags: [], metadata: {}, at: null },
     { fqn: "outside", kind: "system", parent: null, children: [], tags: [], metadata: {}, at: null },
   ];
-  return { elements: new Map(elements.map((e) => [e.fqn, { ...e, title: e.fqn, description: "", technology: null }])), relations, views: [], viewBlockRules: [], spec: { elementKinds: ["actor", "system", "container", "component"], relationKinds: [], tags: ["contract", "business"] } };
+  return { elements: new Map(elements.map((e) => [e.fqn, { ...e, title: e.fqn, description: "", technology: null, icon: null }])), relations, views: [], viewBlockRules: [], spec: { elementKinds: ["actor", "system", "container", "component"], relationKinds: [], tags: ["contract", "business"] } };
 }
 
 export function verifyProjections(): number {

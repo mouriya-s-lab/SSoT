@@ -4,6 +4,9 @@
     "@informalsystems/quint": "latest",
     "likec4": "latest",
     "elkjs": "latest",
+    "@likec4/icons": "latest",
+    "react": "latest",
+    "react-dom": "latest",
     "typescript": "latest",
     "@types/bun": "latest"
   }

@@ -7,6 +7,7 @@ import type { C4Diagram, C4DiagramNode, C4NodeKind } from "./c4";
 import type { CompositionDiagram, CompositionNode } from "./composition";
 import { type LayerTier, type LayersDiagram, TIER_ORDER } from "./layers";
 import { type Point, type Rect, type RouteBox, type RouteRequest, routeCost, routeEdges } from "./route";
+import { type NodeIcon, loadIcons, nodeIcon } from "./icon";
 
 export interface DiagramSvg { readonly width: number; readonly height: number; readonly svg: string }
 const INK = "#20252b", MUTED = "#59636e", BEHAVIOR = "#2a78d6", CONTRACT = "#eb6834";
@@ -53,9 +54,11 @@ function sectionPoints(edge: ElkExtendedEdge): Point[][] {
   if (!edge.sections?.length) throw new Error(`ELK 没有布置连线 ${edge.id}`);
   return edge.sections.map((section) => [section.startPoint, ...(section.bendPoints ?? []), section.endPoint]);
 }
-function frame(title: string, subtitle: string, width: number, height: number, body: string, legend: string): DiagramSvg {
-  const w = Math.ceil(Math.max(width, 860)), h = Math.ceil(height);
-  return { width: w, height: h, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" font-family="Arial, sans-serif" font-size="14"><defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse"><path d="M0,0 L9,4.5 L0,9 z" fill="${MUTED}"/></marker></defs><rect width="100%" height="100%" fill="#fff"/>${text(28, 34, [title], "start", 21, "bold")}${text(28, 59, [subtitle], "start", 14)}${body}<line x1="28" x2="${w - 28}" y1="${h - 65}" y2="${h - 65}" stroke="#dde1e5"/>${legend}</svg>` };
+/** 图例每行的高度；图例在图底，legendRows 行，最后一行的文字基线在 height - 32。 */
+const LEGEND_ROW = 28;
+function frame(title: string, subtitle: string, width: number, height: number, body: string, legend: string, legendRows = 1): DiagramSvg {
+  const w = Math.ceil(Math.max(width, 860)), h = Math.ceil(height), rule = h - 65 - (legendRows - 1) * LEGEND_ROW;
+  return { width: w, height: h, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" font-family="Arial, sans-serif" font-size="14"><defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse"><path d="M0,0 L9,4.5 L0,9 z" fill="${MUTED}"/></marker></defs><rect width="100%" height="100%" fill="#fff"/>${text(28, 34, [title], "start", 21, "bold")}${text(28, 59, [subtitle], "start", 14)}${body}<line x1="28" x2="${w - 28}" y1="${rule}" y2="${rule}" stroke="#dde1e5"/>${legend}</svg>` };
 }
 function flowPath(edge: ElkExtendedEdge, kind: "flow" | "update"): string {
   const markers = kind === "update" ? 'marker-start="url(#arrow)" marker-end="url(#arrow)"' : 'marker-end="url(#arrow)"';
@@ -241,15 +244,20 @@ const TAG_TINTS: readonly { readonly fill: string; readonly stroke: string; read
 export const c4Notation = (kind: C4NodeKind): string => C4_STYLE[kind].notation;
 const C4_NODE_WIDTH = 248, C4_PERSON_HEAD = 30, C4_STORE_CAP = 12;
 
-interface C4NodeText { readonly title: string[]; readonly type: string[]; readonly description: string[]; readonly height: number }
+interface C4NodeText { readonly icon: NodeIcon | null; readonly title: string[]; readonly type: string[]; readonly description: string[]; readonly height: number }
 /** 记法行（种类与技术）字号 11.5，行距 16；技术写得长时折行，不越出框。 */
 const C4_TYPE_SIZE = 11.5, C4_TYPE_LEAD = 16;
+/** 节点顶部的图标块：白底圆角方块里放 C4_ICON 像素的图标，连同上下留空占 C4_BADGE_BAND 高。 */
+const C4_BADGE = 34, C4_ICON = 24, C4_BADGE_BAND = 44;
+const c4Icon = (node: C4DiagramNode): NodeIcon => nodeIcon(node, C4_STYLE[node.kind].notation);
 function c4NodeText(node: C4DiagramNode): C4NodeText {
   const style = C4_STYLE[node.kind];
+  // 人形自带头像：只有写了 icon 或认出了技术才放图标块。
+  const found = c4Icon(node), icon = node.kind === "person" && found.source === "kind" ? null : found;
   const title = sizedWrap(node.title, C4_NODE_WIDTH - 28, 15);
   const type = sizedWrap(`[${style.notation}${node.technology ? `: ${node.technology}` : ""}]`, C4_NODE_WIDTH - 28, C4_TYPE_SIZE);
   const description = node.description ? sizedWrap(node.description, C4_NODE_WIDTH - 28, 13) : [];
-  return { title, type, description, height: c4Head(node.kind) + 22 + title.length * 20 + 18 + (type.length - 1) * C4_TYPE_LEAD + (description.length ? 8 + description.length * 18 : 0) + 14 + (node.kind === "store" ? C4_STORE_CAP : 0) };
+  return { icon, title, type, description, height: c4Head(node.kind) + (icon ? C4_BADGE_BAND : 0) + 22 + title.length * 20 + 18 + (type.length - 1) * C4_TYPE_LEAD + (description.length ? 8 + description.length * 18 : 0) + 14 + (node.kind === "store" ? C4_STORE_CAP : 0) };
 }
 
 /** 形状在文字上方占去的高度：人的头、数据存储圆柱的顶面。 */
@@ -282,10 +290,19 @@ function c4Shape(node: C4DiagramNode, x: number, y: number, width: number, heigh
   }
 }
 
-function c4NodeBody(node: C4DiagramNode, x: number, y: number, width: number): string {
+/** icon：按 url 取 loadIcons 画好的图标。 */
+function c4NodeBody(node: C4DiagramNode, x: number, y: number, width: number, icon: (url: string) => string): string {
   const style = C4_STYLE[node.kind], content = c4NodeText(node), cx = x + width / 2;
-  let top = y + c4Head(node.kind) + (node.kind === "person" ? 4 : 0) + 24;
-  let out = text(cx, top, content.title, "middle", 15, "bold", style.ink);
+  let top = y + c4Head(node.kind) + (node.kind === "person" ? 4 : 0);
+  let out = "";
+  if (content.icon) {
+    const by = top + 10;
+    out += `<rect x="${cx - C4_BADGE / 2}" y="${by}" width="${C4_BADGE}" height="${C4_BADGE}" rx="7" fill="#ffffff" stroke="${style.stroke}" stroke-width="1"/>`;
+    out += `<g transform="translate(${cx - C4_ICON / 2},${by + (C4_BADGE - C4_ICON) / 2})" color="${style.stroke}">${icon(content.icon.url)}</g>`;
+    top += C4_BADGE_BAND;
+  }
+  top += 24;
+  out += text(cx, top, content.title, "middle", 15, "bold", style.ink);
   top += (content.title.length - 1) * 20 + 19;
   out += text(cx, top, content.type, "middle", C4_TYPE_SIZE, "normal", style.sub);
   if (content.description.length) out += text(cx, top + 24 + (content.type.length - 1) * C4_TYPE_LEAD, content.description, "middle", 13, "normal", style.ink);
@@ -434,10 +451,20 @@ function extent(rects: readonly Rect[], routes: readonly (readonly Point[])[]): 
   return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
 }
 
-/** 边界与分组框的标题：画在连线之上、垫一块与框内同色的底；路由也要知道它占的地方。 */
-interface FrameHeader { readonly id: string; readonly x: number; readonly y: number; readonly title: string; readonly titleSize: number; readonly kind: string; readonly kindSize: number; readonly ink: string; readonly backing: string; readonly note: readonly string[]; readonly rect: Rect }
+/**
+ * 边界与分组框的标题：画在连线之上、垫一块与框内同色的底；路由也要知道它占的地方。icon 是标题前的图标（url），
+ * 画成 FRAME_ICON 大小，标题右移 FRAME_ICON_SPACE。
+ */
+interface FrameHeader { readonly id: string; readonly x: number; readonly y: number; readonly icon: string | null; readonly title: string; readonly titleSize: number; readonly kind: string; readonly kindSize: number; readonly ink: string; readonly backing: string; readonly note: readonly string[]; readonly rect: Rect }
+const FRAME_ICON = 18, FRAME_ICON_SPACE = 24;
+/** 边界框标题的种类一栏：记法、技术与标签。 */
+const boundaryKind = (node: C4DiagramNode): string => `[${C4_STYLE[node.kind].notation}${node.technology ? `: ${node.technology}` : ""}]${node.tags.map((t) => ` #${t}`).join("")}`;
+/** 边界框标题放在框内 (16, 26) 处；ink 与 backing 由调用方按标签上色。 */
+const boundaryHeader = (node: C4DiagramNode, x: number, y: number, ink: string, backing: string): FrameHeader =>
+  frameHeader({ id: node.id, x: x + 16, y: y + 26, icon: c4Icon(node).url, title: node.title, titleSize: 15, kind: boundaryKind(node), kindSize: 12, ink, backing, note: frameNote(node) });
+const frameTitleX = (h: Omit<FrameHeader, "rect">): number => h.x + (h.icon ? FRAME_ICON_SPACE : 0);
 function frameHeader(spec: Omit<FrameHeader, "rect">): FrameHeader {
-  const kindX = spec.x + sizedWidth(spec.title, spec.titleSize) + 10;
+  const kindX = frameTitleX(spec) + sizedWidth(spec.title, spec.titleSize) + 10;
   const width = Math.max(kindX - spec.x + sizedWidth(spec.kind, spec.kindSize), ...spec.note.map((line) => sizedWidth(line, 12))) + 12;
   return { ...spec, rect: { x: spec.x - 6, y: spec.y - spec.titleSize - 2, width, height: spec.titleSize + 10 + spec.note.length * 17 } };
 }
@@ -510,7 +537,12 @@ function c4Graph(diagram: C4Diagram, hierarchy: Hierarchy): ElkNode {
   ];
   function elkNode(node: C4DiagramNode): ElkNode {
     const partition: Record<string, string> = node.parent === null ? { "elk.partitioning.partition": node.kind === "person" ? "0" : "1" } : {};
-    if (node.boundary) return { id: node.id, layoutOptions: { ...own(node.id), ...spacing, ...partition, "elk.padding": `[top=${70 + frameNote(node).length * 17},left=40,bottom=40,right=40]` }, children: childrenOf(node.id), edges: edgesIn(node.id) };
+    if (node.boundary) {
+      // 框至少和标题一样宽，标题的底不伸出框外。
+      const header = boundaryHeader(node, 0, 0, "", "").rect, minimum = `(${Math.ceil(header.x + header.width + 16)},0)`;
+      const size = { "elk.nodeSize.constraints": "MINIMUM_SIZE", "elk.nodeSize.minimum": minimum };
+      return { id: node.id, layoutOptions: { ...own(node.id), ...spacing, ...partition, ...size, "elk.padding": `[top=${70 + frameNote(node).length * 17},left=40,bottom=40,right=40]` }, children: childrenOf(node.id), edges: edgesIn(node.id) };
+    }
     return { id: node.id, width: C4_NODE_WIDTH, height: leafHeight, layoutOptions: partition };
   }
   return {
@@ -535,11 +567,11 @@ export async function c4Svg(diagram: C4Diagram, hierarchies: readonly Hierarchy[
   const boundaries = diagram.nodes.filter((n) => n.boundary).sort((a, b) => depth(a.id) - depth(b.id)), leaves = diagram.nodes.filter((n) => !n.boundary);
   const headersAt = (box: (id: string) => Rect): FrameHeader[] => [
     ...boundaries.map((node) => {
-      const { x, y } = box(node.id), paint = tint(node), tags = node.tags.map((t) => ` #${t}`).join("");
-      return frameHeader({ id: node.id, x: x + 16, y: y + 26, title: node.title, titleSize: 15, kind: `[${C4_STYLE[node.kind].notation}${node.technology ? `: ${node.technology}` : ""}]${tags}`, kindSize: 12, ink: paint?.ink ?? "#26323f", backing: paint?.fill ?? "#f6f9fc", note: frameNote(node) });
+      const { x, y } = box(node.id), paint = tint(node);
+      return boundaryHeader(node, x, y, paint?.ink ?? "#26323f", paint?.fill ?? "#f6f9fc");
     }),
     // 分组框是半透明的 #eef2f6；标题底色取它叠在父框（#f6f9fc）或白底上的结果。
-    ...diagram.groups.map((group) => { const { x, y } = box(group.id); return frameHeader({ id: group.id, x: x + 14, y: y + 24, title: group.name, titleSize: 13, kind: "[Group]", kindSize: 11.5, ink: "#3b4754", backing: group.parent === null ? "#f4f6f9" : "#f1f4f8", note: [] }); }),
+    ...diagram.groups.map((group) => { const { x, y } = box(group.id); return frameHeader({ id: group.id, x: x + 14, y: y + 24, icon: null, title: group.name, titleSize: 13, kind: "[Group]", kindSize: 11.5, ink: "#3b4754", backing: group.parent === null ? "#f4f6f9" : "#f1f4f8", note: [] }); }),
   ];
   const ids = [...leaves.map((n) => n.id), ...boundaries.map((n) => n.id), ...diagram.groups.map((g) => g.id)];
   const indexOf = (id: string): number => { const k = ids.indexOf(id); if (k < 0) throw new Error(`视图 ${diagram.view} 的连线引用了图上没有的 ${id}`); return k; };
@@ -549,6 +581,12 @@ export async function c4Svg(diagram: C4Diagram, hierarchies: readonly Hierarchy[
     edges: diagram.edges.map((edge) => ({ source: indexOf(edge.source), target: indexOf(edge.target) })),
   }));
   const frameHeaders = headersAt(box);
+  const leafIcons = leaves.flatMap((n) => { const i = c4NodeText(n).icon; return i ? [{ node: n, icon: i }] : []; });
+  const frameIcons = boundaries.map((n) => ({ node: n, icon: c4Icon(n) }));
+  const drawn = await loadIcons([...leafIcons, ...frameIcons].map(({ icon }) => icon.url), C4_ICON);
+  const icon = (url: string): string => { const markup = drawn.get(url); if (markup === undefined) throw new Error(`图标 ${url} 没有载入`); return markup; };
+  // 标题前的小图标与图例里的图标都由 C4_ICON 大小的图标缩放。
+  const smallIcon = (url: string, x: number, y: number, size: number, color: string): string => `<g transform="translate(${x},${y}) scale(${size / C4_ICON})" color="${color}">${icon(url)}</g>`;
   // 每个节点、分组与箭头各包在一个带 data-* 的 <g> 里，ssot serve 的页面靠它们做高亮、跳转与详情。
   let frames = "", headers = "", edges = "", nodes = "", labels = "";
   for (const node of boundaries) {
@@ -561,8 +599,10 @@ export async function c4Svg(diagram: C4Diagram, hierarchies: readonly Hierarchy[
   }
   // 穿进框的连线从标题后面经过，标题不被线划穿。
   for (const h of frameHeaders) {
-    const kindX = h.x + sizedWidth(h.title, h.titleSize) + 10;
-    headers += `<g data-header="${esc(h.id)}"><rect x="${h.rect.x}" y="${h.rect.y}" width="${h.rect.width}" height="${h.rect.height}" rx="4" fill="${h.backing}"/>` + text(h.x, h.y, [h.title], "start", h.titleSize, "bold", h.ink) + text(kindX, h.y, [h.kind], "start", h.kindSize, "normal", MUTED)
+    const titleX = frameTitleX(h), kindX = titleX + sizedWidth(h.title, h.titleSize) + 10;
+    headers += `<g data-header="${esc(h.id)}"><rect x="${h.rect.x}" y="${h.rect.y}" width="${h.rect.width}" height="${h.rect.height}" rx="4" fill="${h.backing}"/>`
+      + (h.icon ? smallIcon(h.icon, h.x, h.y - h.titleSize + 1, FRAME_ICON, h.ink) : "")
+      + text(titleX, h.y, [h.title], "start", h.titleSize, "bold", h.ink) + text(kindX, h.y, [h.kind], "start", h.kindSize, "normal", MUTED)
       + (h.note.length ? text(h.x, h.y + 19, h.note, "start", 12, "normal", MUTED) : "") + "</g>";
   }
   const labelLines = diagram.edges.map((edge) => edge.label ? sizedWrap(edge.label, 150, 12) : ["[...]"]);
@@ -579,30 +619,49 @@ export async function c4Svg(diagram: C4Diagram, hierarchies: readonly Hierarchy[
   }
   for (const node of leaves) {
     const { x, y, width, height } = box(node.id);
-    nodes += `<g data-node="${esc(node.id)}">${c4Shape(node, x, y, width, height)}${c4NodeBody(node, x, y, width)}</g>`;
+    nodes += `<g data-node="${esc(node.id)}">${c4Shape(node, x, y, width, height)}${c4NodeBody(node, x, y, width, icon)}</g>`;
   }
   const area = extent([...ids.map(box), ...frameHeaders.map((h) => h.rect), ...labelBoxes.filter((r): r is Rect => r !== null)], routes);
-  const height = area.height + 95 + 110;
-  const kinds = [...new Set(diagram.nodes.filter((n) => !n.boundary).map((n) => n.kind))];
-  let legendX = 28, legend = "";
-  const legendItem = (swatch: string, label: string): void => {
-    legend += swatch + text(legendX + 30, height - 32, [label], "start", 12);
-    legendX += 30 + sizedWidth(label, 12) + 34;
-  };
+
+  // 图例：一项是一个色块或图标加说明，排不下时换行。draw 的 base 是这一项文字的基线。
+  type LegendItem = { readonly swatch: number; readonly label: string; readonly draw: (x: number, base: number) => string };
+  const items: LegendItem[] = [];
+  const kinds = [...new Set(leaves.map((n) => n.kind))];
+  const kindGlyph = new Map(leafIcons.filter(({ icon }) => icon.source === "kind").map(({ node, icon }) => [node.kind, icon.url]));
   for (const kind of kinds) {
-    const swatchPaint = `fill="${C4_STYLE[kind].fill}" stroke="${C4_STYLE[kind].stroke}"`;
-    const swatch = kind === "store"
-      ? cylinder(legendX, height - 47, 22, 20, 4, swatchPaint)
-      : `<rect x="${legendX}" y="${height - 45}" width="22" height="16" rx="3" ${swatchPaint}${kind === "external" || kind === "deploymentNode" ? ' stroke-dasharray="4 2"' : ""}/>`;
-    legendItem(swatch, C4_STYLE[kind].notation);
+    const paint = `fill="${C4_STYLE[kind].fill}" stroke="${C4_STYLE[kind].stroke}"`, glyph = kindGlyph.get(kind);
+    items.push({
+      swatch: glyph ? 50 : 30, label: C4_STYLE[kind].notation,
+      draw: (x, base) => (kind === "store" ? cylinder(x, base - 15, 22, 20, 4, paint) : `<rect x="${x}" y="${base - 13}" width="22" height="16" rx="3" ${paint}${kind === "external" ? ' stroke-dasharray="4 2"' : ""}/>`)
+        + (glyph ? smallIcon(glyph, x + 28, base - 14, 16, C4_STYLE[kind].stroke) : ""),
+    });
   }
-  const frameSwatch = (fill: string, stroke: string): string => `<rect x="${legendX}" y="${height - 45}" width="22" height="16" rx="3" fill="${fill}" stroke="${stroke}" stroke-dasharray="4 2"/>`;
-  if (diagram.nodes.some((n) => n.boundary && n.kind !== "deploymentNode")) legendItem(frameSwatch("#f6f9fc", "#5b6b7c"), "Boundary · element opened in this view");
-  if (diagram.nodes.some((n) => n.boundary && n.kind === "deploymentNode" && n.tags.length === 0)) legendItem(frameSwatch("#f6f9fc", "#5b6b7c"), "Deployment Node");
-  tagKeys.forEach((key, i) => legendItem(frameSwatch(TAG_TINTS[i % TAG_TINTS.length]!.fill, TAG_TINTS[i % TAG_TINTS.length]!.stroke), `Deployment Node ${key}`));
-  if (diagram.groups.length) legendItem(`<rect x="${legendX}" y="${height - 45}" width="22" height="16" rx="3" fill="#eef2f6" stroke="#7d8b99" stroke-dasharray="2 2"/>`, "Group");
-  legendItem(`<path d="M${legendX},${height - 37} h22" stroke="#5d6b78" stroke-width="1.6" stroke-dasharray="5 3" marker-end="url(#arrow)"/>`, "Call · initiator → callee");
-  return frame(diagram.title, diagram.description, Math.max(area.width + 56, legendX + 28), height, `<g transform="translate(${28 - area.x},${95 - area.y})">${frames}${edges}${headers}${nodes}${labels}</g>`, legend);
+  // 认出的技术、写明的图标、部署节点的种类：每个图标一项。逻辑边界框只按种类给的图标由"Boundary"一项说明。
+  const named = [...leafIcons, ...frameIcons].filter(({ node, icon }) => icon.source !== "kind" || node.kind === "deploymentNode");
+  for (const { url, label } of [...new Map(named.map(({ icon }) => [icon.url, icon])).values()]) {
+    items.push({ swatch: 26, label, draw: (x, base) => smallIcon(url, x, base - 14, 18, "#26323f") });
+  }
+  const frameSwatch = (fill: string, stroke: string) => (x: number, base: number): string => `<rect x="${x}" y="${base - 13}" width="22" height="16" rx="3" fill="${fill}" stroke="${stroke}" stroke-dasharray="4 2"/>`;
+  if (boundaries.some((n) => n.kind !== "deploymentNode")) items.push({ swatch: 30, label: "Boundary · element opened in this view", draw: frameSwatch("#f6f9fc", "#5b6b7c") });
+  if (boundaries.some((n) => n.kind === "deploymentNode" && n.tags.length === 0)) items.push({ swatch: 30, label: "Deployment Node", draw: frameSwatch("#f6f9fc", "#5b6b7c") });
+  tagKeys.forEach((key, i) => items.push({ swatch: 30, label: `Deployment Node ${key}`, draw: frameSwatch(TAG_TINTS[i % TAG_TINTS.length]!.fill, TAG_TINTS[i % TAG_TINTS.length]!.stroke) }));
+  if (diagram.groups.length) items.push({ swatch: 30, label: "Group", draw: (x, base) => `<rect x="${x}" y="${base - 13}" width="22" height="16" rx="3" fill="#eef2f6" stroke="#7d8b99" stroke-dasharray="2 2"/>` });
+  items.push({ swatch: 30, label: "Call · initiator → callee", draw: (x, base) => `<path d="M${x},${base - 5} h22" stroke="#5d6b78" stroke-width="1.6" stroke-dasharray="5 3" marker-end="url(#arrow)"/>` });
+  const width = Math.max(area.width + 56, 860);
+  const placedItems: { readonly item: LegendItem; readonly x: number; readonly row: number }[] = [];
+  let legendX = 28, row = 0;
+  for (const item of items) {
+    const span = item.swatch + sizedWidth(item.label, 12);
+    if (legendX > 28 && legendX + span > width - 28) { row++; legendX = 28; }
+    placedItems.push({ item, x: legendX, row });
+    legendX += span + 34;
+  }
+  const rows = row + 1, height = area.height + 95 + 110 + (rows - 1) * LEGEND_ROW;
+  const legend = placedItems.map(({ item, x, row: r }) => {
+    const base = height - 32 - (rows - 1 - r) * LEGEND_ROW;
+    return item.draw(x, base) + text(x + item.swatch, base, [item.label], "start", 12);
+  }).join("");
+  return frame(diagram.title, diagram.description, width, height, `<g transform="translate(${28 - area.x},${95 - area.y})">${frames}${edges}${headers}${nodes}${labels}</g>`, legend, rows);
 }
 
 const TIER_STYLE: Readonly<Record<LayerTier, { readonly name: string; readonly band: string; readonly fill: string; readonly stroke: string }>> = {

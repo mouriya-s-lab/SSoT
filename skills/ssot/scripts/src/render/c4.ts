@@ -15,6 +15,8 @@ export interface C4DiagramNode {
   readonly kind: C4NodeKind;
   /** 部署节点：部署节点的种类（如 host）。 */
   readonly technology: string | null;
+  /** 模型里声明的 icon（如 tech:go）；null：没有声明，渲染时按 technology 与种类给图标。 */
+  readonly icon: string | null;
   /** 部署节点的标签（如信任边界）；逻辑元素不在图上显示标签，为空。 */
   readonly tags: readonly string[];
   readonly description: string;
@@ -86,7 +88,7 @@ export function projectC4View(s: Structure, view: C4View): C4Diagram {
       group = `group:${parent ?? ""}:${name}`;
       if (!groups.has(group)) groups.set(group, { id: group, name, parent });
     }
-    return { id: fqn, element: fqn, title: e.title, kind: nodeKind(e), technology: e.technology, tags: [], description: e.description, parent, group, boundary: withChildren.has(fqn) };
+    return { id: fqn, element: fqn, title: e.title, kind: nodeKind(e), technology: e.technology, icon: e.icon, tags: [], description: e.description, parent, group, boundary: withChildren.has(fqn) };
   });
   return {
     view: view.id,
@@ -108,11 +110,11 @@ export function projectDeploymentView(s: Structure, view: C4View): C4Diagram {
     const parent = p.parent !== null && visible.has(p.parent) ? p.parent : null;
     switch (p.kind) {
       case "node":
-        return { id: p.id, element: null, title: p.title, kind: "deploymentNode", technology: p.nodeKind, tags: p.tags, description: p.description, parent, group: null, boundary: withChildren.has(p.id) };
+        return { id: p.id, element: null, title: p.title, kind: "deploymentNode", technology: p.nodeKind, icon: p.icon, tags: p.tags, description: p.description, parent, group: null, boundary: withChildren.has(p.id) };
       case "instance": {
         const e = s.elements.get(p.element);
         if (!e) throw new Error(`部署实例 ${p.id} 引用了不存在的元素 ${p.element}`);
-        return { id: p.id, element: p.element, title: p.title, kind: nodeKind(e), technology: p.technology, tags: [], description: p.description, parent, group: null, boundary: false };
+        return { id: p.id, element: p.element, title: p.title, kind: nodeKind(e), technology: p.technology, icon: e.icon, tags: [], description: p.description, parent, group: null, boundary: false };
       }
       default: return assertNever(p);
     }

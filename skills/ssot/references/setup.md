@@ -14,7 +14,7 @@
 | 内容 | 位置 |
 |---|---|
 | VDMJ 与 QuickCheck 的 jar（Maven Central） | `${XDG_DATA_HOME:-~/.local/share}/ssot/` |
-| LikeC4、Quint、TypeScript、elkjs（各种图的节点排版）（npm） | 同一目录下的 `node_modules/` |
+| LikeC4、Quint、TypeScript、elkjs（各种图的节点排版）、@likec4/icons 与 React（节点图标）（npm） | 同一目录下的 `node_modules/` |
 | Quint 模拟用的 rust 求值器（版本由所装的 Quint 决定） | `~/.quint/rust-evaluator-<版本>/`；设了 `QUINT_HOME` 时在它下面 |
 | `ssot render` 把每张图截成 PNG 用的无头浏览器（版本由所装 LikeC4 带的 Playwright 决定） | Playwright 的浏览器缓存目录（macOS 为 `~/Library/Caches/ms-playwright/`） |
 | `Vdm.java` 编译出的 class（不由 `setup` 装，`check` 第一次需要时编译；`Vdm.java` 或 jar 一变就编译到新的子目录） | 同一目录下的 `vdm-classes/<内容哈希>/` |

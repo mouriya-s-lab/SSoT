@@ -5,7 +5,7 @@
 ## 安装
 
 ```sh
-npx skills add mouriya-s-lab/SSoT --skill ssot ssot-judge ssot-requirement ssot-c4 ssot-vdm ssot-quint ssot-write-level ssot-write-deploy ssot-write-contract ssot-write-behavior ssot-verify-structure ssot-verify-contract ssot-verify-behavior ssot-migrate-read --global --agent codex claude-code --yes
+npx skills add mouriya-s-lab/SSoT --skill ssot ssot-judge ssot-requirement ssot-iterate ssot-migrate ssot-c4 ssot-vdm ssot-quint ssot-write-level ssot-write-deploy ssot-write-contract ssot-write-behavior ssot-verify-structure ssot-verify-contract ssot-verify-behavior --global --agent codex claude-code --yes
 ```
 
 安装后运行一次 `ssot setup`（首次尚未将 `ssot` 加入 `PATH` 时，执行 `bun ~/.agents/skills/ssot/scripts/ssot.ts setup`；需预装 `bun` 与 Java 21+ JDK），自动配置 VDMJ、QuickCheck、LikeC4、Quint、elkjs 与无头浏览器并将 `ssot` 链入 `~/.local/bin/ssot`；环境要求与目录说明见 [`setup.md`](skills/ssot/references/setup.md)。
@@ -83,11 +83,11 @@ SSoT 选用 VDM-SL，正是利用它在“精确数学约束”与“默认留�
 
 将大语言模型引入形式化设计时，首要威胁并非语法错误，而是**上下文污染**。只要模型在上下文中接触到旧设计文档或业务实现代码，就会不可避免地把旧文档里的表结构字段、校验步骤、重试参数，或现有代码里的临时补丁、锁机制与历史缺陷照搬进规格，使设计真源退化为实现细节的复述。
 
-SSoT 在代理工作流上强制实施三道信息隔离。第一是**历史文档代读隔离（`ssot:reader`）**：迁移旧文档时，主会话严禁直接读取原始文档；一切旧资料交由与新设计隔离的 `ssot:reader` 子代理按章节区域代读，仅向外输出剥离了实现机制与数据格式的领域概念备忘（`concepts.md`）和原文明确陈述的需求摘录（`requirements.md`），以受控的信息折损换取设计真源的纯净。第二是**实现代码隔离**：全部建模与评审环节只读设计目录、用户给出的需求原文与运行时观测，严禁读取业务代码、测试或配置文件，切断由错误实现反向污染规格的路径。第三是**无上下文独立盲审（`ssot:reviewer`）**：每个切片完成后，派发全新的 `ssot:reviewer` 子代理执行对应的 `ssot-verify-*` 审查；评审者不接触作者的推理记录与草稿，必须先依据 `ssot render` 导出的图形（C4 视图、契约分层图、VDM 盒子图、Quint 组合图）审视边界与接线，再结合作用域诊断给出独立裁决。
+SSoT 在代理工作流上强制实施三道信息隔离。第一是**项目材料准入隔离（`ssot-iterate` / `ssot-migrate` + `ssot:reader`）**：日常开发中随代码落地补充 SSoT 用 `ssot-iterate`，把整座存量项目或旧设计迁入 SSoT 用它的全景放大版 `ssot-migrate`。主会话不直接接触旧设计文档、代码目录或部署配置，统一交由隔离的 `ssot:reader` 子代理按 SSoT 准入标准勘探，当场拦截表结构字段、状态枚举、锁与重试参数及标准 CRUD 流程，仅向主会话交回 C4 结构事实、系统级需求与领域性质、候选担心与运行观测，以及显式停在 C4 或留给代码的淘汰清单。第二是**规格与实现单向隔离**：全部建模（`ssot-write-*`）与评审（`ssot-verify-*`）环节只读 `design/` 目录、需求原文与运行时观测，严禁读取业务实现代码或测试，也不拿实现代码反向改写契约，切断由错误实现污染规格的路径。第三是**无上下文独立盲审（`ssot:reviewer`）**：每个切片完成后，派发全新的 `ssot:reviewer` 子代理执行对应的 `ssot-verify-*` 审查；评审者不接触作者的推理记录与草稿，必须先依据 `ssot render` 导出的图形（C4 视图、契约分层图、VDM 盒子图、Quint 组合图）审视边界与接线，再结合作用域诊断给出独立裁决。
 
 为了适配不同演进阶段只需动用局部能力的特点，SSoT 将整套方法拆解为**核心判据 + 载体规则 + 独立操作盒子**。每个判断与操作 skill 都在头部声明严格的六元组接口（**输入、可读、可改、可运行、输出、上抛**），并在交付前通过 `ssot check <design> --scope <视图> --base <起始提交>` 校验改动边界：凡落在本切片可改范围之外的修改一律撤回；凡在底层建模中发现上游结构缺失或契约端口不足，严禁越权修补，必须通过**上抛**将事实交回上游切片。
 
-这种正交的盒子化架构使 SSoT 既可用于新系统的渐进建模与旧文档净化迁移，也可直接作为存量系统疑难缺陷的**隔离实验场**：当线上某个局部模块反复出现并发失步或状态错乱时，无需通读或迁就既有代码，可以直接将该局部的边界与担心单独抽入 SSoT 建模实验，待不变量与接线组合在模型中彻底理顺后，再用验证清晰的结构直接重构或重写问题模块。重写后的模块是否兑现了模型，仍以运行时观测为准：问题复现即作为新的观测交回 `ssot-judge`。
+这种正交的盒子化架构使 SSoT 既可用于新系统的渐进建模、日常迭代准入与存量项目迁移，也可直接作为存量系统疑难缺陷的**隔离实验场**：当线上某个局部模块反复出现并发失步或状态错乱时，无需通读或迁就既有代码，可以直接将该局部的边界与担心单独抽入 SSoT 建模实验，待不变量与接线组合在模型中彻底理顺后，再用验证清晰的结构直接重构或重写问题模块。重写后的模块是否兑现了模型，仍以运行时观测为准：问题复现即作为新的观测交回 `ssot-judge`。
 
 ---
 
@@ -118,10 +118,11 @@ Quint 接线 ──回放──▶ 轨迹中每次契约调用，在原样 VDM �
 | 核心 | [`ssot`](skills/ssot/SKILL.md) | 核心总纲：三层定位、默认不可见、深度与精度两条轴、skill 组合协议、命令与诊断准则 |
 | 核心 | [`ssot-judge`](skills/ssot-judge/SKILL.md) | 对一个位置或一份运行观测按深入三问判断停在原处、写盒子还是写接线，并定精度 |
 | 核心 | [`ssot-requirement`](skills/ssot-requirement/SKILL.md) | 编号收录一条需求原文，写出领域性质论证，并在同一次调用内完成深入判断 |
+| 核心 | [`ssot-iterate`](skills/ssot-iterate/SKILL.md) | 日常迭代补充：随代码落地派 [`ssot:reader`](skills/ssot/agents/ssot-reader.md) 勘探局部范围，判断哪些增量进入或更新 SSoT、哪些留在代码里 |
+| 核心 | [`ssot-migrate`](skills/ssot-migrate/SKILL.md) | 存量项目迁移（`ssot-iterate` 的全景放大版）：勘探全局立起 C4 基线，并把存量模块分流为停在 C4 或排入 `ssot-iterate` |
 | 载体 | [`ssot-c4`](skills/ssot-c4/SKILL.md)、[`ssot-vdm`](skills/ssot-vdm/SKILL.md)、[`ssot-quint`](skills/ssot-quint/SKILL.md) | 三种载体各自的写法、惯用法、工具拒绝规则与评审判据 |
 | 写入 | [`ssot-write-level`](skills/ssot-write-level/SKILL.md)、[`ssot-write-deploy`](skills/ssot-write-deploy/SKILL.md)、[`ssot-write-contract`](skills/ssot-write-contract/SKILL.md)、[`ssot-write-behavior`](skills/ssot-write-behavior/SKILL.md) | 编写单个结构层级、部署视图、VDM 盒子或 Quint 接线切片 |
 | 评审 | [`ssot-verify-structure`](skills/ssot-verify-structure/SKILL.md)、[`ssot-verify-contract`](skills/ssot-verify-contract/SKILL.md)、[`ssot-verify-behavior`](skills/ssot-verify-behavior/SKILL.md) | 对单个切片执行盲审（由 [`ssot:reviewer`](skills/ssot/agents/ssot-reviewer.md) 承载） |
-| 迁移 | [`ssot-migrate-read`](skills/ssot-migrate-read/SKILL.md) | 派 [`ssot:reader`](skills/ssot/agents/ssot-reader.md) 代读旧文档区域，过滤实现细节并提取概念与需求 |
 
 ### 命令
 

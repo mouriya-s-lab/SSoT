@@ -1,6 +1,6 @@
 ---
 name: ssot
-description: SSoT 核心（必读）：SSoT 是随代码落地、从宏观到微观逐步建模的机会，不证明设计完美、不保证没有 bug；一个位置默认不可见，深度由难度决定、精度由使用者声明的阶段决定；skill 树怎样分层、怎样组合；命令、诊断、评审者与工作边界。任何 ssot 任务先完整读本 skill，再按第五节加载要用的 skill。
+description: SSoT 核心（必读）：SSoT 是随代码落地、从宏观到微观逐步建模的机会，不证明设计完美、不保证没有 bug；一个位置默认不可见，深度由难度决定、精度由使用者声明的阶段决定；skill 树怎样分层、怎样组合；命令、诊断、评审者与准入勘探员、工作边界。任何 ssot 任务先完整读本 skill，再按第五节加载要用的 skill。
 ---
 
 # ssot
@@ -39,7 +39,7 @@ SSoT 不证明设计完美无缺，不保证系统没有 bug，也不是一份�
 
 ### 精度由阶段决定
 
-项目处在哪个阶段由使用者判断并说明；模型不读实现代码，不替使用者判断阶段。运行时观测由使用者给出，只陈述端口调用与返回、进程崩溃重启及持久化结果的偏差，不带表字段、锁、状态码或调用栈。
+项目处在哪个阶段由使用者判断并说明；存量代码或旧文档写得细不代表已有运行观测支撑，模型不替使用者判断阶段。运行时观测由使用者给出（日常迭代或迁移时也可由 `ssot:reader` 从事故记录摘出），只陈述端口调用与返回、进程崩溃重启及持久化结果的偏差，不带表字段、锁、状态码或调用栈。
 
 | 层 | 早期（没有运行观测） | 有运行观测支撑的地方 |
 |---|---|---|
@@ -65,32 +65,33 @@ C4 的上下文与容器两层是默认画的导航图，按 C4 自己的用法�
 | 核心 | `ssot` | 本文件 |
 | 核心 | `ssot-judge` | 对一个位置或一份观测做深入判断 |
 | 核心 | `ssot-requirement` | 收下一条需求，并在同一次调用里对它做深入判断 |
+| 核心 | `ssot-iterate` | 日常迭代补充：随代码落地勘探一个局部范围，判断哪些增量进入或更新 SSoT、哪些留在代码里 |
+| 核心 | `ssot-migrate` | 存量项目迁移（`ssot-iterate` 的全景放大版）：勘探全局立起 C4 基线，并把区域分流为停在 C4 或排入 `ssot-iterate` |
 | 载体 | `ssot-c4` | LikeC4 的写法、惯用法与禁止项 |
 | 载体 | `ssot-vdm` | VDM-SL 盒子的写法、String Diagram 视角下的状态、禁止项 |
 | 载体 | `ssot-quint` | Quint 接线与反馈的写法、性质与覆盖目标、禁止项 |
 | 操作 | `ssot-write-level`、`ssot-write-deploy`、`ssot-write-contract`、`ssot-write-behavior` | 写一个切片 |
 | 操作 | `ssot-verify-structure`、`ssot-verify-contract`、`ssot-verify-behavior` | 评一个切片 |
-| 操作 | `ssot-migrate-read` | 由代读者读旧文档的一个区域 |
 
-每个操作 skill 总是与它的载体 skill 一起完整读：
+每个操作 skill（及 `ssot-iterate`、`ssot-migrate`）总是与它的载体 skill 一起完整读：
 
-| 操作 skill | 同时读 |
+| skill | 同时读 |
 |---|---|
-| `ssot-write-level`、`ssot-write-deploy`、`ssot-verify-structure` | `ssot-c4` |
+| `ssot-iterate`、`ssot-migrate`、`ssot-write-level`、`ssot-write-deploy`、`ssot-verify-structure` | `ssot-c4` |
 | `ssot-write-contract`、`ssot-verify-contract` | `ssot-vdm` |
 | `ssot-write-behavior`、`ssot-verify-behavior` | `ssot-quint`，以及它接进来的盒子所需的 `ssot-vdm` |
 
 ### 判断与操作 skill 是盒子，载体 skill 是规则
 
-载体 skill（`ssot-c4`、`ssot-vdm`、`ssot-quint`）是一种载体的写法与判据，被操作 skill 引用，自己不执行。核心里的 `ssot-judge`、`ssot-requirement` 与全部操作 skill 是可组合的盒子，开头用六项写明接口：
+载体 skill（`ssot-c4`、`ssot-vdm`、`ssot-quint`）是一种载体的写法与判据，被操作 skill 引用，自己不执行。核心里的 `ssot-judge`、`ssot-requirement`、`ssot-iterate`、`ssot-migrate` 与全部操作 skill 是可组合的盒子，开头用六项写明接口：
 
 | 项 | 含义 |
 |---|---|
-| 输入 | 它消费什么：一个位置、一条需求、一个视图、一个元素、一个担心、一组图片、一组发现 |
+| 输入 | 它消费什么：一个位置、一条需求、一份局部改动或存量材料、一个视图、一个元素、一个担心、一组图片、一组发现 |
 | 可读 | 能读哪些设计文件与工具输出；本 skill 树里的文件总是可读 |
 | 可改 | 本切片拥有的文件与元素，此外一律不改 |
 | 可运行 | 可运行的 `ssot` 命令 |
-| 输出 | 改动；交给评审的材料（图片路径，或模块路径与诊断）；发现；判断 |
+| 输出 | 改动；交给评审的材料（图片路径，或模块路径与诊断）；发现；判断；准入分流报告 |
 | 上抛 | 什么情况说明上层有误，交回什么事实 |
 
 skill 之间不互相调用：写作 skill 不派评审、不写“下一项是某个 skill”。读了本文件的会话按下面几种接法把它们接起来：
@@ -99,14 +100,15 @@ skill 之间不互相调用：写作 skill 不派评审、不写“下一项是�
 - **反馈：** 评审的发现属于当前切片、且有明确的修法时，接回同一个写作 skill；属于上层的，按上抛处理；属于需要使用者拍板的判断，交给使用者。检查通过、且评审没有当前切片内的阻塞发现时结束，不以零发现为终点。
 - **并接：** 互不相交的切片可以并行。
 - **上抛：** 写作 skill 交回“上层划分有误”的事实（元素放错层、该有的元素不存在、关系方向或归属错了），会话把它接到上层那个切片的写作 skill。
-- **先后来自输入：** 一个 skill 的输入没准备好，就先接产出它的 skill。写行为需要它接进来的契约模块在 `check` 下没有 error；写契约需要元素已在结构里、没有子元素并带 `#contract`。
+- **先后来自输入：** 一个 skill 的输入没准备好，就先接产出它的 skill。`ssot-iterate`、收需求与深入判断需要参照已有的结构基线（存量项目还没有结构基线时，先由 `ssot-migrate` 筛出全局基线并接 `ssot-write-level` 立好，再接 `ssot-iterate`）；写行为需要它接进来的契约模块在 `check` 下没有 error；写契约需要元素已在结构里、没有子元素并带 `#contract`。
 
 ### 从哪里开始
 
 - 用户要建立或扩展结构：`ssot-write-level`（顶层视图是 `index`）。
 - 用户给出一条需求：`ssot-requirement`。
 - 用户给出一份运行观测，或指出某个位置：`ssot-judge`。
-- 用户开始迁移旧设计：`ssot-migrate-read`。
+- 日常开发落地了代码、改动了某个模块或处理了故障，要补充进 SSoT：`ssot-iterate`。
+- 把整座存量项目或旧设计迁入 SSoT：`ssot-migrate`（先立全局 C4 基线并筛掉常规 CRUD 区域，再对重点区域逐个接 `ssot-iterate`）。
 - 用户要求评审某个切片：对应的 verify skill。
 - 不确定已写下的东西是否一致：运行 `ssot status <design>`。它只报两类事实：已写下内容里的 error（交给拥有那个切片的写作 skill，先 LikeC4，再 VDM，再 Quint），以及带 `#contract` 却还没有模块的元素（这个标签是已经做出的深入选择，模块缺了说明这次深入没做完）。“没有前沿”不说明需求已经兑现，也不说明该往下写什么。
 
@@ -150,7 +152,7 @@ Quint 接线（手写）──回放──▶ 只回放轨迹里出现的契约�
 - **info 是提示**（`hint.*`、`replay.outcome`、MAYBE 等未解决的证明义务），交给评审判断，不是待清零的错误，也不是拒绝设计的理由。
 - **修法先问出处。** 被诊断的东西没有需求或约束来源，就删掉它、取消导出或退回 `token`；只有来源确实要求而规格缺了，才补上。不为消掉诊断、通过编译或让工具满意而新增元素、关系、字段、导出、守卫、谓词或消费者。
 
-## 九、评审者与代读者
+## 九、评审者与准入勘探员
 
 `agents/` 下有两个预置定义。用时把它原样拷进当前会话所在项目的 `.omp/agents/`（omp 从会话工作目录向上找最近的 `.omp/agents/`），用 `task` 派发（不用 `fork_task`：它会把你的上下文带过去），用完删掉拷入的文件：
 
@@ -158,10 +160,10 @@ Quint 接线（手写）──回放──▶ 只回放轨迹里出现的契约�
   - 结构：`ssot render` 列出的 C4 图片路径与顺序，不给设计目录、诊断或需求；
   - 契约：该模块的盒子图路径与 `ssot render` 列出的契约分层图路径（`layers.png`），加设计目录路径与 `check --scope` 的诊断；
   - 行为：该模块的组合图路径，加设计目录路径与 `check --scope` 的诊断。
-- **`ssot:reader`**：替你读原始来源（旧设计、旧说明），只交出概念、原文明说的需求与出处。用于 `ssot-requirement` 与 `ssot-migrate-read`。
+- **`ssot:reader`**：替你勘探项目材料（代码库结构与配置、局部改动、旧设计文档、事故记录等）的准入勘探员。只交给它要执行的 skill 名（`ssot-iterate` 或 `ssot-migrate`）、`scope`、原始材料路径、设计目录路径与使用者声明的阶段；它按所执行的 skill 筛出 C4 结构事实、系统级需求与领域性质、候选担心与运行观测，以及停在 C4 或留给代码的淘汰项，把表字段、状态枚举、锁、重试与具体步骤挡在外面。
 
 ## 十、工作边界
 
-- 只读设计目录、用户给的需求材料与运行观测、本 skill 树；不读实现代码、测试、配置，不看 git 历史（`check --base` 由工具读）。
-- 用户给的原始来源设计不直接读，由 `ssot:reader` 代读。
+- 主会话与写作、评审环节只读设计目录、用户给的需求原文与运行观测、本 skill 树；不直接读业务实现代码、测试、配置或旧设计文档，不看 git 历史（`check --base` 由工具读）。
+- 项目的代码、配置与旧文档只由隔离的 `ssot:reader` 在 `ssot-iterate` 与 `ssot-migrate` 中勘探并过滤；主会话只消费它交回的准入报告。
 - 方法与文献出处见 [`references/sources.md`](references/sources.md)。

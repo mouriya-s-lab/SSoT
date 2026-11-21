@@ -2,6 +2,7 @@
 import { fileURLToPath } from "node:url";
 import { loadLikeC4 } from "../install";
 import { type Diagnostic, type Position, diag, global } from "../diag";
+import { asRecord } from "../guard";
 
 export type Metadata = Readonly<Record<string, string | readonly string[]>>;
 
@@ -120,12 +121,6 @@ function viewType(t: string): ViewType {
     default:
       throw new Error(`LikeC4 返回了未知的视图类型 ${t}`);
   }
-}
-
-type UnknownRecord = Readonly<Record<string, unknown>>;
-
-function asRecord(value: unknown): UnknownRecord | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as UnknownRecord) : null;
 }
 
 /** 计算视图里不保留 view 规则；作者写过哪些规则只能读工作区文档的解析结果。 */

@@ -110,11 +110,12 @@ skill 之间不互相调用：写作 skill 不派评审，也不自己接着做�
 - 日常开发落地了代码、改动了某个模块或处理了故障，要补充进 SSoT：`ssot-iterate`。
 - 把整座存量项目或旧设计迁入 SSoT：`ssot-migrate`（先立全局 C4 基线并结合全仓 commit/issue 热点筛掉常规 CRUD 区域，再对重点热点区域逐个接 `ssot-iterate`）。
 - 用户要求评审某个切片：对应的 verify skill。
+- 用户在 `ssot serve` 的页面上留了批注：运行 `ssot comment <design>` 读出。一条批注是用户对图上那个位置说的话，按它说的内容从上面几项里选起点；处理之后用 `reply` 写明改了什么，或为什么不改。`resolve` 只在用户说这一条已经解决时用，否则留给用户在页面上标。
 - 不确定已写下的东西是否一致：运行 `ssot status <design>`。它只报两类事实：已写下内容里的 error（交给拥有那个切片的写作 skill，先 LikeC4，再 VDM，再 Quint），以及带 `#contract` 却还没有模块的元素（这个标签是已经做出的深入选择，模块缺了说明这次深入没做完；`check` 把它报成 `contract.module` 的 error，`status` 排在其余 error 之后单独报）。“没有前沿”不说明需求已经兑现，也不说明该往下写什么。
 
 **越界提示。** 写作 skill 开始时运行 `git rev-parse HEAD` 记下开始时的提交；交付前运行 `ssot check <design> --scope <本切片的视图> --base <开始时的提交>`。它列出落在本切片之外的改动并提示应交给谁；列出的改动不是本切片可改的，撤回它，写进交付。
 
-**不保存过程状态。** 没有“已确认”“已评审”“已判断”的记录；判断与评审的结论只出现在本次交付里，设计里看得到的只有被写下的载体。
+**不保存过程状态。** 没有“已确认”“已评审”“已判断”的记录；判断与评审的结论只出现在本次交付里，设计里看得到的只有被写下的载体。用户在页面上的批注是对会话说的话，不写进设计目录。
 
 ## 六、单向可验证
 
@@ -139,7 +140,10 @@ Quint 接线（手写）──回放──▶ 只回放轨迹里出现的契约�
 | `ssot check <design>` | 全量检查：编译三种载体、生成链新鲜度、跨载体规则、模拟、覆盖目标、回放、证明义务 |
 | `ssot check <design> --scope <视图 id>` | 仍编译全部内容，模拟、回放、QuickCheck 只在该视图的切片闭包内运行，只报告归属于该视图节点的诊断 |
 | `ssot check <design> --scope <视图 id> --base <rev>` | 另列出 `<rev>` 之后落在该作用域之外的改动 |
-| `ssot serve <design> [--port N]` | 在本地网页（默认端口 5180）上交互浏览 `ssot render` 的同一批图，侧栏按上下级排成树，点图上的下钻标注打开下一层，设计文件改动后自动重画；给人看设计用，评审仍以 `ssot render` 导出的 PNG 为准 |
+| `ssot serve <design> [--port N]` | 在本地网页（默认端口 5180）上交互浏览 `ssot render` 的同一批图，侧栏按上下级排成树（整栏与每个分支都可以收起），点图上的下钻标注打开下一层，设计文件改动后自动重画；用户可以对一张图、图上的一个节点或一条箭头留批注；给人看设计用，评审仍以 `ssot render` 导出的 PNG 为准 |
+| `ssot comment <design> [--all] [--port N]` | 列出用户在 `ssot serve` 页面上留的未解决批注：编号、指向的图与节点或箭头、双方说过的话、在等谁回复；`--all` 连已解决的一起列。该设计的 `ssot serve` 要正在这个端口上运行 |
+| `ssot comment <design> reply <批注号> [--text <话>] [--port N]` | 在一条批注下面回复，页面上随即显示；不给 `--text` 时从标准输入读 |
+| `ssot comment <design> resolve <批注号> [--port N]` | 把一条批注标为已解决 |
 | `ssot render <design> [--out <目录>]` | 导出渲染图并按顺序列出 `<路径>\t<id>`：C4 视图（`index` → 逐层下钻 → 部署视图）、契约分层图（id `layers`，只在有契约模块时）、每个契约模块依次是盒子图（id `box:<模块名>`）和它下面一层的承诺图（id `promises:<模块名>`）、类型图（id `types:<模块名>`）与读写表（id `access:<模块名>`，只在模块有 `state` 时）、接线索引（id `wirings`，只在有可运行 Quint 模块时）、每个可运行 Quint 模块依次是组合图（id `composition:<模块名>`）和它下面一层的性质图（id `properties:<模块名>`） |
 | `ssot eval <design> <模块> '<表达式>' [--bind …]` | 在原样规格里求一个 VDM 表达式，用来构造违反实例 |
 | `ssot status <design> [--deadline 秒]` | 运行一次全量 `check`，报一项第五节所说的事实 `{skill, scope, reason}`；都没有时输出“没有前沿”；没有 error 而 `check` 被截止打断时报“验证没有做完”，以 `3` 退出 |
@@ -167,6 +171,6 @@ Quint 接线（手写）──回放──▶ 只回放轨迹里出现的契约�
 
 ## 十、工作边界
 
-- 主会话与写作、评审环节只读设计目录、用户给的需求原文、本 skill 树，以及 `ssot:reader` 与 `ssot:hotspot` 交回的准入/溯源报告；不直接读业务实现代码、测试、配置或旧设计文档，不直接翻阅 git 提交 diff 或 issue 堆栈（`check --base` 与 `hotspots` 由工具和 `ssot:hotspot` 执行）。
+- 主会话与写作、评审环节只读设计目录、用户给的需求原文与页面批注、本 skill 树，以及 `ssot:reader` 与 `ssot:hotspot` 交回的准入/溯源报告；不直接读业务实现代码、测试、配置或旧设计文档，不直接翻阅 git 提交 diff 或 issue 堆栈（`check --base` 与 `hotspots` 由工具和 `ssot:hotspot` 执行）。
 - 项目的代码、配置与旧文档只由隔离的 `ssot:reader` 在 `ssot-iterate` 与 `ssot-migrate` 中勘探并过滤；项目的 git 改动热点、commit 与 issue 溯源只由隔离的 `ssot:hotspot` 分析并过滤；主会话只消费它们交回的报告。
 - 方法与文献出处见 [`references/sources.md`](references/sources.md)。

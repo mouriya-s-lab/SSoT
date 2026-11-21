@@ -14,7 +14,12 @@ import { type LayerTier, type LayersDiagram, TIER_ORDER } from "./layers";
 import { type Point, type Rect, type RouteBox, type RouteRequest, routeCost, routeEdges } from "./route";
 import { type NodeIcon, loadIcons, nodeIcon } from "./icon";
 
-export interface DiagramSvg { readonly width: number; readonly height: number; readonly svg: string }
+export interface SvgPart { readonly width: number; readonly height: number; readonly svg: string }
+/**
+ * 本身是图与图例合成的一整张（ssot render 导出的 PNG）；canvas 与 legend 是同一张按分隔线切开的两块，给 ssot serve：
+ * 图例放在画布之外，不随图平移缩放。canvas 的坐标与整张相同，批注落点不受影响。
+ */
+export interface DiagramSvg extends SvgPart { readonly canvas: SvgPart; readonly legend: SvgPart }
 const INK = "#20252b", MUTED = "#59636e", BEHAVIOR = "#2a78d6", CONTRACT = "#eb6834";
 const esc = (value: string): string => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 const widthOf = (value: string): number => [...value].reduce((width, char) => width + (char.codePointAt(0)! > 255 ? 15 : 8.5), 0);
@@ -63,7 +68,14 @@ function sectionPoints(edge: ElkExtendedEdge): Point[][] {
 const LEGEND_ROW = 28;
 function frame(title: string, subtitle: string, width: number, height: number, body: string, legend: string, legendRows = 1): DiagramSvg {
   const w = Math.ceil(Math.max(width, 860)), h = Math.ceil(height), rule = h - 65 - (legendRows - 1) * LEGEND_ROW;
-  return { width: w, height: h, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" font-family="Arial, sans-serif" font-size="14"><defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse"><path d="M0,0 L9,4.5 L0,9 z" fill="${MUTED}"/></marker></defs><rect width="100%" height="100%" fill="#fff"/>${text(28, 34, [title], "start", 21, "bold")}${text(28, 59, [subtitle], "start", 14)}${body}<line x1="28" x2="${w - 28}" y1="${rule}" y2="${rule}" stroke="#dde1e5"/>${legend}</svg>` };
+  const open = (y: number, height: number): string => `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${height}" viewBox="0 ${y} ${w} ${height}" font-family="Arial, sans-serif" font-size="14"><defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse"><path d="M0,0 L9,4.5 L0,9 z" fill="${MUTED}"/></marker></defs>`;
+  const heading = `${text(28, 34, [title], "start", 21, "bold")}${text(28, 59, [subtitle], "start", 14)}`;
+  return {
+    width: w, height: h,
+    svg: `${open(0, h)}<rect width="100%" height="100%" fill="#fff"/>${heading}${body}<line x1="28" x2="${w - 28}" y1="${rule}" y2="${rule}" stroke="#dde1e5"/>${legend}</svg>`,
+    canvas: { width: w, height: rule, svg: `${open(0, rule)}<rect width="100%" height="100%" fill="#fff"/>${heading}${body}</svg>` },
+    legend: { width: w, height: h - rule, svg: `${open(rule, h - rule)}${legend}</svg>` },
+  };
 }
 function flowPath(edge: ElkExtendedEdge, kind: "flow" | "update"): string {
   const markers = kind === "update" ? 'marker-start="url(#arrow)" marker-end="url(#arrow)"' : 'marker-end="url(#arrow)"';

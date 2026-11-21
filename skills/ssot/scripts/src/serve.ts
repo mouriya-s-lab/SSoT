@@ -3,8 +3,8 @@
 import { type FSWatcher, watch } from "node:fs";
 import { join, sep } from "node:path";
 import { assertNever, format } from "./diag";
-import { applyChange, loadThreads, parseChange, saveThreads, storePath } from "./review";
-import { type SiteDiagram, buildSite } from "./site";
+import { applyChange, edgeRev, itemRev, loadThreads, parseChange, saveThreads, storePath } from "./review";
+import { type DiagramKind, type SiteDiagram, type SiteEdge, type SiteItem, buildSite } from "./site";
 
 /** 页面拿到的一份结果：最近一次成功构建的图，加上最近一次构建（可能失败）的诊断。 */
 interface Published {
@@ -12,7 +12,29 @@ interface Published {
   readonly building: boolean;
   readonly failed: boolean;
   readonly diagnostics: readonly string[];
-  readonly diagrams: readonly SiteDiagram[];
+  readonly diagrams: readonly DiagramView[];
+}
+
+/** /api/site 里的一张图：每个节点与每条箭头带上内容指纹 rev，页面与 ssot comment 用它判断批注指着的元素后来改没改。 */
+export interface DiagramView {
+  readonly id: string;
+  readonly kind: DiagramKind;
+  readonly title: string;
+  readonly description: string;
+  readonly parent: string | null;
+  readonly width: number;
+  readonly height: number;
+  readonly svg: string;
+  readonly items: Readonly<Record<string, SiteItem & { readonly rev: string }>>;
+  readonly edges: readonly (SiteEdge & { readonly rev: string })[];
+}
+
+function viewOf(d: SiteDiagram): DiagramView {
+  return {
+    id: d.id, kind: d.kind, title: d.title, description: d.description, parent: d.parent, width: d.svg.width, height: d.svg.height, svg: d.svg.svg,
+    items: Object.fromEntries(Object.entries(d.items).map(([id, item]) => [id, { ...item, rev: itemRev(item) }])),
+    edges: d.edges.map((edge) => ({ ...edge, rev: edgeRev(edge) })),
+  };
 }
 
 const PAGE = join(import.meta.dir, "serve", "page.html");
@@ -46,7 +68,7 @@ export async function serve(design: string, structure: string, port: number): Pr
         const site = await buildSite(structure);
         const diagnostics = site.diagnostics.map(format);
         published = site.kind === "ok"
-          ? { version: published.version + 1, building: false, failed: false, diagnostics, diagrams: site.diagrams }
+          ? { version: published.version + 1, building: false, failed: false, diagnostics, diagrams: site.diagrams.map(viewOf) }
           : { version: published.version + 1, building: false, failed: true, diagnostics, diagrams: published.diagrams };
         console.log(`${site.kind === "ok" ? "已重画" : "构建失败，保留上一版图"}：${site.kind === "ok" ? site.diagrams.length : published.diagrams.length} 张图，${diagnostics.length} 条诊断，${Math.round(performance.now() - started)} ms`);
       } catch (error) {
@@ -77,10 +99,7 @@ export async function serve(design: string, structure: string, port: number): Pr
         case "/":
           return new Response(Bun.file(PAGE), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
         case "/api/site":
-          return Response.json({
-            version: published.version, building: published.building, failed: published.failed, diagnostics: published.diagnostics,
-            diagrams: published.diagrams.map((d) => ({ id: d.id, kind: d.kind, title: d.title, description: d.description, parent: d.parent, width: d.svg.width, height: d.svg.height, svg: d.svg.svg, items: d.items, edges: d.edges })),
-          });
+          return Response.json({ version: published.version, building: published.building, failed: published.failed, diagnostics: published.diagnostics, diagrams: published.diagrams });
         case "/api/threads": {
           if (request.method !== "POST") return Response.json({ design, threads });
           const change = parseChange(await request.json().catch(() => null));
@@ -89,6 +108,10 @@ export async function serve(design: string, structure: string, port: number): Pr
           switch (result.kind) {
             case "unknown-thread":
               return Response.json({ error: `没有批注 ${result.thread}` }, { status: 404 });
+            case "unknown-message":
+              return Response.json({ error: `批注 ${result.thread} 里没有 ${result.message} 这句话` }, { status: 404 });
+            case "not-editable":
+              return Response.json({ error: `批注 ${result.thread} 的 ${result.message} 不是你说的，或者已经删了` }, { status: 409 });
             case "ok":
               saveThreads(store, design, result.threads);
               threads = result.threads;

@@ -1,6 +1,7 @@
 ---
 name: ssot-migrate
 description: SSoT 存量迁移分流（ssot-iterate 的全景放大版）：面对尚未建立 SSoT 的存量项目或整批旧设计文档，派 ssot:hotspot 运行 ssot hotspots 分析全仓文件改动热点 → commit → issue，并派 ssot:reader 勘探全局拓扑——先筛出全系统的 C4 基线事实与全局需求，同时按真实问题热点把存量区域分流为“直接停在 C4 不再下探”和“立好 C4 基线后交由 ssot-iterate 逐个深入的重点区域”；只报告不修改。与 ssot-c4 一起读，先读 ssot。
+hide: true
 ---
 
 # ssot-migrate：存量项目的全景准入分流

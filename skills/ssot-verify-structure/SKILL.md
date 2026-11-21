@@ -1,6 +1,7 @@
 ---
 name: ssot-verify-structure
 description: SSoT 结构评审清单（LikeC4 的一层或一个部署视图）：评审者只看 ssot render 导出的 C4 渲染图，从 index 逐层下钻，判断每张图能不能读懂、层级与种类对不对、本层是否泄露下层、子层是否承担父层的箭头；看不懂的一律是问题。只报告不修改。与 ssot-c4 一起读，先读 ssot。
+hide: true
 ---
 
 # ssot-verify-structure：只看渲染图评审一层结构

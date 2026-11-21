@@ -1,6 +1,7 @@
 ---
 name: ssot-requirement
 description: SSoT 收下一条需求：把用户给的原文原样编号进 design/requirements.md（REQ-<编号>），写出论证与领域性质，并在同一次调用里按 ssot-judge 的步骤判断它由结构回答、由某个盒子或某张接线图兑现，还是不建模；不写任何载体。用户给出需求、或准入勘探交出需求摘录时使用。先读 ssot 与 ssot-judge。
+hide: true
 ---
 
 # ssot-requirement：收下一条需求

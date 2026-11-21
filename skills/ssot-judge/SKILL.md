@@ -1,6 +1,7 @@
 ---
 name: ssot-judge
 description: SSoT 深入判断：对一个位置（C4 元素或连接）或一项候选担心（含 ssot:hotspot 反推的高频改动文件 → commit → issue 热点溯源），按 ssot 第三节的深入三问决定停在原处、写某个元素的 VDM 盒子，还是写某个担心的 Quint 接线，并按担心与热点故障边界定精度；不写任何载体。用户指出一个位置，或 ssot-iterate 交出候选担心时使用。先读 ssot。
+hide: true
 ---
 
 # ssot-judge：一个位置要不要往下写

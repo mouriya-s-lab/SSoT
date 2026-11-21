@@ -1,6 +1,7 @@
 ---
 name: ssot-write-level
 description: SSoT 写一个元素的一层（LikeC4）：写出它的直接子元素、本层关系与它的视图，用 ssot render 自查渲染图，交出渲染图供结构评审；scope 是视图 id，元素还没有视图时是元素 fqn。与 ssot-c4 一起读，先读 ssot。
+hide: true
 ---
 
 # ssot-write-level：写一个元素的一层

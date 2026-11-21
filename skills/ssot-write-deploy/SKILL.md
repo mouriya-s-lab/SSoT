@@ -1,6 +1,7 @@
 ---
 name: ssot-write-deploy
 description: SSoT 写一个部署视图显示的部署节点（LikeC4 部署模型）：节点里运行哪些容器、信任边界在哪里，交出渲染图供结构评审；scope 是部署视图 id，检查用 --scope index。与 ssot-c4 一起读，先读 ssot。
+hide: true
 ---
 
 # ssot-write-deploy：写一个部署视图的节点

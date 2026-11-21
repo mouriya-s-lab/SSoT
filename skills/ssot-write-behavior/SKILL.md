@@ -1,6 +1,7 @@
 ---
 name: ssot-write-behavior
 description: SSoT 为一个担心写一张接线图（Quint 模块）：接进来的契约盒子与行为一侧的盒子、反馈线、先后来自已到手的回复、可观察线上的性质与覆盖目标，交出组合图与诊断供行为评审；scope 是 Quint 模块名。与 ssot-quint 一起读，并读它接进来的盒子所需的 ssot-vdm；先读 ssot。
+hide: true
 ---
 
 # ssot-write-behavior：为一个担心写一张接线图

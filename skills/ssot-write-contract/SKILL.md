@@ -1,6 +1,7 @@
 ---
 name: ssot-write-contract
 description: SSoT 写一个带 contract 标签的底层元素的盒子（VDM-SL 模块）：端口、线上的类型、反馈线（state）与端口上的 pre/post/inv，精度按深入判断交出的担心与需求，交出盒子图与诊断供契约评审；scope 是元素 fqn。与 ssot-vdm 一起读，先读 ssot。
+hide: true
 ---
 
 # ssot-write-contract：写一个元素的盒子

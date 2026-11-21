@@ -1,6 +1,7 @@
 ---
 name: ssot-iterate
 description: SSoT 日常迭代补充：随代码落地或模块演进，结合 ssot:hotspot（从高频改动文件反推问题热点、修复 commit 与关联 issue）与 ssot:reader（对照现有 C4 结构勘探局部材料），筛出 C4 结构变更、新增系统级需求、新增候选担心与热点溯源，并把连接与承诺未变的内部实现留在代码里；只报告不修改。日常开发补充 SSoT、或迁移立好全局 C4 基线后逐个深入重点区域时使用。与 ssot-c4 一起读，先读 ssot。
+hide: true
 ---
 
 # ssot-iterate：日常迭代的增量准入

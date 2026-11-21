@@ -1,6 +1,7 @@
 ---
 name: ssot-vdm
 description: SSoT 盒子载体（VDM-SL）：一个带 #contract 的底层元素的模块就是一个盒子——导出是端口，state 是这个盒子自己的反馈线，pre/post/inv 是端口上的承诺；按担心与热点故障边界从留白到精确；不直接建模状态机；写法、生成到 Quint 的要求、充分与无偏差、工具会拒绝什么、评审怎么判。写或评 VDM（ssot-write-contract、ssot-verify-contract，以及接这些盒子的行为）时与操作 skill 一起完整读。先读 ssot。
+hide: true
 ---
 
 # ssot-vdm：盒子

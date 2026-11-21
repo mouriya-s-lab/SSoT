@@ -1,6 +1,7 @@
 ---
 name: ssot-quint
 description: SSoT 接线载体（Quint）：一个 Quint 模块是围绕一个担心的一张接线图（String Diagram）——每个 var 是一条带延迟的线（某个盒子的反馈，或盒子之间在途的值），契约盒子来自生成的 VDM，进程步骤、在途请求与崩溃这类环境在这里声明；顺接的步骤写成一串盒子，先后只来自线上有没有值，不为实体记进度；性质写在可观察的线上；回放、覆盖目标、组合图、工具会拒绝什么、评审怎么判。写或评 Quint（ssot-write-behavior、ssot-verify-behavior）时与操作 skill 一起完整读。先读 ssot。
+hide: true
 ---
 
 # ssot-quint：接线与反馈

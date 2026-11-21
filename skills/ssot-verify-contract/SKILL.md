@@ -1,6 +1,7 @@
 ---
 name: ssot-verify-contract
 description: SSoT 契约评审清单（一个带 contract 标签的元素的盒子）：先只看盒子图判断端口与反馈线，再看契约分层图判断定义被谁引用、架构是否引用了业务，再带着 hint.* 提示读模块，判断精度、状态机、最小性、所有权与身份，并用 ssot eval 为每个 pre、post、inv 求违反实例；评审者没看过设计，只报告不修改。与 ssot-vdm 一起读，先读 ssot。
+hide: true
 ---
 
 # ssot-verify-contract：评审一个盒子

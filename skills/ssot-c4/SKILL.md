@@ -1,6 +1,7 @@
 ---
 name: ssot-c4
 description: SSoT 结构载体（LikeC4）：按 C4 逐层放大的架构图怎样写——五种元素与层级、元素与关系写法、视图与部署、样式与图例、禁止写进图的东西、工具会拒绝什么、渲染图自查。写或评 LikeC4 的切片（ssot-write-level、ssot-write-deploy、ssot-verify-structure）时与操作 skill 一起完整读。先读 ssot。
+hide: true
 ---
 
 # ssot-c4：逐层放大的架构图

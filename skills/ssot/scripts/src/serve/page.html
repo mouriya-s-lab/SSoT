@@ -14,7 +14,10 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: #fff; }
   #app { display: grid; grid-template-columns: 280px 1fr auto; grid-template-rows: auto 1fr; height: 100%; }
+  #app.nav-closed { grid-template-columns: 0 1fr auto; }
+  #app.nav-closed nav { display: none; }
   header { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--line); min-height: 52px; }
+  header button svg { display: block; }
   header .brand { font-weight: 700; letter-spacing: .02em; }
   #crumbs { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; }
   #crumbs a { color: var(--accent); text-decoration: none; cursor: pointer; }
@@ -31,16 +34,18 @@
   .tools { display: flex; gap: 4px; }
   button { font: inherit; border: 1px solid var(--line); background: #fff; border-radius: 6px; padding: 4px 9px; cursor: pointer; color: var(--ink); }
   button:hover { background: var(--panel); }
-  nav { border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+  nav { grid-column: 1; border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
   #search { margin: 10px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; font: inherit; }
   #lists { overflow: auto; flex: 1; padding-bottom: 12px; }
   nav h3 { margin: 12px 14px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
   nav a { display: block; padding: 5px 14px 5px 18px; color: var(--ink); text-decoration: none; cursor: pointer; border-left: 3px solid transparent; }
   nav a small { display: block; color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  nav a .fold { display: inline-block; width: 14px; margin-left: -14px; color: var(--muted); font-size: 10px; text-align: center; }
+  nav a .fold:hover { color: var(--ink); }
   nav a:hover { background: #eef2f6; }
   nav a.active { border-left-color: var(--accent); background: #e7f0fa; font-weight: 600; }
   nav a.hit mark { background: #ffe8a1; color: inherit; }
-  main { position: relative; overflow: hidden; background: #fbfcfd; cursor: grab; }
+  main { grid-column: 2; position: relative; overflow: hidden; background: #fbfcfd; cursor: grab; }
   main.panning { cursor: grabbing; }
   #stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
   #stage svg { display: block; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
@@ -54,7 +59,7 @@
   #hint { position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: var(--muted); background: rgba(255,255,255,.85); padding: 4px 8px; border-radius: 6px; pointer-events: none; }
   #tip { position: absolute; pointer-events: none; max-width: 360px; background: #1f2933; color: #fff; font-size: 12.5px; padding: 6px 9px; border-radius: 6px; display: none; z-index: 5; line-height: 1.45; }
   #tip b { color: #ffd8a8; }
-  aside { width: 0; overflow: hidden; border-left: 1px solid var(--line); background: #fff; }
+  aside { grid-column: 3; width: 0; overflow: hidden; border-left: 1px solid var(--line); background: #fff; }
   aside.open { width: 360px; overflow: auto; }
   aside .inner { padding: 14px 16px 24px; width: 360px; }
   aside h2 { margin: 0 0 2px; font-size: 18px; }
@@ -75,6 +80,7 @@
 <body>
 <div id="app">
   <header>
+    <button id="navToggle" title="收起或展开侧栏 (B)" aria-label="收起或展开侧栏"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M6 2.5v11"/></svg></button>
     <span class="brand">SSoT</span>
     <div id="crumbs"></div>
     <div class="tools">
@@ -95,7 +101,7 @@
     <div id="empty">正在构建…</div>
     <div id="problems"></div>
     <div id="tip"></div>
-    <div id="hint">拖动平移 · 滚轮平移 / ⌘ 或 Ctrl + 滚轮缩放 · 单击看详情 · 点图上的标注或双击下钻 · Esc 取消</div>
+    <div id="hint">拖动平移 · 滚轮平移 / ⌘ 或 Ctrl + 滚轮缩放 · 单击看详情 · 点图上的标注或双击下钻 · B 收起侧栏 · Esc 取消</div>
   </main>
   <aside id="details"><div class="inner"></div></aside>
 </div>
@@ -129,6 +135,12 @@ function route() {
   if (!site || site.diagrams.length === 0) return;
   const { id, node } = parseHash();
   const diagram = site.diagrams.find((d) => d.id === id) ?? site.diagrams[0];
+  // 走到一张图时展开它在侧栏树里的各级上级，否则当前图会藏在收起的分支里。
+  if (diagram.id !== revealed) {
+    revealed = diagram.id;
+    for (let d = diagram; d?.parent; d = site.diagrams.find((x) => x.id === d.parent)) folded.delete(d.parent);
+    localStorage.setItem("ssot.folded", JSON.stringify([...folded]));
+  }
   // 选中状态先按地址定下来再画图：详情面板的开合会改变画布宽度，适应窗口要按最终宽度算。
   const pick = node && diagram.items[node] ? { type: "node", id: node } : null;
   if (!current || current !== diagram) { selected = pick; renderDetails(); show(diagram); }
@@ -137,11 +149,25 @@ function route() {
 }
 
 // ---------- 侧栏 ----------
+// 整栏的开合与树上收起的分支记在 localStorage：它们是这个浏览器里的看图习惯，不属于设计。
+const folded = new Set(JSON.parse(localStorage.getItem("ssot.folded") ?? "[]"));
+let revealed = null;             // 最近一次为它展开过上级的图
+function setNav(open) {
+  const before = canvas.getBoundingClientRect().left;
+  $("app").classList.toggle("nav-closed", !open);
+  localStorage.setItem("ssot.nav", open ? "open" : "closed");
+  // 画布的左边界跟着移动；每张图的视野补上这段位移，图在屏幕上不跳。
+  const shift = before - canvas.getBoundingClientRect().left;
+  for (const [id, v] of views) views.set(id, { ...v, x: v.x + shift });
+  apply();
+}
+$("app").classList.toggle("nav-closed", localStorage.getItem("ssot.nav") === "closed");
+$("navToggle").onclick = () => setNav($("app").classList.contains("nav-closed"));
 function renderLists(filter = "") {
   const q = filter.trim().toLowerCase();
   const lists = $("lists");
   let html = "";
-  const entry = (d, depth) => `<a data-go="${esc(d.id)}" class="${current?.id === d.id ? "active" : ""}" style="padding-left:${18 + depth * 16}px">${esc(d.title)}<small>${esc(d.id)}</small></a>`;
+  const entry = (d, depth, parent) => `<a data-go="${esc(d.id)}" class="${current?.id === d.id ? "active" : ""}" style="padding-left:${32 + depth * 16}px">${parent ? `<span class="fold" data-fold="${esc(d.id)}" title="${folded.has(d.id) ? "展开" : "收起"}下一层">${folded.has(d.id) ? "▸" : "▾"}</span>` : ""}${esc(d.title)}<small>${esc(d.id)}</small></a>`;
   // 不搜索时按上下级排成树：每张图缩进在它的上一级图下面，只有顶层的图分组加标题。
   if (!q) {
     const all = site?.diagrams ?? [], ids = new Set(all.map((d) => d.id)), children = new Map(), roots = [];
@@ -149,7 +175,11 @@ function renderLists(filter = "") {
       if (d.parent && ids.has(d.parent)) { if (!children.has(d.parent)) children.set(d.parent, []); children.get(d.parent).push(d); }
       else roots.push(d);
     }
-    const walk = (d, depth) => { html += entry(d, depth); for (const c of children.get(d.id) ?? []) walk(c, depth + 1); };
+    const walk = (d, depth) => {
+      const below = children.get(d.id) ?? [];
+      html += entry(d, depth, below.length > 0);
+      if (!folded.has(d.id)) for (const c of below) walk(c, depth + 1);
+    };
     let heading = null;
     for (const r of roots) {
       if (KIND_TITLES[r.kind] !== heading) { heading = KIND_TITLES[r.kind]; html += `<h3>${esc(heading)}</h3>`; }
@@ -184,6 +214,12 @@ function renderLists(filter = "") {
   lists.innerHTML = html;
 }
 $("lists").addEventListener("click", (e) => {
+  const fold = e.target.closest("[data-fold]");
+  if (fold) {
+    if (!folded.delete(fold.dataset.fold)) folded.add(fold.dataset.fold);
+    localStorage.setItem("ssot.folded", JSON.stringify([...folded]));
+    return renderLists($("search").value);
+  }
   const a = e.target.closest("a[data-go]");
   if (a) go(a.dataset.go, a.dataset.node ?? null);
 });
@@ -404,8 +440,9 @@ function centerOn(id) {
 
 // ---------- 键盘 ----------
 window.addEventListener("keydown", (e) => {
-  if (e.target instanceof HTMLInputElement) return;
-  if (e.key === "/") { e.preventDefault(); $("search").focus(); }
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === "/") { e.preventDefault(); if ($("app").classList.contains("nav-closed")) setNav(true); $("search").focus(); }
+  else if (e.key === "b" || e.key === "B") setNav($("app").classList.contains("nav-closed"));
   else if (e.key === "Escape") select(null);
   else if (e.key === "f" || e.key === "F") fit();
   else if (e.key === "+" || e.key === "=") zoomCenter(1.25);

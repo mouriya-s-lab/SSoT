@@ -48,7 +48,7 @@ module cancellation {
 - **在途的请求是一条带延迟的线。** 发出与回复之间可能隔着崩溃：在途请求自己是一条线，跨崩溃留下；回复的一步取下它、调用契约端口，只把结果交给仍在等它的那一步。回复取契约允许的每一种结果，不在行为里替执行边界挑：
 
 ```quint
-  // REQ-6：订单项已记入 released 时回复 Rejected；未释放时仓储也可因缺货拒绝。回复只交给仍在当前进程等待的履约步骤。
+  // REQ-6：订单项已记入 released 时回复 Rejected；未释放时仓储也可因缺货拒绝，缺货触发整单取消收束。
   action answerReserve(it: Ledger::ItemId, h: Inv::HoldId, e: int, accept: bool): bool = all {
     (it, h, e).in(inflight),
     val res = if (it.in(inv.released) or not(accept)) Inv::Reserve_Result_Rejected(Inv::Rejected_Rejected)
@@ -92,7 +92,7 @@ module cancellation {
 
 ## 四、不重写契约的事实
 
-- **载荷取值不在行为里判定。** 行为只决定什么时候调用、调用之后走哪条路；载荷与结果取类型允许的值，合不合法交给端口的 `pre`/`post`，由回放检查。
+- **载荷合不合法只由契约定。** 行为只决定什么时候调用、调用之后走哪条路。守卫与选出的结果只取被调端口的 `pre`/`post` 允许的情形：这是契约的第二份手写，由回放对照 VDM 检查。行为不另立契约没有的取值规则，也不在契约允许的结果里替执行边界挑。
 - **只复述某个 `pre` 的不变式不写**：回放已经检查 `pre`。
 - **冗余的字段在契约里删掉。** 一个值能由契约里别的值决定，行为却要另选一次，问题在契约的形状。
 
@@ -111,7 +111,7 @@ module cancellation {
 ```quint
   // REQ-10：一个订单项写下结算结局时，仓储里没有属于它的未释放锁库。
   val noHoldAfterOutcome = inv.held.keys().forall(h => not(settled(inv.held.get(h))))
-  // REQ-10：任何已写下结算结局的订单项，它在仓储中的锁库窗口都已关闭。
+  // REQ-10：任何已写下结算结局的订单项，它在仓储中的锁库窗口都已关闭（防止晚到的在途 reserve 死锁库存）。
   val outcomeAfterRelease = ledger.outcomes.keys().forall(it => it.in(inv.released))
   val safety = noHoldAfterOutcome and outcomeAfterRelease
 ```
@@ -162,7 +162,7 @@ module cancellation {
 先看组合图，再读模块：
 
 1. **担心与接线对得上。** 模块开头写的担心，组合图里接进来的盒子足以表达；没有与担心无关的盒子；环境盒子都是触发模块开头那个担心所必需的。
-2. **不直接建模状态机。** 没有阶段枚举、阶段字符串、计数器，也没有一组只用来区分进度的布尔位或可选字段；没有包揽几个进程的大节点；先后来自线上有没有值。
+2. **不直接建模状态机。** 没有阶段枚举、阶段字符串、给实体记步数的计数器，也没有一组只用来区分进度的布尔位或可选字段；没有包揽几个进程的大节点；先后来自线上有没有值。
 3. **性质在可观察的线上。** `safety` 不复述动作自己的守卫，不依赖影子变量；每条性质都有覆盖目标说明它涉及的情形确实走到了。
 4. **换掉一个盒子会怎样。** 对每条性质问：哪一个错误的盒子或错误的接线会让它失败（例如仓储边界在释放之后仍接纳 reserve）？答不出，这条性质很可能是空的。
 5. **不重写契约事实。** 契约盒子的反馈线只用生成类型、用 `initial` 初始化、只在对应 `Call` 那一步改变；没有与它并行的另一份事实。

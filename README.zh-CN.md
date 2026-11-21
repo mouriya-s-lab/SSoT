@@ -134,9 +134,9 @@ Quint 接线 ──回放──▶ 轨迹中每次契约调用，在原样 VDM �
 | `ssot check <design> --scope <视图 id>` | 编译全部内容，但仅在该视图的切片闭包内运行模拟、回放与 QuickCheck，只报告归属该切片的诊断 |
 | `ssot check <design> --scope <视图 id> --base <rev>` | 额外列出 `<rev>` 之后落在该切片可改范围之外的越界改动 |
 | `ssot serve <design> [--port N]` | 在本地网页上显示与 `ssot render` 相同的图（默认端口 5180），设计文件一改就重画：拖动缩放、悬停追踪连线、单击看元素详情（描述、调用关系、契约端口、行为步骤）、从元素下钻到它自己的视图、契约盒子或组合图、跨全部图搜索。构建失败时显示诊断，屏幕上保留上一版图 |
-| `ssot render <design> [--out <目录>]` | 按从宏观到微观的顺序导出 C4 视图（上下文、逐层下钻、部署视图）、契约分层图（`layers`，只在有契约模块时）、每个契约模块的盒子图（`box:<模块名>`）与每个 Quint 模块的组合图（`composition:<模块名>`） |
+| `ssot render <design> [--out <目录>]` | 按从宏观到微观的顺序导出 C4 视图（上下文、逐层下钻、部署视图）、契约分层图（`layers`，只在有契约模块时）、每个契约模块的盒子图（`box:<模块名>`）及它下面的承诺图（`promises:<模块名>`）、类型图（`types:<模块名>`）与读写表（`access:<模块名>`，只在模块有 `state` 时）、接线索引（`wirings`，只在有可运行 Quint 模块时）、每个可运行 Quint 模块的组合图（`composition:<模块名>`）及它下面的性质图（`properties:<模块名>`） |
 | `ssot eval <design> <模块> '<表达式>' [--bind …]` | 在原样 VDM 规格中对表达式求值，用于验证违反实例是否被规格拒绝 |
-| `ssot status <design> [--deadline 秒]` | 报告已写下内容中的首个 error，或已标记 `#contract` 但尚无模块的元素；均无时输出“没有前沿” |
-| `ssot hotspots <路径> [--top N] [--since <rev>]` | 分析 git 提交历史中的代码改动热点：统计改动最多的文件与模块、协同改动文件对，并从热点文件反推到关键修复 commit 与关联 issue/PR |
+| `ssot status <design> [--deadline 秒]` | 报告已写下内容中的首个 error，或已标记 `#contract` 但尚无模块的元素；均无时输出“没有前沿”；没有 error 而 `check` 被截止打断时报“验证没有做完”，以 `3` 退出 |
+| `ssot hotspots <路径> [--top N] [--since <日期>]` | 分析 git 提交历史中的代码改动热点：统计改动最多的文件与模块、协同改动文件对，并从热点文件反推到关键修复 commit 与关联 issue/PR；`--since` 只统计该日期之后的提交 |
 
 `ssot check` 退出码：`0` 通过；`1` 存在确证的 error；`3` 无 error 但触发 `resource.deadline`（验证未在时限内跑完，不代表设计被拒绝）。

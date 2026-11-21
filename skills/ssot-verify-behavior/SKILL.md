@@ -1,6 +1,6 @@
 ---
 name: ssot-verify-behavior
-description: SSoT 行为评审清单（一张接线图，即一个 Quint 模块）：先只看组合图判断接线与担心是否对得上、顺接的步骤是否画成一串线，再读模块判断是否为实体记进度、可观察线上的性质、换掉一个盒子会怎样、契约事实是否被重写；replay.outcome 只是提示。评审者没看过设计，只报告不修改。与 ssot-quint 一起读，先读 ssot。
+description: SSoT 行为评审清单（一张接线图，即一个 Quint 模块）：先只看组合图判断接线与担心是否对得上、顺接的步骤是否画成一串线，再读模块判断是否为实体记进度、可观察线上的性质、换掉一个盒子会怎样、契约事实是否被重写；replay.outcome 只是提示。评审者没看过设计，只报告不修改。与 ssot-quint 一起读，并读它接进来的盒子所需的 ssot-vdm；先读 ssot。
 ---
 
 # ssot-verify-behavior：评审一张接线图

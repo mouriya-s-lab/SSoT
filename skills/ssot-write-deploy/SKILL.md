@@ -7,13 +7,13 @@ description: SSoT 写一个部署视图显示的部署节点（LikeC4 部署模�
 
 写法与部署图的画法在 `ssot-c4`「五、部署」，本 skill 只给步骤。
 
-`scope` 是 `views` 块里一个部署视图 D 的 id。本切片是 D 显示的部署节点（D 的 `include` 列出的节点）及其中嵌套的全部内容，下文记作 N。部署模型回答“容器运行在哪里、信任边界在哪里”，与元素树是两种不同的投影：它不改变元素的嵌套与关系。
+`scope` 是 `views` 块里一个部署视图 D 的 id；D 还不存在时，是本切片要新建的部署视图的 id。本切片是 D 显示的部署节点（D 的 `include` 列出的节点）及其中嵌套的全部内容，下文记作 N。部署模型回答“容器运行在哪里、信任边界在哪里”，与元素树是两种不同的投影：它不改变元素的嵌套与关系。
 
 | 项 | 内容 |
 |---|---|
 | 输入 | D 的 id；交给本切片的 `reason`（如评审的发现） |
 | 可读 | `structure/*.c4` 的 `deployment` 块与部署视图 D；逻辑模型里全部元素的 fqn、种类、标题与描述；`ssot check`、`ssot render` 的输出 |
-| 可改 | `structure/*.c4` 里 N 的定义块及其中嵌套的全部内容：节点的标题、描述、标签（含信任边界标签）、子节点与实例；部署视图 D 的 `include`、`exclude`、`title` 与 `description`。不改 D 之外的节点、别的视图、逻辑模型、`contract/`、`behavior/`、`.gen/` |
+| 可改 | `structure/*.c4` 里 N 的定义块及其中嵌套的全部内容：节点的标题、描述、标签（含信任边界标签）、子节点与实例；部署视图 D（不存在时新建）的 `include`、`exclude`、`title` 与 `description`；`specification` 块里 N 要用而尚未声明的 `deploymentNode` 种类与标签。不改 D 之外的节点、别的视图、逻辑模型、`contract/`、`behavior/`、`.gen/` |
 | 可运行 | `ssot gen <design>`；`ssot check <design> --scope index`（交付前加 `--base <开始时的提交>`）；`ssot render <design>` |
 | 输出 | 改了哪些节点与实例；`check` 的结果；交给结构评审的材料：`ssot render` 列出的 C4 图片路径与顺序（评审的 `scope` 为 D 的 id） |
 | 上抛 | 第三步的情形 |

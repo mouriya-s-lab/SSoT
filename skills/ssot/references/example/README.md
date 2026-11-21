@@ -6,7 +6,7 @@
 
 1. `Order Service` 进程崩溃重启：崩溃前发出的 `reserve` 锁库请求，在进程重启之后才被 `Inventory` 回复。
 2. 并发取消与崩溃恢复中，同一个订单项的结算结局被写下两次，或尚有订单项未释放库存时整单取消锚点就已写下。
-3. 合作方仓储节点的 `Inventory` 实现在订单项调用 `release` 释放库存之后，仍接纳旧进程晚到的在途 `reserve`，造成已取消订单永久残留死锁库存。
+3. 部署在合作方网络的 `Inventory` 在订单项调用 `release` 释放库存之后，仍接纳旧进程晚到的在途 `reserve`，造成已取消订单永久残留死锁库存。
 
 其余模块在 git 历史中仅为常规功能演进，无反复修补的问题热点。
 
@@ -18,7 +18,7 @@
 |---|---|---|---|---|
 | 取消收束接线 `behavior/cancellation.qnt` | 取消或进程崩溃之后，订单项的结局在库存尚未释放时就被写下；已退出的旧进程发出的在途 `reserve` 在订单项释放之后仍被接纳 | 不能：它取决于进程崩溃、取消接管与晚到网络回复之间的交错 | 仓储边界在 `release` 之后仍接纳 `reserve`，或取消过程不调 `release` 就直接写 `Cancelled`，都会让 `safety` 失败；崩溃落在写完订单项 `Cancelled`、写整单取消锚点之前时，覆盖目标 `witnessCrashBeforeAnchor` 走到它，重启后由 `serviceLost` 接管 | 1、2 |
 | 账本事实源头盒子 `contract/checkout.ledger.vdmsl` | 同一个订单项的结算结局写下两次；整单取消锚点早于订单项结局写下 | 不能：写入方有履约过程与取消过程两处 | 接线里履约过程与取消过程争写同一订单项结局，或在尚有未决订单项时写下整单取消锚点，回放按 `writeOutcome`、`writeCancel` 的 `pre` 报错 | 2 |
-| 仓储库存边界盒子 `contract/checkout.inventory.vdmsl` | 库存释放（`release`）与在途锁库（`reserve`）的互斥 | 不能：互斥发生在仓储边界内部 | `reserve` 的 `post` 不再要求 `released` 后返回 `<Rejected>` 时，取消收束接线的 `safety` 失败 | 3 |
+| 仓储库存边界盒子 `contract/checkout.inventory.vdmsl` | 库存释放（`release`）与在途锁库（`reserve`）的互斥 | 不能：互斥发生在仓储边界内部 | 仓储边界在 `release` 之后仍接纳 `reserve`（接线里它的回复给出 `HoldId`）时，取消收束接线的 `safety` 失败，回放按本盒子的 `inv` 报错 | 3 |
 
 两个盒子的精度严格停在这些性质：商品明细、金额、支付卡密、库位与内部失败分支保持不透明（`token`）；`commitHold` 只写接线所需的最小前后关系。
 

@@ -7,7 +7,7 @@
 //   ssot serve  <design> [--port N]
 //   ssot eval     <design> <模块> <表达式> [--bind ...]
 //   ssot status   <design>
-//   ssot hotspots <路径> [--top N] [--since <rev-or-date>]
+//   ssot hotspots <路径> [--top N] [--since <日期>]
 // check 的退出码：0 通过；1 有 error；3 没有 error 但有 resource.deadline（验证未完成）。
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
@@ -380,7 +380,7 @@ function option(args: string[], name: string): string | null {
 }
 
 const USAGE =
-  "用法：ssot setup | gen <design> | check <design> [--scope <视图 id> [--base <rev>]] [--samples N] [--steps K] [--seed S] [--deadline 秒] | render <design> [--out <dir>] | serve <design> [--port N] | eval <design> <module> <expression> [--bind name=<module>:<expr>:<typeModule>:<typeName>]... | status <design> | hotspots <path> [--top N] [--since <rev-or-date>]";
+  "用法：ssot setup | gen <design> | check <design> [--scope <视图 id> [--base <rev>]] [--samples N] [--steps K] [--seed S] [--deadline 秒] | render <design> [--out <dir>] | serve <design> [--port N] | eval <design> <module> <expression> [--bind name=<module>:<expr>:<typeModule>:<typeName>]... | status <design> | hotspots <path> [--top N] [--since <日期>]";
 
 async function main(argv: string[]): Promise<number> {
   const [cmd, dir, ...rest] = argv;

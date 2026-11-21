@@ -17,7 +17,7 @@ description: SSoT 写一个带 contract 标签的底层元素的盒子（VDM-SL 
 | 可读 | E 在 `structure/*.c4` 里的标题、描述、标签与关系；`reason` 里的需求编号与本模块已附着的编号在 `requirements.md` 里的原文；别的契约模块的 `exports` 部分（以 `struct` 导出的类型的定义也可以读）；接这个盒子的行为模块里引用本模块名字的地方（只看引用处）；本模块原文；`ssot check`、`ssot eval`、`ssot render` 的输出 |
 | 可改 | 只有 `contract/<E 的 fqn>.vdmsl` |
 | 可运行 | `ssot gen <design>`；`ssot check <design> --scope <V>`（交付前加 `--base <开始时的提交>`）；`ssot eval <design> <本模块名> '<表达式>'`；`ssot render <design>` |
-| 输出 | 本模块改了什么、附着了哪些需求编号；`check --scope` 的结果与留下的 info；交给契约评审的材料：本模块的盒子图路径（`ssot render` 里 id 为 `box:<模块名>` 的那一行）、设计目录路径与 `check --scope <V>` 的诊断 |
+| 输出 | 本模块改了什么、附着了哪些需求编号；`check --scope` 的结果与留下的 info；交给契约评审的材料：本模块的盒子图路径（`ssot render` 里 id 为 `box:<模块名>` 的那一行）、契约分层图路径（id 为 `layers` 的那一行）、设计目录路径与 `check --scope <V>` 的诊断 |
 | 上抛 | 第四步的情形 |
 
 ## 一、先看这个盒子要承诺什么

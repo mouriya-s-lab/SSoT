@@ -17,7 +17,7 @@ description: SSoT 写一个元素的一层（LikeC4）：写出它的直接子�
 |---|---|
 | 输入 | `scope`；交给本切片的 `reason`（需要某个元素、某个元素要成为带 `#contract` 的底层元素、评审的发现） |
 | 可读 | `structure/*.c4` 里：E 本身、E 在上一层声明的关系、E 的现有直接子元素、与 E 有关系的外部元素、`views` 块；`requirements.md`；`ssot check`、`ssot render` 的输出。不读 `contract/`、`behavior/`、`.gen/contract.qnt` |
-| 可改 | `structure/*.c4` 里：E 的直接子元素（种类、id、标题、描述、`technology`、标签、`metadata group`）、本层声明的关系、V 的视图；E 带 `#contract` 而本层要给它子元素时，去掉 E 的 `#contract`。不改 E 的种类、id、标题、描述与上一层关系，不改孙辈元素、别的元素与别的视图，不碰 `contract/`、`behavior/`、`.gen/` |
+| 可改 | `structure/*.c4` 里：E 的直接子元素（种类、id、标题、描述、`technology`、标签、`metadata group`）、本层声明的关系、V 的视图；`specification` 块里本层要用而尚未声明的元素种类与标签；E 带 `#contract` 而本层要给它子元素时，去掉 E 的 `#contract`。不改 E 的种类、id、标题、描述与上一层关系，不改孙辈元素、别的元素与别的视图，不碰 `contract/`、`behavior/`、`.gen/` |
 | 可运行 | `ssot gen <design>`；`ssot check <design> --scope <V>`（交付前加 `--base <开始时的提交>`）；`ssot render <design>` |
 | 输出 | 改了哪些元素与关系；`check --scope` 的结果；交给结构评审的材料：`ssot render` 列出的 C4 图片路径与顺序 |
 | 上抛 | 第四步的情形：交回观察到的事实，给 E 的父元素的视图（E 在顶层时为 `index`） |
@@ -44,7 +44,7 @@ description: SSoT 写一个元素的一层（LikeC4）：写出它的直接子�
 
 ## 三、检查与自查
 
-运行 `ssot gen <design>`，再运行 `ssot check <design> --scope <V>`。`compile.c4`、`struct.*`、`vocab.slots`、`contract.module` 中属于本层的 error 在本切片内修。删除、改名或改标签的子元素原来已有下一层或契约模块时，下游会报错：那些属于下游切片，写进输出，不改下游文件。
+运行 `ssot gen <design>`，再运行 `ssot check <design> --scope <V>`。`compile.c4`、`struct.*`、`vocab.slots`、`contract.module` 中属于本层的 error 在本切片内修。删除、改名或改标签的子元素原来已有下一层或契约模块时，下游会报错：那些属于下游切片，写进输出，不改下游文件。新加 `#contract` 的子元素还没有模块时，`check` 报 `contract.module`：模块属于那个元素的 `ssot-write-contract`，同样写进输出。
 
 再运行 `ssot render <design>`，按它列出的顺序看上一层的图与本层的图：只看本层的图能不能知道 E 由什么组成、各自做什么、彼此怎样连；上一层 E 的每个箭头在本层能不能找到承担它的子元素；有没有下一层才该出现的名字、操作、数据或次序；框里的字是不是一句话，箭头标题是不是短动词短语。看不懂的先改。
 

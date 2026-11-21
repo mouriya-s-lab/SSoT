@@ -21,7 +21,7 @@ LikeC4 只用来画 C4 图。一张图是给人看的：读图的人只看这一
 
 - 顶层是系统上下文：一个被设计的系统，周围是使用它的 actor 与它直接交互的外部系统。
 - 上下文与容器两层是默认的导航图。组件层只在读图的人确实需要看清某个容器的内部划分时才画。
-- 外部系统与别人负责的部分（合作方仓储节点、外部支付通道）不展开：在本设计里它们是一个框。本系统拥有、只是托管在别处的数据库或存储是本系统的 `store`，不是外部系统。
+- 外部系统与别人负责的部分（外部支付通道、合作方自己的系统）不展开：在本设计里它们是一个框。本系统拥有、只是托管在别处的数据库或存储是本系统的 `store`，不是外部系统。
 - 子系统、分层、角色、团队这类划分不是元素层级；需要在图上表达时，给同一父元素下的兄弟元素写同一个 `metadata group`，分组是模型事实，每张逻辑图都按这一处声明画出同一组，不新建元素，也不在视图里分组。
 - 一个东西是 container 还是 component，看它能不能单独运行；是 system 还是 container，看它的实现是否在本设计的边界内；是 store 还是 container，看它是不是某类事实存放的地方：消息 topic 只把消息从生产方转给消费方时是 container，保留期内作为事件日志被重放、是事实的源头时是 store。
 - store 不展开：数据存储的内部划分（表、集合、键空间）是数据内容，不画进 C4。
@@ -30,9 +30,9 @@ LikeC4 只用来画 C4 图。一张图是给人看的：读图的人只看这一
 
 - 标题是名字；`description` 一句话写它负责什么，不写它为什么存在、怎样做、依据什么。
 - container 与 store 写 `technology`：它是哪一种运行单元（如 `'Service process'`、`'Transactional database'`），或设计已经定下的技术。component 只在设计已经定下技术时写；可以替换的技术选型属于实现，不写。
-- 数据存储用 `store` 种类。外部系统带 `#external`，只能标在没有子元素的顶层 `system` 上。每种元素的记法、形状、颜色与图例都由 `ssot render` 从元素种类画出，元素与视图都不写样式；部署图里的实例同样按元素种类画出记法（见第五节）。
+- 数据存储用 `store` 种类。外部系统带 `#external`，只能标在没有子元素的顶层 `system` 上。每种元素的记法、形状、颜色与图例都由 `ssot render` 从元素种类画出，图标取 `technology` 里认得出的技术、认不出时取元素种类；元素、元素种类与视图都不写样式，只在要指定图标时给元素写 `icon`（如 `icon tech:go`）；部署图里的实例同样按元素种类画出记法（见第五节）。
 - `#contract` 标记一个已经决定写 VDM 盒子的元素（`ssot` 第三节的深入判断），只能写在没有子元素的元素上。没有决定深入的元素不带它。结构要不要展开、怎样划分，只按 C4 自己的理由决定；一个带 `#contract` 的元素被展开时，原盒子作废，由深入判断重新决定，结构不为保住盒子而不展开或迁就划分。
-- 架构与业务：只服务一项业务的元素及其后代标 `#business`。“架构不引用业务”指契约的引用：架构元素的契约模块不得 import 业务元素的契约模块；箭头只表示谁发起调用，不受这条约束。
+- 架构与业务：只服务一项业务的元素标 `#business`，它的后代随之属于这项业务，不再重复标。“架构不引用业务”指契约的引用：架构元素的契约模块不得 import 业务元素的契约模块；箭头只表示谁发起调用，不受这条约束。
 - 信任边界用部署节点上的标签表达（如 `#untrusted`）。
 
 ## 三、关系写法
@@ -74,7 +74,7 @@ deployment {
   }
   host partnerNet 'Partner & warehouse network' {
     #untrusted
-    description '运行合作方仓储节点与外部支付网关的外部网络，与核心内网分属不同信任边界'
+    description '运行仓储库存服务与外部支付网关的合作方网络，与核心内网分属不同信任边界'
     instanceOf checkout.inventory
     instanceOf gateway
   }
@@ -97,7 +97,7 @@ specification {
   element actor
   element system
   element container
-  element store { style { shape storage } }
+  element store
   element component
   tag external
   tag contract

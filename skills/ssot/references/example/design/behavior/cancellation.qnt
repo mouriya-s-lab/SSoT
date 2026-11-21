@@ -1,4 +1,4 @@
-// 担心：取消订单或 Order Service 崩溃重启之后，某个订单项的结局在它的库存尚未释放时就被写下（REQ-9），
+// 担心：取消订单或 Order Service 崩溃重启之后，某个订单项的结局在它的库存尚未释放时就被写下（REQ-10），
 // 或者已退出的旧进程发出的在途 reserve 在订单项释放之后才到达仓储边界、却仍被接纳锁库（REQ-6）。
 // 盒子：买家 buyer、取消收束过程 cancelling、进程崩溃环境 epoch，契约盒子 checkout_ledger、checkout_inventory；
 // 履约过程是一串顺接的步骤（startItem → sendReserve → answerReserve → fulfillCommit → fulfillSettle），

@@ -2,11 +2,7 @@ specification {
   element actor
   element system
   element container
-  element store {
-    style {
-      shape storage
-    }
-  }
+  element store
   element component
 
   tag external
@@ -109,7 +105,7 @@ deployment {
   }
   host partnerNet 'Partner & warehouse network' {
     #untrusted
-    description '运行合作方仓储节点与外部支付网关的外部网络，与核心内网分属不同信任边界'
+    description '运行仓储库存服务与外部支付网关的合作方网络，与核心内网分属不同信任边界'
     instanceOf checkout.inventory
     instanceOf gateway
   }

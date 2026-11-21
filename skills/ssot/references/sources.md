@@ -67,7 +67,7 @@
 
 ## 工具
 
-- [LikeC4](https://likec4.dev)：元素、关系、标签、逐层视图与部署模型的建模语言与模型 API；`check` 用它的进程内模型读出元素树与关系，`render` 用它自己的渲染导出每个视图的图片。
+- [LikeC4](https://likec4.dev)：元素、关系、标签、逐层视图与部署模型的建模语言与模型 API；`check` 与 `render` 用它的进程内模型读出元素树、关系与视图；图由 `ssot render` 自己排版绘制，不用 LikeC4 的渲染。
 - [VDMJ](https://github.com/nickbattle/vdmj)：VDM-SL 的解析器、类型检查器、证明义务生成器与解释器；`check` 用它做类型检查、证明义务与回放时的求值，`ssot eval` 用它在原样规格里求值。
 - Battle, N., Ellyton, M. (2024). ["QuickCheck for VDM"](https://arxiv.org/abs/2410.02046). *Proceedings of the 22nd Overture Workshop*：为证明义务寻找反例或证明；`check` 把反例当作错误，把未定的义务作为提示交给评审。
 - [Quint](https://quint-lang.org)：基于 TLA 的规格语言；`check` 用它的类型检查、模拟与 ITF 轨迹输出。

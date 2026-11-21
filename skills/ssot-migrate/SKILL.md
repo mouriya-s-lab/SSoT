@@ -26,8 +26,8 @@ description: SSoT 存量迁移分流（ssot-iterate 的全景放大版）：面�
 
 会话按 `ssot` 第九节：
 
-1. 若存量材料在 git 仓库内，先（或并行）派 `ssot:hotspot` 对仓库运行 `ssot hotspots`，找出全仓改动最多的文件与模块、协同改动对，并反推到关键修复 commit 与关联 issue；
-2. 派 `ssot:reader`，交给它本 skill 名、`scope`、存量材料路径、设计目录路径（若已存在），以及 `ssot:hotspot` 的全仓热点溯源报告。
+1. 若存量材料在 git 仓库内，先派 `ssot:hotspot` 对仓库运行 `ssot hotspots`，找出全仓改动最多的文件与模块、协同改动对，并反推到关键修复 commit 与关联 issue；
+2. 派 `ssot:reader`，交给它本 skill 名、`scope`、存量材料路径、设计目录路径（若已存在），以及 `ssot:hotspot` 的全仓热点溯源报告（如有）。
 
 原样交付它的全景分流结果，再按「先后来自输入」依次接 `ssot-write-level` / `ssot-write-deploy`、`ssot-requirement` 与重点区域队列里的 `ssot-iterate`。下面各节写给 `ssot:reader`（结合 `ssot:hotspot` 的全仓热点报告）。
 

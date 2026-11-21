@@ -57,10 +57,18 @@
   #stage .drill { cursor: pointer; }
   #stage g.drill:hover rect { filter: brightness(.82); }
   #stage tspan.drill:hover { fill: var(--hot); }
-  #stage .pin { cursor: pointer; }
-  #stage .pin circle { fill: var(--accent); stroke: #fff; stroke-width: 2; }
-  #stage .pin.waiting circle { fill: var(--hot); }
-  #stage .pin text { fill: #fff; font: 700 12px -apple-system, sans-serif; pointer-events: none; }
+  #canvas.commenting, #canvas.commenting #stage * { cursor: crosshair; }
+  #pins { position: absolute; left: 0; top: 0; }
+  #canvas.commenting #pins .pin { cursor: pointer; }
+  #pins .pin { position: absolute; width: 28px; height: 28px; margin-top: -28px; padding: 0; border: 2px solid #fff; border-radius: 50% 50% 50% 3px; background: var(--accent); color: #fff; font: 700 12px/24px -apple-system, sans-serif; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,.3); cursor: pointer; }
+  #pins .pin.waiting { background: var(--hot); }
+  #pins .pin.resolved { background: var(--ok); }
+  #pins .pin.draft { background: #fff; border-color: var(--hot); color: var(--hot); }
+  #pins .pin.active { z-index: 1; outline: 3px solid rgba(17,104,189,.3); }
+  #pop { position: absolute; display: none; z-index: 6; width: 300px; max-height: calc(100% - 16px); overflow: auto; padding: 10px 12px 2px; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.18); cursor: default; }
+  #pop .close { float: right; margin: -2px -4px 0 8px; padding: 1px 7px; }
+  #pop .thread { margin: 0; padding: 0; border: 0; opacity: 1; }
+  #commentTool.on { background: var(--accent); border-color: var(--accent); color: #fff; }
   #hint { position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: var(--muted); background: rgba(255,255,255,.85); padding: 4px 8px; border-radius: 6px; pointer-events: none; }
   #tip { position: absolute; pointer-events: none; max-width: 360px; background: #1f2933; color: #fff; font-size: 12.5px; padding: 6px 9px; border-radius: 6px; display: none; z-index: 5; line-height: 1.45; }
   #tip b { color: #ffd8a8; }
@@ -77,27 +85,25 @@
   aside .links a:hover { text-decoration: underline; }
   aside .close { float: right; }
   aside .rel { border-top: 1px solid var(--line); padding: 8px 0; font-size: 13px; }
-  aside .threads { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 2px; }
-  aside .threads.solo { border-top: 0; margin-top: 0; padding-top: 0; }
-  aside .threads h3 { margin: 10px 0 8px; font-size: 13px; }
-  aside .threads.solo h3 { margin-top: 2px; font-size: 18px; }
-  aside textarea { display: block; width: 100%; min-height: 34px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; font: inherit; resize: vertical; field-sizing: content; }
-  aside textarea:focus { outline: 2px solid #b6d4f5; border-color: var(--accent); }
-  aside .actions { display: flex; align-items: center; gap: 8px; margin: 6px 0 12px; }
-  aside .actions .keys { color: var(--muted); font-size: 12px; }
-  aside .thread { border: 1px solid var(--line); border-left: 3px solid var(--hot); border-radius: 6px; padding: 8px 10px 0; margin-bottom: 10px; }
-  aside .thread.answered { border-left-color: var(--accent); }
-  aside .thread.resolved { border-left-color: var(--ok); opacity: .75; }
-  aside .thread .head { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
-  aside .thread .where { display: block; margin: 3px 0 4px; color: var(--accent); cursor: pointer; font-size: 12.5px; text-decoration: none; }
-  aside .thread .where:hover { text-decoration: underline; }
-  aside .msg { margin: 6px 0 8px; font-size: 13px; }
-  aside .msg b { margin-right: 6px; }
-  aside .msg.agent b { color: var(--accent); }
-  aside .msg time { color: var(--muted); font-size: 11.5px; }
-  aside .msg .text { margin-top: 2px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
-  aside .resolved-toggle { display: block; margin: 4px 0 10px; color: var(--muted); font-size: 12.5px; cursor: pointer; }
-  aside .none { color: var(--muted); }
+  aside .threads h3 { margin: 2px 0 8px; font-size: 18px; }
+  aside .threads .how, aside .threads .none { color: var(--muted); line-height: 1.5; }
+  aside textarea, #pop textarea { display: block; width: 100%; min-height: 34px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; font: inherit; resize: vertical; field-sizing: content; }
+  aside textarea:focus, #pop textarea:focus { outline: 2px solid #b6d4f5; border-color: var(--accent); }
+  .actions { display: flex; align-items: center; gap: 8px; margin: 6px 0 12px; }
+  .actions .keys { color: var(--muted); font-size: 12px; }
+  .thread { border: 1px solid var(--line); border-left: 3px solid var(--hot); border-radius: 6px; padding: 8px 10px 0; margin-bottom: 10px; }
+  .thread.answered { border-left-color: var(--accent); }
+  .thread.resolved { border-left-color: var(--ok); opacity: .75; }
+  .thread .head { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  .where { display: block; margin: 3px 0 6px; color: var(--muted); font-size: 12.5px; text-decoration: none; }
+  a.where { color: var(--accent); cursor: pointer; }
+  a.where:hover { text-decoration: underline; }
+  .msg { margin: 6px 0 8px; font-size: 13px; }
+  .msg b { margin-right: 6px; }
+  .msg.agent b { color: var(--accent); }
+  .msg time { color: var(--muted); font-size: 11.5px; }
+  .msg .text { margin-top: 2px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+  .resolved-toggle { display: block; margin: 4px 0 10px; color: var(--muted); font-size: 12.5px; cursor: pointer; }
   #threadsToggle { display: flex; align-items: center; gap: 5px; }
   #threadsToggle.waiting { border-color: var(--hot); color: var(--hot); }
   #problems { position: absolute; left: 12px; right: 12px; top: 12px; max-height: 45%; overflow: auto; background: #fff5f5; border: 1px solid #ffc9c9; color: #7d1414; border-radius: 8px; padding: 10px 14px; font: 12px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap; display: none; z-index: 4; }
@@ -117,8 +123,9 @@
       <button id="zoomIn" title="放大 (+)">+</button>
       <button id="fit" title="适应窗口 (F)">适应</button>
       <button id="download" title="下载当前图的 SVG">SVG</button>
+      <button id="commentTool" title="批注工具：开着时点图上任意位置落一条批注 (C)">批注</button>
     </div>
-    <button id="threadsToggle" title="全部批注；按 C 对选中的元素或当前这张图批注"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M2.5 3.5h11v7.5h-6l-3 2.5v-2.5h-2z"/></svg><span id="threadCount">0</span></button>
+    <button id="threadsToggle" title="全部批注"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M2.5 3.5h11v7.5h-6l-3 2.5v-2.5h-2z"/></svg><span id="threadCount">0</span></button>
     <div id="status" title=""><span class="dot"></span><span id="statusText">连接中</span></div>
   </header>
   <nav>
@@ -130,7 +137,8 @@
     <div id="empty">正在构建…</div>
     <div id="problems"></div>
     <div id="tip"></div>
-    <div id="hint">拖动平移 · 滚轮平移 / ⌘ 或 Ctrl + 滚轮缩放 · 单击看详情 · 点图上的标注或双击下钻 · C 批注 · B 收起侧栏 · Esc 取消</div>
+    <div id="pop"></div>
+    <div id="hint">拖动平移 · 滚轮平移 / ⌘ 或 Ctrl + 滚轮缩放 · 单击看详情 · 点图上的标注或双击下钻 · 按 C 后点图上任意位置批注 · B 收起侧栏 · Esc 取消</div>
   </main>
   <aside id="details"><div class="inner"></div></aside>
 </div>
@@ -146,7 +154,10 @@ let current = null;              // 当前图
 let selected = null;             // { type: "node" | "edge", id }
 const views = new Map();         // 图 id → { x, y, scale }：每张图各自记住视野，重画后不跳
 let threads = [];                // /api/threads 的最近一次结果：使用者留的批注与 agent 的回复
-let threadsOpen = false;         // 没有选中元素时，右栏是否列出全部批注
+let commenting = false;          // 批注工具开着：点画布任意位置落一条批注
+let popped = null;               // 画布上开着的气泡：{ kind: "new", anchor } 写一条新的，{ kind: "thread", id } 看一条已有的
+let popAt = null;                // 气泡指着的落点（图的坐标）
+let listOpen = false;            // 没有选中元素时，右栏是否列出全部批注
 let showResolved = false;
 const drafts = new Map();        // 输入框的键 → 还没发出的字；右栏随时会重画，字不能丢
 
@@ -286,6 +297,8 @@ function apply() {
   svg.style.height = `${current.height * v.scale}px`;
   stage.style.transform = `translate(${v.x}px, ${v.y}px)`;
   $("zoomReset").textContent = `${Math.round(v.scale * 100)}%`;
+  placePins();
+  placePop();
 }
 function fit() {
   if (!current) return;
@@ -301,7 +314,7 @@ function zoomAt(factor, cx, cy) {
 }
 function zoomCenter(factor) { const r = canvas.getBoundingClientRect(); zoomAt(factor, r.width / 2, r.height / 2); }
 canvas.addEventListener("wheel", (e) => {
-  if (!current) return;
+  if (!current || e.target.closest("#pop")) return;
   e.preventDefault();
   const r = canvas.getBoundingClientRect();
   if (e.ctrlKey || e.metaKey) zoomAt(Math.exp(-e.deltaY * 0.01), e.clientX - r.left, e.clientY - r.top);
@@ -309,7 +322,7 @@ canvas.addEventListener("wheel", (e) => {
 }, { passive: false });
 let drag = null;
 canvas.addEventListener("pointerdown", (e) => {
-  if (e.button !== 0 || !current) return;
+  if (e.button !== 0 || !current || e.target.closest("#pop")) return;
   drag = { x: e.clientX, y: e.clientY, moved: false, start: { ...viewOf(current) } };
   canvas.setPointerCapture(e.pointerId);
 });
@@ -346,9 +359,10 @@ function show(diagram) {
   current = diagram;
   tip.style.display = "none";
   hovered = null;
-  stage.innerHTML = diagram.svg;
+  stage.innerHTML = `${diagram.svg}<div id="pins"></div>`;
   $("empty").style.display = "none";
   if (first) fit(); else apply();
+  renderPop();
   renderPins();
   renderCrumbs();
   renderLists($("search").value);
@@ -363,9 +377,6 @@ function targetOf(e) {
   const el = document.elementFromPoint(e.clientX, e.clientY);
   if (!el || !stage.contains(el)) return null;
   e = { target: el };
-  // 图钉：一个节点或一条箭头上有未解决的批注；点它等于点那个元素。
-  const pin = el.closest(".pin");
-  if (pin) return { type: pin.dataset.pinType, id: pin.dataset.pinType === "edge" ? Number(pin.dataset.pinId) : pin.dataset.pinId };
   // 图上的下钻标注（SVG 里 class="drill"）：打开下一层的图，并定位到其中的节点。
   const drill = e.target.closest?.(".drill");
   if (drill) return { type: "drill", id: drill.dataset.open, node: drill.dataset.openNode ?? null };
@@ -424,6 +435,11 @@ function tipText(t) {
 
 // ---------- 单击选中、双击下钻 ----------
 function click(e) {
+  // 图钉与批注工具先于选中：点图钉开它的气泡（再点收起），工具开着时点哪里就在哪里落一条。
+  const pin = document.elementFromPoint(e.clientX, e.clientY)?.closest("#pins .pin");
+  if (pin) return pin.dataset.pin ? pop(popped?.kind === "thread" && popped.id === pin.dataset.pin ? null : { kind: "thread", id: pin.dataset.pin }) : undefined;
+  if (commenting) return pop({ kind: "new", anchor: anchorAt(e) });
+  if (popped) pop(null);
   const t = targetOf(e);
   if (t?.type === "drill") return go(t.id, t.node);
   select(t);
@@ -442,21 +458,22 @@ function select(t) {
   paint(t);
   renderDetails();
 }
-function renderDetails() {
-  const inner = details.querySelector(".inner");
-  // agent 的回复随时会推过来并重画右栏：记下正在输入的那个框，重画后把光标放回去。
-  const typing = document.activeElement?.dataset?.draft ?? null;
-  const html = current ? detailsHtml() : null;
-  if (html === null) { details.classList.remove("open"); inner.innerHTML = ""; return; }
-  inner.innerHTML = html;
-  details.classList.add("open");
-  const box = typing === null ? null : inner.querySelector(`[data-draft="${CSS.escape(typing)}"]`);
-  if (box) { box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
+/** 换掉一块区域的内容；agent 的回复随时会推过来并重画，正在这块里输入的那个框重画后拿回光标。 */
+function refill(box, html) {
+  const typing = box.contains(document.activeElement) ? document.activeElement.dataset.draft ?? null : null;
+  box.innerHTML = html;
+  const field = typing === null ? null : box.querySelector(`[data-draft="${CSS.escape(typing)}"]`);
+  if (field) { field.focus(); field.setSelectionRange(field.value.length, field.value.length); }
 }
-/** 右栏的内容：选中元素的详情加指向它的批注；没有选中时是全部批注；null：收起。 */
+function renderDetails() {
+  const inner = details.querySelector(".inner"), html = current ? detailsHtml() : null;
+  details.classList.toggle("open", html !== null);
+  refill(inner, html ?? "");
+}
+/** 右栏的内容：选中元素的详情；没有选中时是全部批注的索引；null：收起。 */
 function detailsHtml() {
   let html = `<button class="close" id="closeDetails">✕</button>`;
-  if (!selected) return threadsOpen ? html + threadsHtml() : null;
+  if (!selected) return listOpen ? html + listHtml() : null;
   if (selected.type === "node") {
     const item = current.items[selected.id];
     if (!item) return null;
@@ -472,62 +489,85 @@ function detailsHtml() {
     for (const r of e.relations) html += `<div class="rel"><b>${esc(r.title || "—")}</b><br>${esc(r.source)} → ${esc(r.target)}${r.description ? `<p>${esc(r.description)}</p>` : ""}</div>`;
     html += `<div class="links"><a data-pick="${esc(e.source)}">← ${esc(name(e.source))}</a><a data-pick="${esc(e.target)}">→ ${esc(name(e.target))}</a></div>`;
   }
-  return html + threadsHtml();
+  return html;
 }
 details.addEventListener("click", (e) => {
-  if (e.target.id === "closeDetails") { threadsOpen = false; return select(null); }
-  const send_ = e.target.closest("[data-send]");
-  if (send_) return send(send_.dataset.send);
-  const status = e.target.closest("[data-status]");
-  if (status) return post({ kind: "status", thread: status.dataset.status, status: status.dataset.to });
-  const where = e.target.closest("[data-anchor]");
-  if (where) return openAnchor(threads.find((t) => t.id === where.dataset.anchor).anchor);
+  if (e.target.id === "closeDetails") { listOpen = false; return select(null); }
+  if (threadClick(e)) return;
   const go_ = e.target.closest("a[data-go]");
   if (go_) return go(go_.dataset.go);
   const pick = e.target.closest("a[data-pick]");
   if (pick) { select({ type: "node", id: pick.dataset.pick }); centerOn(pick.dataset.pick); }
 });
-details.addEventListener("input", (e) => { if (e.target.dataset.draft) drafts.set(e.target.dataset.draft, e.target.value); });
 details.addEventListener("change", (e) => { if (e.target.id === "showResolved") { showResolved = e.target.checked; renderDetails(); } });
-details.addEventListener("keydown", (e) => {
-  const key = e.target.dataset.draft;
-  if (!key) return;
-  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(key); }
-  else if (e.key === "Escape") e.target.blur();
-});
 
 // ---------- 批注 ----------
-// 批注指向一张图、图上的一个节点或一条箭头；箭头用两端的节点 id 加它在同一对端点之间的序号认，重画后下标变了也找得回来。
-function anchorOf(t) {
-  if (!t) return { kind: "diagram", diagram: current.id };
-  if (t.type === "node") return { kind: "node", diagram: current.id, node: t.id };
-  const e = current.edges[t.id];
-  let ordinal = 0;
-  for (let i = 0; i < t.id; i++) if (current.edges[i].source === e.source && current.edges[i].target === e.target) ordinal++;
-  return { kind: "edge", diagram: current.id, source: e.source, target: e.target, ordinal };
-}
-const anchorKey = (a) => a.kind === "diagram" ? `d|${a.diagram}` : a.kind === "node" ? `n|${a.diagram}|${a.node}` : `e|${a.diagram}|${a.source}|${a.target}|${a.ordinal}`;
-/** 批注指向的元素在图 d 上现在是哪一个；null：指向整张图，或那个元素已经不在图上。 */
-function targetOfAnchor(d, a) {
-  if (a.kind === "node") return d.items[a.node] ? { type: "node", id: a.node } : null;
-  if (a.kind !== "edge") return null;
+// 批注直接落在画布上：批注工具开着时点图上任意一处，落点旁边开一个气泡写字；落下的批注是叠在图上的一枚图钉，点它打开对话。
+// 落在节点或箭头上的记相对位置，重画后跟着那个元素走；落在空白处的记图的坐标和当时最近的几个节点。
+const nodeEl = (id) => stage.querySelector(`svg [data-node="${CSS.escape(id)}"]`);
+const rounded = (n, digits) => Number(n.toFixed(digits));
+/** 批注指着的箭头在图 d 的 edges 里现在的下标；-1：已经不在图上。 */
+function edgeIndex(d, a) {
   let seen = 0;
-  for (let i = 0; i < d.edges.length; i++) if (d.edges[i].source === a.source && d.edges[i].target === a.target && seen++ === a.ordinal) return { type: "edge", id: i };
-  return null;
+  for (let i = 0; i < d.edges.length; i++) if (d.edges[i].source === a.source && d.edges[i].target === a.target && seen++ === a.ordinal) return i;
+  return -1;
 }
+/** 指针所在位置对应的落点：箭头上、节点上，或空白处。 */
+function anchorAt(e) {
+  const svg = stage.querySelector("svg"), under = document.elementFromPoint(e.clientX, e.clientY), hit = stage.contains(under) ? under : null;
+  const index = Number(hit?.closest("[data-edge]")?.dataset.edge ?? -1), model = current.edges[index], path = model ? svg.querySelector(`[data-edge="${index}"] path`) : null;
+  if (path) {
+    const ctm = path.getScreenCTM(), length = path.getTotalLength();
+    let ordinal = 0, along = 0, nearest = Infinity;
+    for (let i = 0; i < index; i++) if (current.edges[i].source === model.source && current.edges[i].target === model.target) ordinal++;
+    // 沿线取 65 个点，离指针最近的那个就是落点。
+    for (let i = 0; i <= 64; i++) {
+      const p = path.getPointAtLength(length * i / 64).matrixTransform(ctm), far = Math.hypot(p.x - e.clientX, p.y - e.clientY);
+      if (far < nearest) { nearest = far; along = i / 64; }
+    }
+    return { kind: "edge", diagram: current.id, source: model.source, target: model.target, ordinal, along: rounded(along, 3) };
+  }
+  const id = hit?.closest("[data-header]")?.dataset.header ?? hit?.closest("[data-node]")?.dataset.node ?? hit?.closest(".drill")?.dataset.of;
+  const el = id !== undefined && current.items[id] ? nodeEl(id) : null;
+  if (el) {
+    const b = el.getBoundingClientRect();
+    return { kind: "node", diagram: current.id, node: id, dx: rounded((e.clientX - b.left) / b.width, 3), dy: rounded((e.clientY - b.top) / b.height, 3) };
+  }
+  const ranked = [...svg.querySelectorAll("[data-node]:not([data-frame])")].filter((n) => current.items[n.dataset.node]).map((n) => {
+    const b = n.getBoundingClientRect();
+    return { id: n.dataset.node, far: Math.hypot(Math.max(b.left - e.clientX, 0, e.clientX - b.right), Math.max(b.top - e.clientY, 0, e.clientY - b.bottom)) };
+  }).sort((a, b) => a.far - b.far);
+  const near = [];
+  for (const n of ranked) if (near.length < 3 && !near.includes(n.id)) near.push(n.id);
+  const box = svg.getBoundingClientRect(), scale = box.width / current.width;
+  return { kind: "point", diagram: current.id, x: rounded((e.clientX - box.left) / scale, 1), y: rounded((e.clientY - box.top) / scale, 1), near };
+}
+/** 一个落点在当前图上的位置（图的坐标）；null：它指着的节点或箭头已经不在这张图上。 */
+function spot(a) {
+  if (a.kind === "point") return { x: a.x, y: a.y };
+  const svg = stage.querySelector("svg");
+  let at;
+  if (a.kind === "node") {
+    const el = current.items[a.node] ? nodeEl(a.node) : null;
+    if (!el) return null;
+    const b = el.getBoundingClientRect();
+    at = { x: b.left + a.dx * b.width, y: b.top + a.dy * b.height };
+  } else {
+    const index = edgeIndex(current, a), path = index < 0 ? null : svg.querySelector(`[data-edge="${index}"] path`);
+    if (!path) return null;
+    at = path.getPointAtLength(path.getTotalLength() * a.along).matrixTransform(path.getScreenCTM());
+  }
+  const box = svg.getBoundingClientRect(), scale = box.width / current.width;
+  return { x: (at.x - box.left) / scale, y: (at.y - box.top) / scale };
+}
+/** 落点用一句话说是哪里：给气泡的标题与全部批注的索引。 */
 function anchorLabel(a) {
   const d = site.diagrams.find((x) => x.id === a.diagram);
   if (!d) return `${a.diagram}（现在的设计里没有这张图）`;
-  if (a.kind === "diagram") return `${d.title} · 整张图`;
   const name = (id) => d.items[id]?.title ?? id;
-  return `${d.title} › ${a.kind === "node" ? name(a.node) : `${name(a.source)} → ${name(a.target)}`}${targetOfAnchor(d, a) ? "" : "（已经不在图上）"}`;
-}
-function openAnchor(a) {
-  const d = site.diagrams.find((x) => x.id === a.diagram);
-  if (!d) return;
-  const t = targetOfAnchor(d, a);
-  go(d.id, t?.type === "node" ? t.id : null);
-  if (t?.type === "edge") select(t);
+  if (a.kind === "point") return `${d.title} › 空白处${a.near.length ? `，靠近 ${a.near.map(name).join("、")}` : ""}`;
+  if (a.kind === "node") return `${d.title} › ${name(a.node)}${d.items[a.node] ? "" : "（已经不在图上）"}`;
+  return `${d.title} › ${name(a.source)} → ${name(a.target)}${edgeIndex(d, a) >= 0 ? "" : "（已经不在图上）"}`;
 }
 /** 一条未解决的批注在等谁：最后一句是使用者说的，就在等 agent。 */
 const waitsOnAgent = (t) => t.messages[t.messages.length - 1].author === "human";
@@ -535,35 +575,96 @@ function when(at) {
   const d = new Date(at), two = (n) => String(n).padStart(2, "0");
   return `${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}`;
 }
-function threadHtml(t, where) {
-  const open = t.status === "open";
+/** 一条批注的对话、回复框与解决按钮；link：落点写成能点过去的链接（索引里），否则只是一行字（气泡里）。 */
+function threadHtml(t, link) {
+  const open = t.status === "open", where = esc(anchorLabel(t.anchor));
   let html = `<div class="thread ${open ? (waitsOnAgent(t) ? "" : "answered") : "resolved"}"><div class="head"><span>${esc(t.id)}</span><span>${open ? (waitsOnAgent(t) ? "等 agent 回复" : "agent 已回复") : "已解决"}</span></div>`;
-  if (where) html += `<a class="where" data-anchor="${esc(t.id)}">${esc(anchorLabel(t.anchor))}</a>`;
+  html += link ? `<a class="where" data-open-thread="${esc(t.id)}">${where}</a>` : `<div class="where">${where}</div>`;
   for (const m of t.messages) html += `<div class="msg ${m.author}"><b>${m.author === "human" ? "你" : "Agent"}</b><time>${when(m.at)}</time><div class="text">${esc(m.text)}</div></div>`;
   html += `<textarea data-draft="reply|${esc(t.id)}" rows="1" placeholder="回复…">${esc(drafts.get(`reply|${t.id}`) ?? "")}</textarea>`;
   return html + `<div class="actions"><button data-send="reply|${esc(t.id)}">回复</button><button data-status="${esc(t.id)}" data-to="${open ? "resolved" : "open"}">${open ? "标为已解决" : "重新打开"}</button></div></div>`;
 }
-function threadsHtml() {
-  // 选中了元素：只列指向它的批注；没有选中：列全部，当前这张图的排在前面。
-  const key = anchorKey(anchorOf(selected));
-  const listed = selected ? threads.filter((t) => anchorKey(t.anchor) === key) : [...threads].sort((a, b) => (b.anchor.diagram === current.id) - (a.anchor.diagram === current.id));
+/** 右栏的全部批注：当前这张图的排在前面，点落点跳到图上那枚图钉。 */
+function listHtml() {
+  const listed = [...threads].sort((a, b) => (b.anchor.diagram === current.id) - (a.anchor.diagram === current.id));
   const open = listed.filter((t) => t.status === "open"), resolved = listed.filter((t) => t.status === "resolved");
-  let html = `<div class="threads${selected ? "" : " solo"}"><h3>${selected ? "批注" : "全部批注"}</h3>`;
-  html += `<textarea data-draft="new|${esc(key)}" rows="2" placeholder="${selected ? "这里哪里不对？" : `对整张图「${esc(current.title)}」批注；要指到某个节点或箭头，先在图上点它`}">${esc(drafts.get(`new|${key}`) ?? "")}</textarea>`;
-  html += `<div class="actions"><button data-send="new|${esc(key)}">批注</button><span class="keys">⌘ 或 Ctrl + Enter 发出</span></div>`;
-  for (const t of open) html += threadHtml(t, !selected);
+  let html = `<div class="threads"><h3>全部批注</h3><p class="how">按 C 打开批注工具，再点图上任意位置：节点、箭头或空白处都可以。</p>`;
+  for (const t of open) html += threadHtml(t, true);
   if (resolved.length) {
     html += `<label class="resolved-toggle"><input type="checkbox" id="showResolved"${showResolved ? " checked" : ""}> 已解决 ${resolved.length} 条</label>`;
-    if (showResolved) for (const t of resolved) html += threadHtml(t, !selected);
+    if (showResolved) for (const t of resolved) html += threadHtml(t, true);
   }
-  if (listed.length === 0) html += `<p class="none">${selected ? "这里还没有批注。" : "还没有批注。"}</p>`;
+  if (listed.length === 0) html += `<p class="none">还没有批注。</p>`;
   return html + `</div>`;
 }
-/** 发出一个输入框里的字：新批注落在当前选中的元素上（没有选中时是当前这张图），回复落在那条批注下面。 */
+/** 在落点旁边开气泡（next 的两种形状见 popped）；null：收起。 */
+function pop(next) {
+  popped = next;
+  renderPop();
+  renderPins();
+  if (popped?.kind === "new") $("pop").querySelector("textarea").focus();
+}
+/** 按 popped 画气泡；它的落点不在当前这张图上（换了图，或指着的元素没了）时收起。 */
+function renderPop() {
+  const box = $("pop"), thread = popped?.kind === "thread" ? threads.find((t) => t.id === popped.id) : null;
+  const anchor = !current || !popped ? null : popped.kind === "new" ? popped.anchor : thread?.anchor ?? null;
+  popAt = anchor && anchor.diagram === current.id ? spot(anchor) : null;
+  if (!popAt) { popped = null; box.style.display = "none"; box.innerHTML = ""; return; }
+  refill(box, popped.kind === "new"
+    ? `<div class="where">${esc(anchorLabel(anchor))}</div><textarea data-draft="new" rows="3" placeholder="这里哪里不对，或者缺什么？">${esc(drafts.get("new") ?? "")}</textarea><div class="actions"><button data-send="new">批注</button><button data-pop-close>取消</button><span class="keys">⌘ 或 Ctrl + Enter</span></div>`
+    : `<button class="close" data-pop-close>✕</button>${threadHtml(thread, false)}`);
+  box.style.display = "block";
+  placePop();
+}
+/** 气泡跟着平移缩放走：默认开在图钉右侧，右边放不下就开在左侧，上下贴着画布边缘收住。 */
+function placePop() {
+  if (!popped || !popAt || !current) return;
+  const box = $("pop"), v = viewOf(current), r = canvas.getBoundingClientRect(), x = v.x + popAt.x * v.scale, y = v.y + popAt.y * v.scale;
+  box.style.left = `${Math.max(8, x + 38 + box.offsetWidth > r.width - 8 ? x - 10 - box.offsetWidth : x + 38)}px`;
+  box.style.top = `${Math.max(8, Math.min(y - 30, r.height - box.offsetHeight - 8))}px`;
+}
+/** 当前图上每条未解决的批注一枚图钉，写着它的编号：橙色在等 agent，蓝色是 agent 已回复；还没发出的那条是一枚加号。 */
+function renderPins() {
+  const layer = $("pins");
+  if (!layer || !current) return;
+  const pin = (at, kind, id, label, title) => `<button class="pin ${kind}" data-pin="${esc(id)}" data-x="${at.x}" data-y="${at.y}" title="${esc(title)}">${esc(label)}</button>`;
+  let html = "";
+  for (const t of threads) {
+    const active = popped?.kind === "thread" && popped.id === t.id;
+    const at = t.anchor.diagram === current.id && (t.status === "open" || active) ? spot(t.anchor) : null;
+    if (at) html += pin(at, `${t.status === "resolved" ? "resolved" : waitsOnAgent(t) ? "waiting" : "answered"}${active ? " active" : ""}`, t.id, t.id.slice(1), t.messages[0].text);
+  }
+  if (popped?.kind === "new" && popAt) html += pin(popAt, "draft active", "", "+", "还没发出的批注");
+  layer.innerHTML = html;
+  placePins();
+}
+function placePins() {
+  const layer = $("pins");
+  if (!layer || !current) return;
+  const scale = viewOf(current).scale;
+  for (const p of layer.children) { p.style.left = `${p.dataset.x * scale}px`; p.style.top = `${p.dataset.y * scale}px`; }
+}
+/** 从全部批注里点一条：换到它那张图，把图钉移到画布中间并打开气泡。 */
+function openThread(id) {
+  const t = threads.find((x) => x.id === id);
+  if (!t || !site.diagrams.some((d) => d.id === t.anchor.diagram)) return;
+  popped = { kind: "thread", id };
+  go(t.anchor.diagram);
+  renderPop();
+  renderPins();
+  if (!popAt) return;
+  const r = canvas.getBoundingClientRect(), v = viewOf(current);
+  views.set(current.id, { ...v, x: r.width / 2 - popAt.x * v.scale, y: r.height / 2 - popAt.y * v.scale });
+  apply();
+}
+/** 发出一个输入框里的字：新批注落在气泡指着的落点，回复落在那条批注下面。 */
 async function send(key) {
   const text = (drafts.get(key) ?? "").trim();
   if (!text) return;
-  await post(key.startsWith("reply|") ? { kind: "reply", thread: key.slice(6), author: "human", text } : { kind: "open", anchor: anchorOf(selected), author: "human", text }, () => drafts.delete(key));
+  if (key !== "new") return post({ kind: "reply", thread: key.slice(6), author: "human", text }, () => drafts.delete(key));
+  if (popped?.kind !== "new") return;
+  // 发出之后气泡换成刚落下的这一条。
+  return post({ kind: "open", anchor: popped.anchor, author: "human", text }, (next) => { drafts.delete(key); popped = { kind: "thread", id: next[next.length - 1].id }; });
 }
 /** 把一次改动交给 ssot serve；成功后先执行 done 再按返回的批注重画。 */
 async function post(change, done = () => {}) {
@@ -575,7 +676,7 @@ async function post(change, done = () => {}) {
     return alert("没有发出去：ssot serve 没有回应");
   }
   if (!response.ok) return alert(`没有发出去：${answer.error}`);
-  done();
+  done(answer.threads);
   setThreads(answer.threads);
 }
 function setThreads(next) {
@@ -583,57 +684,39 @@ function setThreads(next) {
   const open = threads.filter((t) => t.status === "open");
   $("threadCount").textContent = open.length;
   $("threadsToggle").classList.toggle("waiting", open.some(waitsOnAgent));
+  renderPop();
   renderPins();
   renderLists($("search").value);
   renderDetails();
 }
 async function loadThreads() { setThreads((await (await fetch("/api/threads")).json()).threads); }
-/** 当前这张图上，每个带未解决批注的节点或箭头画一个图钉，写着条数；有在等 agent 的是橙色。 */
-function renderPins() {
-  const svg = stage.querySelector("svg");
-  if (!svg || !current) return;
-  for (const el of svg.querySelectorAll(".pin")) el.remove();
-  const pinned = new Map();
-  for (const t of threads) {
-    const target = t.status === "open" && t.anchor.diagram === current.id ? targetOfAnchor(current, t.anchor) : null;
-    if (!target) continue;
-    const key = `${target.type}:${target.id}`;
-    if (!pinned.has(key)) pinned.set(key, { target, on: [] });
-    pinned.get(key).on.push(t);
-  }
-  // 位置按屏幕上的矩形换算回 SVG 的坐标：节点与箭头的标签在右上角，没有标签的箭头在线的中点。
-  const box = svg.getBoundingClientRect(), scale = box.width / current.width;
-  for (const { target, on } of pinned.values()) {
-    let at;
-    if (target.type === "node") {
-      const id = CSS.escape(target.id), el = svg.querySelector(`[data-node="${id}"]:not([data-frame])`) ?? svg.querySelector(`[data-node="${id}"]`);
-      if (!el) continue;
-      const b = el.getBoundingClientRect();
-      at = { x: b.right, y: b.top };
-    } else {
-      const parts = [...svg.querySelectorAll(`[data-edge="${target.id}"]`)], label = parts.find((g) => !g.querySelector("path")), path = svg.querySelector(`[data-edge="${target.id}"] path`);
-      if (label) { const b = label.getBoundingClientRect(); at = { x: b.right, y: b.top }; }
-      else if (path) at = path.getPointAtLength(path.getTotalLength() / 2).matrixTransform(path.getScreenCTM());
-      else continue;
-    }
-    const pin = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    pin.setAttribute("class", on.some(waitsOnAgent) ? "pin waiting" : "pin");
-    pin.setAttribute("transform", `translate(${(at.x - box.left) / scale},${(at.y - box.top) / scale})`);
-    pin.dataset.pinType = target.type;
-    pin.dataset.pinId = target.id;
-    pin.innerHTML = `<circle r="11"/><text text-anchor="middle" dy="4">${on.length}</text>`;
-    svg.append(pin);
-  }
+/** 气泡与右栏里的批注共用的点击：发出、改状态、跳到图钉。处理了返回 true。 */
+function threadClick(e) {
+  const send_ = e.target.closest("[data-send]"), status = e.target.closest("[data-status]"), open = e.target.closest("[data-open-thread]");
+  if (send_) send(send_.dataset.send);
+  else if (status) post({ kind: "status", thread: status.dataset.status, status: status.dataset.to });
+  else if (open) openThread(open.dataset.openThread);
+  return Boolean(send_ || status || open);
 }
-/** C：对选中的元素批注；没有选中时对当前这张图。 */
-function compose() {
-  if (!current) return;
-  if (!selected) threadsOpen = true;
-  renderDetails();
-  details.querySelector('textarea[data-draft^="new|"]')?.focus();
+$("pop").addEventListener("click", (e) => { if (e.target.closest("[data-pop-close]")) pop(null); else threadClick(e); });
+for (const box of [details, $("pop")]) {
+  box.addEventListener("input", (e) => { if (e.target.dataset.draft) drafts.set(e.target.dataset.draft, e.target.value); });
+  box.addEventListener("keydown", (e) => {
+    const key = e.target.dataset.draft;
+    if (!key) return;
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(key); }
+    else if (e.key === "Escape") { if (box === details) e.target.blur(); else pop(null); }
+  });
 }
+function setCommenting(on) {
+  commenting = on;
+  canvas.classList.toggle("commenting", on);
+  $("commentTool").classList.toggle("on", on);
+  if (!on && popped?.kind === "new") pop(null);
+}
+$("commentTool").onclick = () => setCommenting(!commenting);
 $("threadsToggle").onclick = () => {
-  threadsOpen = selected !== null || !threadsOpen;
+  listOpen = selected !== null || !listOpen;
   select(null);
 };
 function centerOn(id) {
@@ -649,8 +732,13 @@ window.addEventListener("keydown", (e) => {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === "/") { e.preventDefault(); if ($("app").classList.contains("nav-closed")) setNav(true); $("search").focus(); }
   else if (e.key === "b" || e.key === "B") setNav($("app").classList.contains("nav-closed"));
-  else if (e.key === "c" || e.key === "C") { e.preventDefault(); compose(); }
-  else if (e.key === "Escape") { if (!selected) threadsOpen = false; select(null); }
+  else if (e.key === "c" || e.key === "C") setCommenting(!commenting);
+  else if (e.key === "Escape") {
+    // 由近到远地退：先收气泡，再关批注工具，再取消选中，最后收起全部批注。
+    if (popped) pop(null);
+    else if (commenting) setCommenting(false);
+    else { if (!selected) listOpen = false; select(null); }
+  }
   else if (e.key === "f" || e.key === "F") fit();
   else if (e.key === "+" || e.key === "=") zoomCenter(1.25);
   else if (e.key === "-") zoomCenter(0.8);

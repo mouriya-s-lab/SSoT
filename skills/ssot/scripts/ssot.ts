@@ -5,12 +5,14 @@
 //   ssot check  <design> [--scope <视图 id> [--base <rev>]] [--samples N] [--steps K] [--seed S] [--deadline 秒]
 //   ssot render <design> [--out <dir>]
 //   ssot serve  <design> [--port N]
-//   ssot eval   <design> <模块> <表达式> [--bind ...]
-//   ssot status <design>
+//   ssot eval     <design> <模块> <表达式> [--bind ...]
+//   ssot status   <design>
+//   ssot hotspots <路径> [--top N] [--since <rev-or-date>]
 // check 的退出码：0 通过；1 有 error；3 没有 error 但有 resource.deadline（验证未完成）。
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { baseChanges } from "./src/base";
+import { hotspotsCommand } from "./src/hotspots";
 import { compileLikeC4, type Structure } from "./src/compile/likec4";
 import { compileBehavior, type QuintModule, typecheckFile } from "./src/compile/quint";
 import { checkObligations, compileVdm, type VdmProject } from "./src/compile/vdm";
@@ -378,11 +380,12 @@ function option(args: string[], name: string): string | null {
 }
 
 const USAGE =
-  "用法：ssot setup | gen <design> | check <design> [--scope <视图 id> [--base <rev>]] [--samples N] [--steps K] [--seed S] [--deadline 秒] | render <design> [--out <dir>] | serve <design> [--port N] | eval <design> <module> <expression> [--bind name=<module>:<expr>:<typeModule>:<typeName>]... | status <design>";
+  "用法：ssot setup | gen <design> | check <design> [--scope <视图 id> [--base <rev>]] [--samples N] [--steps K] [--seed S] [--deadline 秒] | render <design> [--out <dir>] | serve <design> [--port N] | eval <design> <module> <expression> [--bind name=<module>:<expr>:<typeModule>:<typeName>]... | status <design> | hotspots <path> [--top N] [--since <rev-or-date>]";
 
 async function main(argv: string[]): Promise<number> {
   const [cmd, dir, ...rest] = argv;
   if (cmd === "setup" && dir === undefined) return setup();
+  if (cmd === "hotspots" && dir) return hotspotsCommand(dir, rest);
   if ((cmd !== "gen" && cmd !== "check" && cmd !== "eval" && cmd !== "render" && cmd !== "serve" && cmd !== "status") || !dir) {
     console.log(USAGE);
     return 2;

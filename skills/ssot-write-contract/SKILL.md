@@ -1,6 +1,6 @@
 ---
 name: ssot-write-contract
-description: SSoT 写一个带 contract 标签的底层元素的盒子（VDM-SL 模块）：端口、线上的类型、反馈线（state）与端口上的 pre/post/inv，精度按使用者声明的阶段，交出盒子图与诊断供契约评审；scope 是元素 fqn。与 ssot-vdm 一起读，先读 ssot。
+description: SSoT 写一个带 contract 标签的底层元素的盒子（VDM-SL 模块）：端口、线上的类型、反馈线（state）与端口上的 pre/post/inv，精度按深入判断交出的担心与需求，交出盒子图与诊断供契约评审；scope 是元素 fqn。与 ssot-vdm 一起读，先读 ssot。
 ---
 
 # ssot-write-contract：写一个元素的盒子
@@ -13,7 +13,7 @@ description: SSoT 写一个带 contract 标签的底层元素的盒子（VDM-SL 
 
 | 项 | 内容 |
 |---|---|
-| 输入 | E 的 fqn；`reason`：深入判断交出的担心、要兑现的需求编号与精度，或评审的发现；使用者声明的阶段 |
+| 输入 | E 的 fqn；`reason`：深入判断交出的担心、要兑现的需求编号与精度，或评审的发现 |
 | 可读 | E 在 `structure/*.c4` 里的标题、描述、标签与关系；`reason` 里的需求编号与本模块已附着的编号在 `requirements.md` 里的原文；别的契约模块的 `exports` 部分（以 `struct` 导出的类型的定义也可以读）；接这个盒子的行为模块里引用本模块名字的地方（只看引用处）；本模块原文；`ssot check`、`ssot eval`、`ssot render` 的输出 |
 | 可改 | 只有 `contract/<E 的 fqn>.vdmsl` |
 | 可运行 | `ssot gen <design>`；`ssot check <design> --scope <V>`（交付前加 `--base <开始时的提交>`）；`ssot eval <design> <本模块名> '<表达式>'`；`ssot render <design>` |
@@ -22,7 +22,7 @@ description: SSoT 写一个带 contract 标签的底层元素的盒子（VDM-SL 
 
 ## 一、先看这个盒子要承诺什么
 
-读 E 的描述、关系与 `reason`。盒子只写这个担心或这些需求要求 E 的端口承诺的结果：调用方能调什么（导出的端口）、线上传什么（类型）、什么时候可以调（`pre`）、调完成立什么（`post`）、任何时刻都成立什么（反馈线的 `inv`）。精度按使用者声明的阶段：没有观测支撑的地方只写签名、`token` 或 `is not yet specified`，这些都是合法的终态。
+读 E 的描述、关系与 `reason`。盒子只写这个担心或这些需求要求 E 的端口承诺的结果：调用方能调什么（导出的端口）、线上传什么（类型）、什么时候可以调（`pre`）、调完成立什么（`post`）、任何时刻都成立什么（反馈线的 `inv`）。精度按 `reason` 指明的边界：与该担心或需求无关的地方只写签名、`token` 或 `is not yet specified`，这些都是合法的终态。
 
 不写进盒子：为实体记进度的阶段枚举、成组布尔位与迁移表，跨盒子的先后、时钟、进程、崩溃与重启（归接线）；元素树与部署（归结构）；连接不变时可以替换的做法与标准算法的实现（不写进设计）。
 

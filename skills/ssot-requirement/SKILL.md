@@ -1,13 +1,13 @@
 ---
 name: ssot-requirement
-description: SSoT 收下一条需求：把用户给的原文原样编号进 design/requirements.md（REQ-<编号>），写出论证与领域性质，并在同一次调用里按 ssot-judge 的步骤判断它由结构回答、由某个盒子或某张接线图兑现，还是不建模；不写任何载体。用户给出需求、或迁移交出需求摘录时使用。先读 ssot 与 ssot-judge。
+description: SSoT 收下一条需求：把用户给的原文原样编号进 design/requirements.md（REQ-<编号>），写出论证与领域性质，并在同一次调用里按 ssot-judge 的步骤判断它由结构回答、由某个盒子或某张接线图兑现，还是不建模；不写任何载体。用户给出需求、或准入勘探交出需求摘录时使用。先读 ssot 与 ssot-judge。
 ---
 
 # ssot-requirement：收下一条需求
 
 | 项 | 内容 |
 |---|---|
-| 输入 | 用户给的一条需求原文，或 `ssot-iterate` / `ssot-migrate` 筛出的系统级需求摘录（含配套领域性质，每条各做一遍）；使用者说明的项目阶段 |
+| 输入 | 用户给的一条需求原文，或 `ssot-iterate` / `ssot-migrate` 筛出的系统级需求摘录（含配套领域性质，每条各做一遍） |
 | 可读 | `requirements.md`；`ssot-judge` 的「可读」；`ssot-iterate` 或 `ssot-migrate` 交出的需求与领域性质摘录 |
 | 可改 | 只有 `requirements.md`：追加新需求并编号，不改已有条目 |
 | 可运行 | `ssot render <design>` |
@@ -40,7 +40,7 @@ description: SSoT 收下一条需求：把用户给的原文原样编号进 desi
 | 结构已回答 | 图上看得出它成立（例如“数据只经某个容器进出”是一条箭头） | 图上还看不出时，上抛给 `ssot-write-level` 与那一层的视图 id |
 | 盒子兑现 | 一个底层元素的端口承诺 | 交给 `ssot-write-contract`，`reason` 写需求 id 与要承诺的结果 |
 | 接线兑现 | 几个元素之间的先后、交错或收束 | 交给 `ssot-write-behavior`，`reason` 写需求 id、要接进来的盒子 |
-| 不建模 | 标准范式、排错简单，或阶段还不支持 | 无；需求留在清单里 |
+| 不建模 | 标准范式、排错简单，靠 C4 边界与普通编译检查即可定位 | 无；需求留在清单里 |
 | 不属于本系统 | 本系统承诺不了 | 交付里写明理由，交给用户 |
 
 不为一条需求扩张结构，也不为让它“有落点”而建模。

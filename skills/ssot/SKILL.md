@@ -104,13 +104,14 @@ skill 之间不互相调用：写作 skill 不派评审，也不自己接着做�
 
 ### 从哪里开始
 
+**预览常开。** 主会话做任何 ssot 任务，从开始到结束都让该设计的 `ssot serve` 在运行：开始时先运行 `ssot comment <design>`，能读出批注说明端口上已有服务这个设计的 `ssot serve`，直接用它；否则在后台终端起 `ssot serve <design>`（端口被别的设计占着时换 `--port`），取它打印的地址。同时在一个输出会唤醒你的后台终端里运行 `ssot comment <design> watch`（omp 里用 `exec_command` 起它再挂 `monitor`，条件 `^ssot 批注`），用户在页面上每落一条批注、回复、改或删一句话、标为已解决或重新打开，它打一行，带批注号、落点、原话和回复命令；你自己的回复与批注不会唤醒你。此后每一次回复用户都附上页面链接；回复说到某张图或某个元素时，链接直接指到它：`http://localhost:<端口>/#/<图 id>?node=<节点 id>`（图 id 与 `ssot render` 列出的相同）。ssot 任务结束、用户不再看页面时，再结束这两个终端。派出去的子代理不起 `ssot serve`。
+
 - 用户要建立或扩展结构：`ssot-write-level`（顶层视图是 `index`）。
 - 用户给出一条需求：`ssot-requirement`。
 - 用户指出某个位置，或对一项候选担心做深入判断：`ssot-judge`。
 - 日常开发落地了代码、改动了某个模块或处理了故障，要补充进 SSoT：`ssot-iterate`。
 - 把整座存量项目或旧设计迁入 SSoT：`ssot-migrate`（先立全局 C4 基线并结合全仓 commit/issue 热点筛掉常规 CRUD 区域，再对重点热点区域逐个接 `ssot-iterate`）。
 - 用户要求评审某个切片：对应的 verify skill。
-- 给用户开了 `ssot serve`：同时在一个输出会唤醒你的后台终端里运行 `ssot comment <design> watch`（omp 里用 `exec_command` 起它再挂 `monitor`，条件 `^ssot 批注`），用户在页面上每落一条批注、回复、改或删一句话、标为已解决或重新打开，它打一行，带批注号、落点、原话和回复命令；你自己的回复与批注不会唤醒你。不再看页面时结束这个终端。
 - 被一行批注唤醒，或用户说页面上有批注：运行 `ssot comment <design>` 读全。一条批注是用户对图上那个位置说的话，按它说的内容从上面几项里选起点；处理之后用 `reply` 写明改了什么，或为什么不改。`resolve` 只在用户说这一条已经解决时用，否则留给用户在页面上标。要问用户某个元素的事，用 `add` 把问题落在图上那个节点或箭头上。
 - 不确定已写下的东西是否一致：运行 `ssot status <design>`。它只报两类事实：已写下内容里的 error（交给拥有那个切片的写作 skill，先 LikeC4，再 VDM，再 Quint），以及带 `#contract` 却还没有模块的元素（这个标签是已经做出的深入选择，模块缺了说明这次深入没做完；`check` 把它报成 `contract.module` 的 error，`status` 排在其余 error 之后单独报）。“没有前沿”不说明需求已经兑现，也不说明该往下写什么。
 

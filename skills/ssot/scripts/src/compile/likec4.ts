@@ -2,7 +2,7 @@
 import { fileURLToPath } from "node:url";
 import { loadLikeC4 } from "../install";
 import { type Diagnostic, type Position, diag, global } from "../diag";
-import { asRecord } from "../guard";
+import { type UnknownRecord, asRecord } from "../guard";
 
 export type Metadata = Readonly<Record<string, string | readonly string[]>>;
 

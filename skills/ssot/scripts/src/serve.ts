@@ -1,7 +1,9 @@
-// ssot serve：本地网页上浏览设计的全部图（与 ssot render 同一份 site.ts 结果），设计文件一改就重画并推给页面。
+// ssot serve：本地网页上浏览设计的全部图（与 ssot render 同一份 site.ts 结果），设计文件一改就重画并推给页面；
+// 使用者在页面上留的批注也由这个进程收下并落盘，ssot comment 经它读写。
 import { type FSWatcher, watch } from "node:fs";
 import { join, sep } from "node:path";
-import { format } from "./diag";
+import { assertNever, format } from "./diag";
+import { applyChange, loadThreads, parseChange, saveThreads, storePath } from "./review";
 import { type SiteDiagram, buildSite } from "./site";
 
 /** 页面拿到的一份结果：最近一次成功构建的图，加上最近一次构建（可能失败）的诊断。 */
@@ -22,6 +24,12 @@ export async function serve(design: string, structure: string, port: number): Pr
   const announce = (): void => {
     const message = `event: site\ndata: ${JSON.stringify({ version: published.version, building: published.building })}\n\n`;
     for (const listener of listeners) listener.enqueue(message);
+  };
+
+  const store = storePath(design);
+  let threads = loadThreads(store);
+  const announceThreads = (): void => {
+    for (const listener of listeners) listener.enqueue("event: threads\ndata: {}\n\n");
   };
 
   // 构建在进行中又有文件改动时，只记下“还要再建一次”，当前这次结束后接着建；不并发构建。
@@ -73,6 +81,23 @@ export async function serve(design: string, structure: string, port: number): Pr
             version: published.version, building: published.building, failed: published.failed, diagnostics: published.diagnostics,
             diagrams: published.diagrams.map((d) => ({ id: d.id, kind: d.kind, title: d.title, description: d.description, parent: d.parent, width: d.svg.width, height: d.svg.height, svg: d.svg.svg, items: d.items, edges: d.edges })),
           });
+        case "/api/threads": {
+          if (request.method !== "POST") return Response.json({ design, threads });
+          const change = parseChange(await request.json().catch(() => null));
+          if (change === null) return Response.json({ error: "请求体不是一次批注改动" }, { status: 400 });
+          const result = applyChange(threads, change, new Date().toISOString());
+          switch (result.kind) {
+            case "unknown-thread":
+              return Response.json({ error: `没有批注 ${result.thread}` }, { status: 404 });
+            case "ok":
+              saveThreads(store, design, result.threads);
+              threads = result.threads;
+              announceThreads();
+              return Response.json({ design, threads });
+            default:
+              return assertNever(result);
+          }
+        }
         case "/events": {
           let self: ReadableStreamDefaultController<string> | null = null;
           const stream = new ReadableStream<string>({
@@ -80,6 +105,7 @@ export async function serve(design: string, structure: string, port: number): Pr
               self = controller;
               listeners.add(controller);
               controller.enqueue(`event: site\ndata: ${JSON.stringify({ version: published.version, building: published.building })}\n\n`);
+              controller.enqueue("event: threads\ndata: {}\n\n");
             },
             cancel() { if (self) listeners.delete(self); },
           });

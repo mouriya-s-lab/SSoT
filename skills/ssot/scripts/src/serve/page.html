@@ -40,8 +40,9 @@
   nav h3 { margin: 12px 14px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
   nav a { display: block; padding: 5px 14px 5px 18px; color: var(--ink); text-decoration: none; cursor: pointer; border-left: 3px solid transparent; }
   nav a small { display: block; color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  nav a .fold { display: inline-block; width: 14px; margin-left: -14px; color: var(--muted); font-size: 10px; text-align: center; }
+  nav a .fold { display: inline-block; width: 16px; margin-left: -16px; color: var(--muted); font: 400 14px/1 Menlo, monospace; text-align: center; }
   nav a .fold:hover { color: var(--ink); }
+  nav a .count { float: right; min-width: 18px; padding: 0 5px; margin-left: 6px; border-radius: 9px; background: var(--hot); color: #fff; font-size: 11px; font-weight: 600; text-align: center; line-height: 18px; }
   nav a:hover { background: #eef2f6; }
   nav a.active { border-left-color: var(--accent); background: #e7f0fa; font-weight: 600; }
   nav a.hit mark { background: #ffe8a1; color: inherit; }
@@ -56,6 +57,10 @@
   #stage .drill { cursor: pointer; }
   #stage g.drill:hover rect { filter: brightness(.82); }
   #stage tspan.drill:hover { fill: var(--hot); }
+  #stage .pin { cursor: pointer; }
+  #stage .pin circle { fill: var(--accent); stroke: #fff; stroke-width: 2; }
+  #stage .pin.waiting circle { fill: var(--hot); }
+  #stage .pin text { fill: #fff; font: 700 12px -apple-system, sans-serif; pointer-events: none; }
   #hint { position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: var(--muted); background: rgba(255,255,255,.85); padding: 4px 8px; border-radius: 6px; pointer-events: none; }
   #tip { position: absolute; pointer-events: none; max-width: 360px; background: #1f2933; color: #fff; font-size: 12.5px; padding: 6px 9px; border-radius: 6px; display: none; z-index: 5; line-height: 1.45; }
   #tip b { color: #ffd8a8; }
@@ -72,6 +77,29 @@
   aside .links a:hover { text-decoration: underline; }
   aside .close { float: right; }
   aside .rel { border-top: 1px solid var(--line); padding: 8px 0; font-size: 13px; }
+  aside .threads { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 2px; }
+  aside .threads.solo { border-top: 0; margin-top: 0; padding-top: 0; }
+  aside .threads h3 { margin: 10px 0 8px; font-size: 13px; }
+  aside .threads.solo h3 { margin-top: 2px; font-size: 18px; }
+  aside textarea { display: block; width: 100%; min-height: 34px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; font: inherit; resize: vertical; field-sizing: content; }
+  aside textarea:focus { outline: 2px solid #b6d4f5; border-color: var(--accent); }
+  aside .actions { display: flex; align-items: center; gap: 8px; margin: 6px 0 12px; }
+  aside .actions .keys { color: var(--muted); font-size: 12px; }
+  aside .thread { border: 1px solid var(--line); border-left: 3px solid var(--hot); border-radius: 6px; padding: 8px 10px 0; margin-bottom: 10px; }
+  aside .thread.answered { border-left-color: var(--accent); }
+  aside .thread.resolved { border-left-color: var(--ok); opacity: .75; }
+  aside .thread .head { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  aside .thread .where { display: block; margin: 3px 0 4px; color: var(--accent); cursor: pointer; font-size: 12.5px; text-decoration: none; }
+  aside .thread .where:hover { text-decoration: underline; }
+  aside .msg { margin: 6px 0 8px; font-size: 13px; }
+  aside .msg b { margin-right: 6px; }
+  aside .msg.agent b { color: var(--accent); }
+  aside .msg time { color: var(--muted); font-size: 11.5px; }
+  aside .msg .text { margin-top: 2px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+  aside .resolved-toggle { display: block; margin: 4px 0 10px; color: var(--muted); font-size: 12.5px; cursor: pointer; }
+  aside .none { color: var(--muted); }
+  #threadsToggle { display: flex; align-items: center; gap: 5px; }
+  #threadsToggle.waiting { border-color: var(--hot); color: var(--hot); }
   #problems { position: absolute; left: 12px; right: 12px; top: 12px; max-height: 45%; overflow: auto; background: #fff5f5; border: 1px solid #ffc9c9; color: #7d1414; border-radius: 8px; padding: 10px 14px; font: 12px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap; display: none; z-index: 4; }
   #problems h4 { margin: 0 0 6px; font: 600 13px -apple-system, sans-serif; }
   #empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); }
@@ -90,6 +118,7 @@
       <button id="fit" title="适应窗口 (F)">适应</button>
       <button id="download" title="下载当前图的 SVG">SVG</button>
     </div>
+    <button id="threadsToggle" title="全部批注；按 C 对选中的元素或当前这张图批注"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M2.5 3.5h11v7.5h-6l-3 2.5v-2.5h-2z"/></svg><span id="threadCount">0</span></button>
     <div id="status" title=""><span class="dot"></span><span id="statusText">连接中</span></div>
   </header>
   <nav>
@@ -101,7 +130,7 @@
     <div id="empty">正在构建…</div>
     <div id="problems"></div>
     <div id="tip"></div>
-    <div id="hint">拖动平移 · 滚轮平移 / ⌘ 或 Ctrl + 滚轮缩放 · 单击看详情 · 点图上的标注或双击下钻 · B 收起侧栏 · Esc 取消</div>
+    <div id="hint">拖动平移 · 滚轮平移 / ⌘ 或 Ctrl + 滚轮缩放 · 单击看详情 · 点图上的标注或双击下钻 · C 批注 · B 收起侧栏 · Esc 取消</div>
   </main>
   <aside id="details"><div class="inner"></div></aside>
 </div>
@@ -116,6 +145,10 @@ let site = null;                 // /api/site 的最近一次结果
 let current = null;              // 当前图
 let selected = null;             // { type: "node" | "edge", id }
 const views = new Map();         // 图 id → { x, y, scale }：每张图各自记住视野，重画后不跳
+let threads = [];                // /api/threads 的最近一次结果：使用者留的批注与 agent 的回复
+let threadsOpen = false;         // 没有选中元素时，右栏是否列出全部批注
+let showResolved = false;
+const drafts = new Map();        // 输入框的键 → 还没发出的字；右栏随时会重画，字不能丢
 
 // ---------- 路由：#/<图 id>?node=<节点 id> ----------
 function parseHash() {
@@ -167,7 +200,11 @@ function renderLists(filter = "") {
   const q = filter.trim().toLowerCase();
   const lists = $("lists");
   let html = "";
-  const entry = (d, depth, parent) => `<a data-go="${esc(d.id)}" class="${current?.id === d.id ? "active" : ""}" style="padding-left:${32 + depth * 16}px">${parent ? `<span class="fold" data-fold="${esc(d.id)}" title="${folded.has(d.id) ? "展开" : "收起"}下一层">${folded.has(d.id) ? "▸" : "▾"}</span>` : ""}${esc(d.title)}<small>${esc(d.id)}</small></a>`;
+  // 每张图上未解决的批注数。
+  const counts = new Map();
+  for (const t of threads) if (t.status === "open") counts.set(t.anchor.diagram, (counts.get(t.anchor.diagram) ?? 0) + 1);
+  const count = (d) => counts.has(d.id) ? `<span class="count" title="未解决的批注">${counts.get(d.id)}</span>` : "";
+  const entry = (d, depth, parent) => `<a data-go="${esc(d.id)}" class="${current?.id === d.id ? "active" : ""}" style="padding-left:${32 + depth * 16}px">${count(d)}${parent ? `<span class="fold" data-fold="${esc(d.id)}" title="${folded.has(d.id) ? "展开" : "收起"}下一层">${folded.has(d.id) ? "▸" : "▾"}</span>` : ""}${esc(d.title)}<small>${esc(d.id)}</small></a>`;
   // 不搜索时按上下级排成树：每张图缩进在它的上一级图下面，只有顶层的图分组加标题。
   if (!q) {
     const all = site?.diagrams ?? [], ids = new Set(all.map((d) => d.id)), children = new Map(), roots = [];
@@ -199,7 +236,7 @@ function renderLists(filter = "") {
     const shown = q ? diagrams.filter((d) => `${d.title} ${d.id}`.toLowerCase().includes(q)) : diagrams;
     if (shown.length === 0) continue;
     html += `<h3>${esc(title)}</h3>`;
-    for (const d of shown) html += `<a data-go="${esc(d.id)}" class="${current?.id === d.id ? "active" : ""} ${q ? "hit" : ""}">${mark(d.title)}<small>${esc(d.id)}</small></a>`;
+    for (const d of shown) html += `<a data-go="${esc(d.id)}" class="${current?.id === d.id ? "active" : ""} ${q ? "hit" : ""}">${count(d)}${mark(d.title)}<small>${esc(d.id)}</small></a>`;
   }
   if (q) {
     const hits = [];
@@ -312,6 +349,7 @@ function show(diagram) {
   stage.innerHTML = diagram.svg;
   $("empty").style.display = "none";
   if (first) fit(); else apply();
+  renderPins();
   renderCrumbs();
   renderLists($("search").value);
   if (selected && !(selected.type === "node" ? diagram.items[selected.id] : diagram.edges[selected.id])) select(null);
@@ -325,6 +363,9 @@ function targetOf(e) {
   const el = document.elementFromPoint(e.clientX, e.clientY);
   if (!el || !stage.contains(el)) return null;
   e = { target: el };
+  // 图钉：一个节点或一条箭头上有未解决的批注；点它等于点那个元素。
+  const pin = el.closest(".pin");
+  if (pin) return { type: pin.dataset.pinType, id: pin.dataset.pinType === "edge" ? Number(pin.dataset.pinId) : pin.dataset.pinId };
   // 图上的下钻标注（SVG 里 class="drill"）：打开下一层的图，并定位到其中的节点。
   const drill = e.target.closest?.(".drill");
   if (drill) return { type: "drill", id: drill.dataset.open, node: drill.dataset.openNode ?? null };
@@ -403,33 +444,198 @@ function select(t) {
 }
 function renderDetails() {
   const inner = details.querySelector(".inner");
-  if (!selected || !current) { details.classList.remove("open"); inner.innerHTML = ""; return; }
+  // agent 的回复随时会推过来并重画右栏：记下正在输入的那个框，重画后把光标放回去。
+  const typing = document.activeElement?.dataset?.draft ?? null;
+  const html = current ? detailsHtml() : null;
+  if (html === null) { details.classList.remove("open"); inner.innerHTML = ""; return; }
+  inner.innerHTML = html;
+  details.classList.add("open");
+  const box = typing === null ? null : inner.querySelector(`[data-draft="${CSS.escape(typing)}"]`);
+  if (box) { box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
+}
+/** 右栏的内容：选中元素的详情加指向它的批注；没有选中时是全部批注；null：收起。 */
+function detailsHtml() {
   let html = `<button class="close" id="closeDetails">✕</button>`;
+  if (!selected) return threadsOpen ? html + threadsHtml() : null;
   if (selected.type === "node") {
     const item = current.items[selected.id];
-    if (!item) { details.classList.remove("open"); return; }
+    if (!item) return null;
     html += `<h2>${esc(item.title)}</h2><div class="kind">${esc(item.kind)}</div>`;
     if (item.description) html += `<p>${esc(item.description)}</p>`;
     if (item.facts.length) html += `<dl>${item.facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`;
     if (item.links.length) html += `<div class="links">${item.links.map((l) => `<a data-go="${esc(l.diagram)}">→ ${esc(l.label)}</a>`).join("")}</div>`;
   } else {
     const e = current.edges[selected.id];
-    if (!e) { details.classList.remove("open"); return; }
+    if (!e) return null;
     const name = (id) => current.items[id]?.title ?? id;
     html += `<h2>${esc(name(e.source))} → ${esc(name(e.target))}</h2><div class="kind">${esc(e.label ?? "")}</div>`;
     for (const r of e.relations) html += `<div class="rel"><b>${esc(r.title || "—")}</b><br>${esc(r.source)} → ${esc(r.target)}${r.description ? `<p>${esc(r.description)}</p>` : ""}</div>`;
     html += `<div class="links"><a data-pick="${esc(e.source)}">← ${esc(name(e.source))}</a><a data-pick="${esc(e.target)}">→ ${esc(name(e.target))}</a></div>`;
   }
-  inner.innerHTML = html;
-  details.classList.add("open");
+  return html + threadsHtml();
 }
 details.addEventListener("click", (e) => {
-  if (e.target.id === "closeDetails") return select(null);
+  if (e.target.id === "closeDetails") { threadsOpen = false; return select(null); }
+  const send_ = e.target.closest("[data-send]");
+  if (send_) return send(send_.dataset.send);
+  const status = e.target.closest("[data-status]");
+  if (status) return post({ kind: "status", thread: status.dataset.status, status: status.dataset.to });
+  const where = e.target.closest("[data-anchor]");
+  if (where) return openAnchor(threads.find((t) => t.id === where.dataset.anchor).anchor);
   const go_ = e.target.closest("a[data-go]");
   if (go_) return go(go_.dataset.go);
   const pick = e.target.closest("a[data-pick]");
   if (pick) { select({ type: "node", id: pick.dataset.pick }); centerOn(pick.dataset.pick); }
 });
+details.addEventListener("input", (e) => { if (e.target.dataset.draft) drafts.set(e.target.dataset.draft, e.target.value); });
+details.addEventListener("change", (e) => { if (e.target.id === "showResolved") { showResolved = e.target.checked; renderDetails(); } });
+details.addEventListener("keydown", (e) => {
+  const key = e.target.dataset.draft;
+  if (!key) return;
+  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(key); }
+  else if (e.key === "Escape") e.target.blur();
+});
+
+// ---------- 批注 ----------
+// 批注指向一张图、图上的一个节点或一条箭头；箭头用两端的节点 id 加它在同一对端点之间的序号认，重画后下标变了也找得回来。
+function anchorOf(t) {
+  if (!t) return { kind: "diagram", diagram: current.id };
+  if (t.type === "node") return { kind: "node", diagram: current.id, node: t.id };
+  const e = current.edges[t.id];
+  let ordinal = 0;
+  for (let i = 0; i < t.id; i++) if (current.edges[i].source === e.source && current.edges[i].target === e.target) ordinal++;
+  return { kind: "edge", diagram: current.id, source: e.source, target: e.target, ordinal };
+}
+const anchorKey = (a) => a.kind === "diagram" ? `d|${a.diagram}` : a.kind === "node" ? `n|${a.diagram}|${a.node}` : `e|${a.diagram}|${a.source}|${a.target}|${a.ordinal}`;
+/** 批注指向的元素在图 d 上现在是哪一个；null：指向整张图，或那个元素已经不在图上。 */
+function targetOfAnchor(d, a) {
+  if (a.kind === "node") return d.items[a.node] ? { type: "node", id: a.node } : null;
+  if (a.kind !== "edge") return null;
+  let seen = 0;
+  for (let i = 0; i < d.edges.length; i++) if (d.edges[i].source === a.source && d.edges[i].target === a.target && seen++ === a.ordinal) return { type: "edge", id: i };
+  return null;
+}
+function anchorLabel(a) {
+  const d = site.diagrams.find((x) => x.id === a.diagram);
+  if (!d) return `${a.diagram}（现在的设计里没有这张图）`;
+  if (a.kind === "diagram") return `${d.title} · 整张图`;
+  const name = (id) => d.items[id]?.title ?? id;
+  return `${d.title} › ${a.kind === "node" ? name(a.node) : `${name(a.source)} → ${name(a.target)}`}${targetOfAnchor(d, a) ? "" : "（已经不在图上）"}`;
+}
+function openAnchor(a) {
+  const d = site.diagrams.find((x) => x.id === a.diagram);
+  if (!d) return;
+  const t = targetOfAnchor(d, a);
+  go(d.id, t?.type === "node" ? t.id : null);
+  if (t?.type === "edge") select(t);
+}
+/** 一条未解决的批注在等谁：最后一句是使用者说的，就在等 agent。 */
+const waitsOnAgent = (t) => t.messages[t.messages.length - 1].author === "human";
+function when(at) {
+  const d = new Date(at), two = (n) => String(n).padStart(2, "0");
+  return `${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}`;
+}
+function threadHtml(t, where) {
+  const open = t.status === "open";
+  let html = `<div class="thread ${open ? (waitsOnAgent(t) ? "" : "answered") : "resolved"}"><div class="head"><span>${esc(t.id)}</span><span>${open ? (waitsOnAgent(t) ? "等 agent 回复" : "agent 已回复") : "已解决"}</span></div>`;
+  if (where) html += `<a class="where" data-anchor="${esc(t.id)}">${esc(anchorLabel(t.anchor))}</a>`;
+  for (const m of t.messages) html += `<div class="msg ${m.author}"><b>${m.author === "human" ? "你" : "Agent"}</b><time>${when(m.at)}</time><div class="text">${esc(m.text)}</div></div>`;
+  html += `<textarea data-draft="reply|${esc(t.id)}" rows="1" placeholder="回复…">${esc(drafts.get(`reply|${t.id}`) ?? "")}</textarea>`;
+  return html + `<div class="actions"><button data-send="reply|${esc(t.id)}">回复</button><button data-status="${esc(t.id)}" data-to="${open ? "resolved" : "open"}">${open ? "标为已解决" : "重新打开"}</button></div></div>`;
+}
+function threadsHtml() {
+  // 选中了元素：只列指向它的批注；没有选中：列全部，当前这张图的排在前面。
+  const key = anchorKey(anchorOf(selected));
+  const listed = selected ? threads.filter((t) => anchorKey(t.anchor) === key) : [...threads].sort((a, b) => (b.anchor.diagram === current.id) - (a.anchor.diagram === current.id));
+  const open = listed.filter((t) => t.status === "open"), resolved = listed.filter((t) => t.status === "resolved");
+  let html = `<div class="threads${selected ? "" : " solo"}"><h3>${selected ? "批注" : "全部批注"}</h3>`;
+  html += `<textarea data-draft="new|${esc(key)}" rows="2" placeholder="${selected ? "这里哪里不对？" : `对整张图「${esc(current.title)}」批注；要指到某个节点或箭头，先在图上点它`}">${esc(drafts.get(`new|${key}`) ?? "")}</textarea>`;
+  html += `<div class="actions"><button data-send="new|${esc(key)}">批注</button><span class="keys">⌘ 或 Ctrl + Enter 发出</span></div>`;
+  for (const t of open) html += threadHtml(t, !selected);
+  if (resolved.length) {
+    html += `<label class="resolved-toggle"><input type="checkbox" id="showResolved"${showResolved ? " checked" : ""}> 已解决 ${resolved.length} 条</label>`;
+    if (showResolved) for (const t of resolved) html += threadHtml(t, !selected);
+  }
+  if (listed.length === 0) html += `<p class="none">${selected ? "这里还没有批注。" : "还没有批注。"}</p>`;
+  return html + `</div>`;
+}
+/** 发出一个输入框里的字：新批注落在当前选中的元素上（没有选中时是当前这张图），回复落在那条批注下面。 */
+async function send(key) {
+  const text = (drafts.get(key) ?? "").trim();
+  if (!text) return;
+  await post(key.startsWith("reply|") ? { kind: "reply", thread: key.slice(6), author: "human", text } : { kind: "open", anchor: anchorOf(selected), author: "human", text }, () => drafts.delete(key));
+}
+/** 把一次改动交给 ssot serve；成功后先执行 done 再按返回的批注重画。 */
+async function post(change, done = () => {}) {
+  let response, answer;
+  try {
+    response = await fetch("/api/threads", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(change) });
+    answer = await response.json();
+  } catch {
+    return alert("没有发出去：ssot serve 没有回应");
+  }
+  if (!response.ok) return alert(`没有发出去：${answer.error}`);
+  done();
+  setThreads(answer.threads);
+}
+function setThreads(next) {
+  threads = next;
+  const open = threads.filter((t) => t.status === "open");
+  $("threadCount").textContent = open.length;
+  $("threadsToggle").classList.toggle("waiting", open.some(waitsOnAgent));
+  renderPins();
+  renderLists($("search").value);
+  renderDetails();
+}
+async function loadThreads() { setThreads((await (await fetch("/api/threads")).json()).threads); }
+/** 当前这张图上，每个带未解决批注的节点或箭头画一个图钉，写着条数；有在等 agent 的是橙色。 */
+function renderPins() {
+  const svg = stage.querySelector("svg");
+  if (!svg || !current) return;
+  for (const el of svg.querySelectorAll(".pin")) el.remove();
+  const pinned = new Map();
+  for (const t of threads) {
+    const target = t.status === "open" && t.anchor.diagram === current.id ? targetOfAnchor(current, t.anchor) : null;
+    if (!target) continue;
+    const key = `${target.type}:${target.id}`;
+    if (!pinned.has(key)) pinned.set(key, { target, on: [] });
+    pinned.get(key).on.push(t);
+  }
+  // 位置按屏幕上的矩形换算回 SVG 的坐标：节点与箭头的标签在右上角，没有标签的箭头在线的中点。
+  const box = svg.getBoundingClientRect(), scale = box.width / current.width;
+  for (const { target, on } of pinned.values()) {
+    let at;
+    if (target.type === "node") {
+      const id = CSS.escape(target.id), el = svg.querySelector(`[data-node="${id}"]:not([data-frame])`) ?? svg.querySelector(`[data-node="${id}"]`);
+      if (!el) continue;
+      const b = el.getBoundingClientRect();
+      at = { x: b.right, y: b.top };
+    } else {
+      const parts = [...svg.querySelectorAll(`[data-edge="${target.id}"]`)], label = parts.find((g) => !g.querySelector("path")), path = svg.querySelector(`[data-edge="${target.id}"] path`);
+      if (label) { const b = label.getBoundingClientRect(); at = { x: b.right, y: b.top }; }
+      else if (path) at = path.getPointAtLength(path.getTotalLength() / 2).matrixTransform(path.getScreenCTM());
+      else continue;
+    }
+    const pin = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    pin.setAttribute("class", on.some(waitsOnAgent) ? "pin waiting" : "pin");
+    pin.setAttribute("transform", `translate(${(at.x - box.left) / scale},${(at.y - box.top) / scale})`);
+    pin.dataset.pinType = target.type;
+    pin.dataset.pinId = target.id;
+    pin.innerHTML = `<circle r="11"/><text text-anchor="middle" dy="4">${on.length}</text>`;
+    svg.append(pin);
+  }
+}
+/** C：对选中的元素批注；没有选中时对当前这张图。 */
+function compose() {
+  if (!current) return;
+  if (!selected) threadsOpen = true;
+  renderDetails();
+  details.querySelector('textarea[data-draft^="new|"]')?.focus();
+}
+$("threadsToggle").onclick = () => {
+  threadsOpen = selected !== null || !threadsOpen;
+  select(null);
+};
 function centerOn(id) {
   const el = stage.querySelector(`[data-node="${CSS.escape(id)}"]`);
   if (!el) return;
@@ -443,7 +649,8 @@ window.addEventListener("keydown", (e) => {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === "/") { e.preventDefault(); if ($("app").classList.contains("nav-closed")) setNav(true); $("search").focus(); }
   else if (e.key === "b" || e.key === "B") setNav($("app").classList.contains("nav-closed"));
-  else if (e.key === "Escape") select(null);
+  else if (e.key === "c" || e.key === "C") { e.preventDefault(); compose(); }
+  else if (e.key === "Escape") { if (!selected) threadsOpen = false; select(null); }
   else if (e.key === "f" || e.key === "F") fit();
   else if (e.key === "+" || e.key === "=") zoomCenter(1.25);
   else if (e.key === "-") zoomCenter(0.8);
@@ -487,6 +694,7 @@ function connect() {
     if (!building && version !== loaded) load();
     else if (!building && site) setStatus(site.failed ? "failed" : "", $("statusText").textContent === "重画中…" ? `实时 · ${site.diagrams.length} 张图` : $("statusText").textContent);
   });
+  events.addEventListener("threads", loadThreads);
   events.onerror = () => setStatus("offline", "已断开，重连中…");
 }
 connect();

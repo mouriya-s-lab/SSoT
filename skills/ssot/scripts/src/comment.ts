@@ -60,17 +60,10 @@ function where(anchor: Anchor, diagrams: readonly Outline[]): string[] {
   return lines;
 }
 
-function print(threads: readonly Thread[], diagrams: readonly Outline[], all: boolean): void {
-  const open = threads.filter((t) => t.status === "open");
-  const shown = all ? threads : open;
-  for (const t of shown) {
-    console.log(`${t.id} · ${t.status === "open" ? `未解决，等${waitingOn(t) === "agent" ? " agent " : "使用者"}回复` : "已解决"}`);
-    for (const line of where(t.anchor, diagrams)) console.log(line);
-    for (const m of t.messages) console.log(`  [${m.author === "human" ? "使用者" : "agent"} ${new Date(m.at).toLocaleString("sv")}] ${m.text.replaceAll("\n", "\n    ")}`);
-    console.log("");
-  }
-  const waiting = open.filter((t) => waitingOn(t) === "agent").length;
-  console.log(`${open.length} 条未解决，其中 ${waiting} 条等 agent 回复${all ? `；共 ${threads.length} 条` : threads.length > open.length ? `；另有 ${threads.length - open.length} 条已解决（--all 列出）` : ""}`);
+function print(t: Thread, diagrams: readonly Outline[]): void {
+  console.log(`${t.id} · ${t.status === "open" ? `未解决，等${waitingOn(t) === "agent" ? " agent " : "使用者"}回复` : "已解决"}`);
+  for (const line of where(t.anchor, diagrams)) console.log(line);
+  for (const m of t.messages) console.log(`  [${m.author === "human" ? "使用者" : "agent"} ${new Date(m.at).toLocaleString("sv")}] ${m.text.replaceAll("\n", "\n    ")}`);
 }
 
 export async function comment(design: string, port: number, action: CommentAction): Promise<number> {
@@ -101,6 +94,17 @@ export async function comment(design: string, port: number, action: CommentActio
   }
   // 同一个 ssot serve 的 /api/site；这里只用每张图的标题、节点与箭头。
   const site = (await (await fetch(`http://localhost:${port}/api/site`)).json()) as { readonly diagrams: readonly Outline[] };
-  print(action.kind === "list" ? threads.value : threads.value.filter((t) => t.id === action.thread), site.diagrams, action.kind !== "list" || action.all);
+  if (action.kind !== "list") {
+    // 改动之后回显那一条，让调用者看到它现在的样子。
+    for (const t of threads.value) if (t.id === action.thread) print(t, site.diagrams);
+    return 0;
+  }
+  const open = threads.value.filter((t) => t.status === "open");
+  for (const t of action.all ? threads.value : open) {
+    print(t, site.diagrams);
+    console.log("");
+  }
+  const resolved = threads.value.length - open.length;
+  console.log(`${open.length} 条未解决，其中 ${open.filter((t) => waitingOn(t) === "agent").length} 条等 agent 回复${resolved > 0 ? `；${resolved} 条已解决${action.all ? "" : "（--all 列出）"}` : ""}`);
   return 0;
 }

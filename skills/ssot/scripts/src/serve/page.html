@@ -62,11 +62,12 @@
   #canvas.commenting #pins .pin { cursor: pointer; }
   #pins .pin { position: absolute; width: 28px; height: 28px; margin-top: -28px; padding: 0; border: 2px solid #fff; border-radius: 50% 50% 50% 3px; background: var(--accent); color: #fff; font: 700 12px/24px -apple-system, sans-serif; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,.3); cursor: pointer; }
   #pins .pin.waiting { background: var(--hot); }
+  #pins .pin.asked { background: #fff; color: var(--accent); border-color: var(--accent); }
   #pins .pin.resolved { background: var(--ok); }
-  #pins .pin.draft { background: #fff; border-color: var(--hot); color: var(--hot); }
+  #pins .pin.stale::after { content: ""; position: absolute; right: -4px; top: -4px; width: 9px; height: 9px; border-radius: 50%; background: var(--warn); border: 2px solid #fff; }
+  #pins .pin.orphan { background: #adb5bd; border-style: dashed; }
   #pins .pin.active { z-index: 1; outline: 3px solid rgba(17,104,189,.3); }
-  #pop { position: absolute; display: none; z-index: 6; width: 300px; max-height: calc(100% - 16px); overflow: auto; padding: 10px 12px 2px; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.18); cursor: default; }
-  #pop .close { float: right; margin: -2px -4px 0 8px; padding: 1px 7px; }
+  #pop { position: absolute; display: none; z-index: 6; width: 300px; max-height: calc(100% - 16px); overflow: auto; padding: 10px 12px 10px; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.18); cursor: default; }
   #pop .thread { margin: 0; padding: 0; border: 0; opacity: 1; }
   #commentTool.on { background: var(--accent); border-color: var(--accent); color: #fff; }
   #hint { position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: var(--muted); background: rgba(255,255,255,.85); padding: 4px 8px; border-radius: 6px; pointer-events: none; }
@@ -87,18 +88,33 @@
   aside .rel { border-top: 1px solid var(--line); padding: 8px 0; font-size: 13px; }
   aside .threads h3 { margin: 2px 0 8px; font-size: 18px; }
   aside .threads .how, aside .threads .none { color: var(--muted); line-height: 1.5; }
-  aside textarea, #pop textarea { display: block; width: 100%; min-height: 34px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; font: inherit; resize: vertical; field-sizing: content; }
-  aside textarea:focus, #pop textarea:focus { outline: 2px solid #b6d4f5; border-color: var(--accent); }
-  .actions { display: flex; align-items: center; gap: 8px; margin: 6px 0 12px; }
-  .actions .keys { color: var(--muted); font-size: 12px; }
+  .composer { position: relative; margin-top: 6px; }
+  .composer textarea { display: block; width: 100%; min-height: 36px; max-height: 240px; padding: 8px 40px 8px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; line-height: 1.5; resize: none; field-sizing: content; }
+  .composer textarea:focus { outline: 2px solid #b6d4f5; border-color: var(--accent); }
+  .composer .send { position: absolute; right: 6px; bottom: 6px; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%; background: var(--accent); color: #fff; font-size: 14px; line-height: 26px; }
+  .composer .send:hover { background: #0d5aa7; }
+  .composer.bare textarea { border-color: transparent; padding-left: 2px; }
   .thread { border: 1px solid var(--line); border-left: 3px solid var(--hot); border-radius: 6px; padding: 8px 10px 0; margin-bottom: 10px; }
   .thread.answered { border-left-color: var(--accent); }
   .thread.resolved { border-left-color: var(--ok); opacity: .75; }
-  .thread .head { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  .thread .head { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+  .thread .head .chip { margin-left: auto; padding: 1px 7px; border-radius: 9px; background: #eef2f6; color: var(--ink); }
+  .thread .head .chip.waiting { background: #fff0e6; color: var(--hot); }
+  .thread .head .chip.resolved { background: #e9f6ec; color: var(--ok); }
+  .thread .head .icon { border: 0; background: none; padding: 1px 5px; color: var(--muted); font-size: 13px; }
+  .thread .head .icon:hover { background: #eef2f6; color: var(--ink); }
+  .thread .notice { margin: 6px 0 2px; padding: 4px 8px; border-radius: 6px; background: #fff8e6; color: #8a5300; font-size: 12px; }
+  .thread .notice.orphan { background: #f1f3f5; color: var(--muted); }
   .where { display: block; margin: 3px 0 6px; color: var(--muted); font-size: 12.5px; text-decoration: none; }
   a.where { color: var(--accent); cursor: pointer; }
   a.where:hover { text-decoration: underline; }
-  .msg { margin: 6px 0 8px; font-size: 13px; }
+  .msg { position: relative; margin: 6px 0 8px; font-size: 13px; }
+  .msg .ops { position: absolute; right: 0; top: -2px; display: none; gap: 2px; }
+  .msg:hover .ops { display: flex; }
+  .msg .ops button { border: 0; background: none; padding: 1px 5px; color: var(--muted); font-size: 12px; }
+  .msg .ops button:hover { background: #eef2f6; color: var(--ink); }
+  .msg.gone .text { color: var(--muted); font-style: italic; }
+  .msg .edited { color: var(--muted); font-size: 11.5px; margin-left: 4px; }
   .msg b { margin-right: 6px; }
   .msg.agent b { color: var(--accent); }
   .msg time { color: var(--muted); font-size: 11.5px; }
@@ -138,7 +154,7 @@
     <div id="problems"></div>
     <div id="tip"></div>
     <div id="pop"></div>
-    <div id="hint">拖动平移 · 滚轮平移 / ⌘ 或 Ctrl + 滚轮缩放 · 单击看详情 · 点图上的标注或双击下钻 · 按 C 后点图上任意位置批注 · B 收起侧栏 · Esc 取消</div>
+    <div id="hint">拖动平移 · 滚轮平移 / ⌘ 或 Ctrl + 滚轮缩放 · 单击看详情 · 点图上的标注或双击下钻 · 按 C 后点图上任意位置批注，或在那里右键 · B 收起侧栏 · Esc 取消</div>
   </main>
   <aside id="details"><div class="inner"></div></aside>
 </div>
@@ -156,6 +172,7 @@ const views = new Map();         // 图 id → { x, y, scale }：每张图各自
 let threads = [];                // /api/threads 的最近一次结果：使用者留的批注与 agent 的回复
 let commenting = false;          // 批注工具开着：点画布任意位置落一条批注
 let popped = null;               // 画布上开着的气泡：{ kind: "new", anchor } 写一条新的，{ kind: "thread", id } 看一条已有的
+let editing = null;              // 正在改的那句话：{ thread, message }
 let popAt = null;                // 气泡指着的落点（图的坐标）
 let listOpen = false;            // 没有选中元素时，右栏是否列出全部批注
 let showResolved = false;
@@ -213,7 +230,7 @@ function renderLists(filter = "") {
   let html = "";
   // 每张图上未解决的批注数。
   const counts = new Map();
-  for (const t of threads) if (t.status === "open") counts.set(t.anchor.diagram, (counts.get(t.anchor.diagram) ?? 0) + 1);
+  for (const t of threads) if (t.status === "open" && spoken(t).length) counts.set(t.anchor.diagram, (counts.get(t.anchor.diagram) ?? 0) + 1);
   const count = (d) => counts.has(d.id) ? `<span class="count" title="未解决的批注">${counts.get(d.id)}</span>` : "";
   const entry = (d, depth, parent) => `<a data-go="${esc(d.id)}" class="${current?.id === d.id ? "active" : ""}" style="padding-left:${32 + depth * 16}px">${count(d)}${parent ? `<span class="fold" data-fold="${esc(d.id)}" title="${folded.has(d.id) ? "展开" : "收起"}下一层">${folded.has(d.id) ? "▸" : "▾"}</span>` : ""}${esc(d.title)}<small>${esc(d.id)}</small></a>`;
   // 不搜索时按上下级排成树：每张图缩进在它的上一级图下面，只有顶层的图分组加标题。
@@ -438,13 +455,19 @@ function click(e) {
   // 图钉与批注工具先于选中：点图钉开它的气泡（再点收起），工具开着时点哪里就在哪里落一条。
   const pin = document.elementFromPoint(e.clientX, e.clientY)?.closest("#pins .pin");
   if (pin) return pin.dataset.pin ? pop(popped?.kind === "thread" && popped.id === pin.dataset.pin ? null : { kind: "thread", id: pin.dataset.pin }) : undefined;
-  if (commenting) return pop({ kind: "new", anchor: anchorAt(e) });
+  if (commenting) return compose(e);
   if (popped) pop(null);
   const t = targetOf(e);
   if (t?.type === "drill") return go(t.id, t.node);
   select(t);
   history.replaceState(null, "", `#/${encodeURIComponent(current.id)}${t?.type === "node" ? `?node=${encodeURIComponent(t.id)}` : ""}`);
 }
+// 右键：不用先开批注工具，在指着的地方直接写一条。
+canvas.addEventListener("contextmenu", (e) => {
+  if (!current || e.target.closest("#pop, #pins") || !stage.querySelector("svg")?.contains(document.elementFromPoint(e.clientX, e.clientY))) return;
+  e.preventDefault();
+  compose(e);
+});
 canvas.addEventListener("dblclick", (e) => {
   const t = targetOf(e);
   if (t?.type !== "node") return;
@@ -502,8 +525,9 @@ details.addEventListener("click", (e) => {
 details.addEventListener("change", (e) => { if (e.target.id === "showResolved") { showResolved = e.target.checked; renderDetails(); } });
 
 // ---------- 批注 ----------
-// 批注直接落在画布上：批注工具开着时点图上任意一处，落点旁边开一个气泡写字；落下的批注是叠在图上的一枚图钉，点它打开对话。
-// 落在节点或箭头上的记相对位置，重画后跟着那个元素走；落在空白处的记图的坐标和当时最近的几个节点。
+// 批注直接落在画布上：批注工具开着时点图上任意一处（或在那里右键），落点旁边开一个输入框；落下的批注是叠在图上的一枚图钉，点它打开对话。
+// 落在节点或箭头上的记相对位置与那个元素当时的内容指纹 rev，重画后跟着元素走；元素后来改了图钉带个点（stale），
+// 元素没了图钉退回落下时的位置并变灰（orphan）。落在空白处的记图的坐标和当时最近的几个节点。
 const nodeEl = (id) => stage.querySelector(`svg [data-node="${CSS.escape(id)}"]`);
 const rounded = (n, digits) => Number(n.toFixed(digits));
 /** 批注指着的箭头在图 d 的 edges 里现在的下标；-1：已经不在图上。 */
@@ -525,13 +549,13 @@ function anchorAt(e) {
       const p = path.getPointAtLength(length * i / 64).matrixTransform(ctm), far = Math.hypot(p.x - e.clientX, p.y - e.clientY);
       if (far < nearest) { nearest = far; along = i / 64; }
     }
-    return { kind: "edge", diagram: current.id, source: model.source, target: model.target, ordinal, along: rounded(along, 3) };
+    return { kind: "edge", diagram: current.id, source: model.source, target: model.target, ordinal, along: rounded(along, 3), at: pointOf(e), rev: model.rev };
   }
   const id = hit?.closest("[data-header]")?.dataset.header ?? hit?.closest("[data-node]")?.dataset.node ?? hit?.closest(".drill")?.dataset.of;
   const el = id !== undefined && current.items[id] ? nodeEl(id) : null;
   if (el) {
-    const b = el.getBoundingClientRect();
-    return { kind: "node", diagram: current.id, node: id, dx: rounded((e.clientX - b.left) / b.width, 3), dy: rounded((e.clientY - b.top) / b.height, 3) };
+    const b = el.getBoundingClientRect(), clamp = (n) => rounded(Math.min(1, Math.max(0, n)), 3);
+    return { kind: "node", diagram: current.id, node: id, dx: clamp((e.clientX - b.left) / b.width), dy: clamp((e.clientY - b.top) / b.height), at: pointOf(e), rev: current.items[id].rev };
   }
   const ranked = [...svg.querySelectorAll("[data-node]:not([data-frame])")].filter((n) => current.items[n.dataset.node]).map((n) => {
     const b = n.getBoundingClientRect();
@@ -539,56 +563,87 @@ function anchorAt(e) {
   }).sort((a, b) => a.far - b.far);
   const near = [];
   for (const n of ranked) if (near.length < 3 && !near.includes(n.id)) near.push(n.id);
-  const box = svg.getBoundingClientRect(), scale = box.width / current.width;
-  return { kind: "point", diagram: current.id, x: rounded((e.clientX - box.left) / scale, 1), y: rounded((e.clientY - box.top) / scale, 1), near };
+  return { kind: "point", diagram: current.id, at: pointOf(e), near };
 }
-/** 一个落点在当前图上的位置（图的坐标）；null：它指着的节点或箭头已经不在这张图上。 */
+/** 指针在当前图上的坐标。 */
+function pointOf(e) {
+  const box = stage.querySelector("svg").getBoundingClientRect(), scale = box.width / current.width;
+  return { x: rounded((e.clientX - box.left) / scale, 1), y: rounded((e.clientY - box.top) / scale, 1) };
+}
+/** 落点指着的元素现在怎样：fresh 还在，stale 落下之后改过，orphan 已经不在这张图上。落在空白处的总是 fresh。 */
+function standing(d, a) {
+  if (a.kind === "point") return "fresh";
+  const now = a.kind === "node" ? d.items[a.node] : d.edges[edgeIndex(d, a)];
+  return !now ? "orphan" : now.rev === a.rev ? "fresh" : "stale";
+}
+/** 一个落点在当前图上的位置（图的坐标）：元素还在就跟着元素，没了退回落下时的位置；null：没有位置可退（agent 按 id 落的）。 */
 function spot(a) {
-  if (a.kind === "point") return { x: a.x, y: a.y };
+  if (a.kind === "point") return a.at;
   const svg = stage.querySelector("svg");
-  let at;
+  let at = null;
   if (a.kind === "node") {
     const el = current.items[a.node] ? nodeEl(a.node) : null;
-    if (!el) return null;
-    const b = el.getBoundingClientRect();
-    at = { x: b.left + a.dx * b.width, y: b.top + a.dy * b.height };
+    if (el) { const b = el.getBoundingClientRect(); at = { x: b.left + a.dx * b.width, y: b.top + a.dy * b.height }; }
   } else {
     const index = edgeIndex(current, a), path = index < 0 ? null : svg.querySelector(`[data-edge="${index}"] path`);
-    if (!path) return null;
-    at = path.getPointAtLength(path.getTotalLength() * a.along).matrixTransform(path.getScreenCTM());
+    if (path) at = path.getPointAtLength(path.getTotalLength() * a.along).matrixTransform(path.getScreenCTM());
   }
+  if (!at) return a.at;
   const box = svg.getBoundingClientRect(), scale = box.width / current.width;
   return { x: (at.x - box.left) / scale, y: (at.y - box.top) / scale };
 }
-/** 落点用一句话说是哪里：给气泡的标题与全部批注的索引。 */
+/** 落点用一句话说是哪里：给气泡与全部批注的索引。 */
 function anchorLabel(a) {
   const d = site.diagrams.find((x) => x.id === a.diagram);
   if (!d) return `${a.diagram}（现在的设计里没有这张图）`;
   const name = (id) => d.items[id]?.title ?? id;
   if (a.kind === "point") return `${d.title} › 空白处${a.near.length ? `，靠近 ${a.near.map(name).join("、")}` : ""}`;
-  if (a.kind === "node") return `${d.title} › ${name(a.node)}${d.items[a.node] ? "" : "（已经不在图上）"}`;
-  return `${d.title} › ${name(a.source)} → ${name(a.target)}${edgeIndex(d, a) >= 0 ? "" : "（已经不在图上）"}`;
+  return `${d.title} › ${a.kind === "node" ? name(a.node) : `${name(a.source)} → ${name(a.target)}`}`;
 }
-/** 一条未解决的批注在等谁：最后一句是使用者说的，就在等 agent。 */
-const waitsOnAgent = (t) => t.messages[t.messages.length - 1].author === "human";
+/** 还在的话；话全删了的批注哪里都不再显示。 */
+const spoken = (t) => t.messages.filter((m) => m.content.kind === "text");
+/** 一条批注在等谁：已解决或者话全删了不等谁；否则最后一句还在的话是使用者说的，就在等 agent。 */
+function waitingOn(t) {
+  const last = spoken(t).at(-1);
+  return t.status === "resolved" || !last ? null : last.author === "human" ? "agent" : "human";
+}
 function when(at) {
   const d = new Date(at), two = (n) => String(n).padStart(2, "0");
   return `${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}`;
 }
-/** 一条批注的对话、回复框与解决按钮；link：落点写成能点过去的链接（索引里），否则只是一行字（气泡里）。 */
+const STATUS_CHIP = { agent: ["waiting", "等 Agent"], human: ["", "等你"], null: ["resolved", "已解决"] };
+const NOTICE = { stale: ["", "批注之后这里改过"], orphan: ["orphan", "批注指着的元素已经不在图上"] };
+/** 一条批注：头部（编号、在等谁、解决或重新打开）、元素后来的变化、落点、对话、回复框。link：落点写成能点过去的链接（索引里）。 */
 function threadHtml(t, link) {
-  const open = t.status === "open", where = esc(anchorLabel(t.anchor));
-  let html = `<div class="thread ${open ? (waitsOnAgent(t) ? "" : "answered") : "resolved"}"><div class="head"><span>${esc(t.id)}</span><span>${open ? (waitsOnAgent(t) ? "等 agent 回复" : "agent 已回复") : "已解决"}</span></div>`;
+  const waiting = waitingOn(t), [chipClass, chip] = STATUS_CHIP[waiting], d = site.diagrams.find((x) => x.id === t.anchor.diagram);
+  const state = d ? standing(d, t.anchor) : "orphan", where = esc(anchorLabel(t.anchor));
+  let html = `<div class="thread ${waiting === "agent" ? "" : waiting === "human" ? "answered" : "resolved"}"><div class="head"><span>${esc(t.id)}</span><span class="chip ${chipClass}">${chip}</span>`;
+  html += t.status === "open" ? `<button class="icon" data-status="${esc(t.id)}" data-to="resolved" title="标为已解决">✓</button>` : `<button class="icon" data-status="${esc(t.id)}" data-to="open" title="重新打开">↺</button>`;
+  if (!link) html += `<button class="icon" data-pop-close title="关闭 (Esc)">✕</button>`;
+  html += `</div>`;
+  if (state !== "fresh") html += `<div class="notice ${NOTICE[state][0]}">${NOTICE[state][1]}</div>`;
   html += link ? `<a class="where" data-open-thread="${esc(t.id)}">${where}</a>` : `<div class="where">${where}</div>`;
-  for (const m of t.messages) html += `<div class="msg ${m.author}"><b>${m.author === "human" ? "你" : "Agent"}</b><time>${when(m.at)}</time><div class="text">${esc(m.text)}</div></div>`;
-  html += `<textarea data-draft="reply|${esc(t.id)}" rows="1" placeholder="回复…">${esc(drafts.get(`reply|${t.id}`) ?? "")}</textarea>`;
-  return html + `<div class="actions"><button data-send="reply|${esc(t.id)}">回复</button><button data-status="${esc(t.id)}" data-to="${open ? "resolved" : "open"}">${open ? "标为已解决" : "重新打开"}</button></div></div>`;
+  for (const m of t.messages) {
+    const mine = m.author === "human" && m.content.kind === "text", key = `edit|${t.id}|${m.id}`;
+    html += `<div class="msg ${m.author}${m.content.kind === "deleted" ? " gone" : ""}"><b>${m.author === "human" ? "你" : "Agent"}</b><time>${when(m.at)}</time>`;
+    if (m.content.kind === "text" && m.content.editedAt) html += `<span class="edited">（已编辑）</span>`;
+    if (mine && !(editing?.thread === t.id && editing.message === m.id)) html += `<span class="ops"><button data-edit="${esc(t.id)}|${esc(m.id)}">编辑</button><button data-delete="${esc(t.id)}|${esc(m.id)}">删除</button></span>`;
+    if (m.content.kind === "deleted") html += `<div class="text">（已删除）</div>`;
+    else if (editing?.thread === t.id && editing.message === m.id) html += composer(key, "", "保存 (⌘↵)");
+    else html += `<div class="text">${esc(m.content.text)}</div>`;
+    html += `</div>`;
+  }
+  return html + composer(`reply|${t.id}`, "回复…", "发送 (⌘↵)", true) + `</div>`;
+}
+/** 输入框加圆形发送键；⌘ 或 Ctrl + Enter 也发出，Esc 放弃。 */
+function composer(key, placeholder, title, bare = false) {
+  return `<div class="composer${bare ? " bare" : ""}"><textarea data-draft="${esc(key)}" rows="1" placeholder="${esc(placeholder)}">${esc(drafts.get(key) ?? "")}</textarea><button class="send" data-send="${esc(key)}" title="${esc(title)}">↑</button></div>`;
 }
 /** 右栏的全部批注：当前这张图的排在前面，点落点跳到图上那枚图钉。 */
 function listHtml() {
-  const listed = [...threads].sort((a, b) => (b.anchor.diagram === current.id) - (a.anchor.diagram === current.id));
+  const listed = threads.filter((t) => spoken(t).length).sort((a, b) => (b.anchor.diagram === current.id) - (a.anchor.diagram === current.id));
   const open = listed.filter((t) => t.status === "open"), resolved = listed.filter((t) => t.status === "resolved");
-  let html = `<div class="threads"><h3>全部批注</h3><p class="how">按 C 打开批注工具，再点图上任意位置：节点、箭头或空白处都可以。</p>`;
+  let html = `<div class="threads"><h3>全部批注</h3><p class="how">按 C 打开批注工具再点图上任意位置，或者直接在那里右键：节点、箭头或空白处都可以。</p>`;
   for (const t of open) html += threadHtml(t, true);
   if (resolved.length) {
     html += `<label class="resolved-toggle"><input type="checkbox" id="showResolved"${showResolved ? " checked" : ""}> 已解决 ${resolved.length} 条</label>`;
@@ -604,6 +659,10 @@ function pop(next) {
   renderPins();
   if (popped?.kind === "new") $("pop").querySelector("textarea").focus();
 }
+/** 在指针处开一个新批注的输入框。 */
+function compose(e) {
+  pop({ kind: "new", anchor: anchorAt(e) });
+}
 /** 按 popped 画气泡；它的落点不在当前这张图上（换了图，或指着的元素没了）时收起。 */
 function renderPop() {
   const box = $("pop"), thread = popped?.kind === "thread" ? threads.find((t) => t.id === popped.id) : null;
@@ -611,30 +670,35 @@ function renderPop() {
   popAt = anchor && anchor.diagram === current.id ? spot(anchor) : null;
   if (!popAt) { popped = null; box.style.display = "none"; box.innerHTML = ""; return; }
   refill(box, popped.kind === "new"
-    ? `<div class="where">${esc(anchorLabel(anchor))}</div><textarea data-draft="new" rows="3" placeholder="这里哪里不对，或者缺什么？">${esc(drafts.get("new") ?? "")}</textarea><div class="actions"><button data-send="new">批注</button><button data-pop-close>取消</button><span class="keys">⌘ 或 Ctrl + Enter</span></div>`
-    : `<button class="close" data-pop-close>✕</button>${threadHtml(thread, false)}`);
+    ? `<div class="where">${esc(anchorLabel(anchor))}</div>${composer("new", "添加批注…", "批注 (⌘↵)")}`
+    : threadHtml(thread, false));
   box.style.display = "block";
   placePop();
 }
-/** 气泡跟着平移缩放走：默认开在图钉右侧，右边放不下就开在左侧，上下贴着画布边缘收住。 */
+/** 气泡跟着平移缩放走：新批注的输入框开在落点右下，已有批注开在图钉右侧；右边放不下就开在左侧，上下贴着画布边缘收住。 */
 function placePop() {
   if (!popped || !popAt || !current) return;
   const box = $("pop"), v = viewOf(current), r = canvas.getBoundingClientRect(), x = v.x + popAt.x * v.scale, y = v.y + popAt.y * v.scale;
-  box.style.left = `${Math.max(8, x + 38 + box.offsetWidth > r.width - 8 ? x - 10 - box.offsetWidth : x + 38)}px`;
-  box.style.top = `${Math.max(8, Math.min(y - 30, r.height - box.offsetHeight - 8))}px`;
+  const right = popped.kind === "new" ? x + 18 : x + 38, left = x - 10 - box.offsetWidth;
+  box.style.left = `${Math.max(8, right + box.offsetWidth > r.width - 8 ? left : right)}px`;
+  box.style.top = `${Math.max(8, Math.min(popped.kind === "new" ? y + 18 : y - 30, r.height - box.offsetHeight - 8))}px`;
 }
-/** 当前图上每条未解决的批注一枚图钉，写着它的编号：橙色在等 agent，蓝色是 agent 已回复；还没发出的那条是一枚加号。 */
+/**
+ * 当前图上每条未解决的批注一枚图钉，写着它的编号：橙色在等 agent，蓝色是 agent 回过了，白底蓝字是 agent 落下来问你的；
+ * 元素后来改了右上角带个点，元素没了变灰。已解决的只在打开着时显示。
+ */
 function renderPins() {
   const layer = $("pins");
   if (!layer || !current) return;
-  const pin = (at, kind, id, label, title) => `<button class="pin ${kind}" data-pin="${esc(id)}" data-x="${at.x}" data-y="${at.y}" title="${esc(title)}">${esc(label)}</button>`;
   let html = "";
   for (const t of threads) {
-    const active = popped?.kind === "thread" && popped.id === t.id;
-    const at = t.anchor.diagram === current.id && (t.status === "open" || active) ? spot(t.anchor) : null;
-    if (at) html += pin(at, `${t.status === "resolved" ? "resolved" : waitsOnAgent(t) ? "waiting" : "answered"}${active ? " active" : ""}`, t.id, t.id.slice(1), t.messages[0].text);
+    const said = spoken(t), active = popped?.kind === "thread" && popped.id === t.id;
+    const at = said.length && t.anchor.diagram === current.id && (t.status === "open" || active) ? spot(t.anchor) : null;
+    if (!at) continue;
+    const waiting = waitingOn(t), state = standing(current, t.anchor);
+    const kind = [waiting === null ? "resolved" : waiting === "agent" ? "waiting" : said[0].author === "agent" && said.length === 1 ? "asked" : "answered", state === "fresh" ? "" : state, active ? "active" : ""].join(" ");
+    html += `<button class="pin ${kind}" data-pin="${esc(t.id)}" data-x="${at.x}" data-y="${at.y}" title="${esc(said[0].content.text)}">${esc(t.id.slice(1))}</button>`;
   }
-  if (popped?.kind === "new" && popAt) html += pin(popAt, "draft active", "", "+", "还没发出的批注");
   layer.innerHTML = html;
   placePins();
 }
@@ -657,14 +721,16 @@ function openThread(id) {
   views.set(current.id, { ...v, x: r.width / 2 - popAt.x * v.scale, y: r.height / 2 - popAt.y * v.scale });
   apply();
 }
-/** 发出一个输入框里的字：新批注落在气泡指着的落点，回复落在那条批注下面。 */
+/** 发出一个输入框里的字：新批注落在气泡指着的落点；回复落在那条批注下面；编辑换掉那句话。 */
 async function send(key) {
   const text = (drafts.get(key) ?? "").trim();
   if (!text) return;
-  if (key !== "new") return post({ kind: "reply", thread: key.slice(6), author: "human", text }, () => drafts.delete(key));
+  const [verb, thread, message] = key.split("|");
+  if (verb === "reply") return post({ kind: "reply", thread, author: "human", text }, () => drafts.delete(key));
+  if (verb === "edit") return post({ kind: "edit", thread, message, author: "human", text }, () => { drafts.delete(key); editing = null; });
   if (popped?.kind !== "new") return;
-  // 发出之后气泡换成刚落下的这一条。
-  return post({ kind: "open", anchor: popped.anchor, author: "human", text }, (next) => { drafts.delete(key); popped = { kind: "thread", id: next[next.length - 1].id }; });
+  // 发出之后收起输入框、关掉批注工具，图上多一枚图钉。
+  return post({ kind: "open", anchor: popped.anchor, author: "human", text }, () => { drafts.delete(key); popped = null; setCommenting(false); });
 }
 /** 把一次改动交给 ssot serve；成功后先执行 done 再按返回的批注重画。 */
 async function post(change, done = () => {}) {
@@ -681,22 +747,36 @@ async function post(change, done = () => {}) {
 }
 function setThreads(next) {
   threads = next;
-  const open = threads.filter((t) => t.status === "open");
+  const open = threads.filter((t) => t.status === "open" && spoken(t).length);
   $("threadCount").textContent = open.length;
-  $("threadsToggle").classList.toggle("waiting", open.some(waitsOnAgent));
+  $("threadsToggle").classList.toggle("waiting", open.some((t) => waitingOn(t) === "agent"));
   renderPop();
   renderPins();
   renderLists($("search").value);
   renderDetails();
 }
 async function loadThreads() { setThreads((await (await fetch("/api/threads")).json()).threads); }
-/** 气泡与右栏里的批注共用的点击：发出、改状态、跳到图钉。处理了返回 true。 */
+/** 气泡与右栏里的批注共用的点击：发出、改状态、改或删自己的话、跳到图钉。处理了返回 true。 */
 function threadClick(e) {
   const send_ = e.target.closest("[data-send]"), status = e.target.closest("[data-status]"), open = e.target.closest("[data-open-thread]");
+  const edit = e.target.closest("[data-edit]"), remove = e.target.closest("[data-delete]");
   if (send_) send(send_.dataset.send);
-  else if (status) post({ kind: "status", thread: status.dataset.status, status: status.dataset.to });
+  else if (status) post({ kind: "status", thread: status.dataset.status, status: status.dataset.to, author: "human" });
   else if (open) openThread(open.dataset.openThread);
-  return Boolean(send_ || status || open);
+  else if (edit) {
+    const [thread, message] = edit.dataset.edit.split("|"), m = threads.find((t) => t.id === thread)?.messages.find((x) => x.id === message);
+    editing = { thread, message };
+    drafts.set(`edit|${thread}|${message}`, m.content.text);
+    renderPop();
+    renderDetails();
+    const box = document.querySelector(`[data-draft="${CSS.escape(`edit|${thread}|${message}`)}"]`);
+    box?.focus();
+    box?.setSelectionRange(box.value.length, box.value.length);
+  } else if (remove) {
+    const [thread, message] = remove.dataset.delete.split("|");
+    post({ kind: "delete", thread, message, author: "human" });
+  }
+  return Boolean(send_ || status || open || edit || remove);
 }
 $("pop").addEventListener("click", (e) => { if (e.target.closest("[data-pop-close]")) pop(null); else threadClick(e); });
 for (const box of [details, $("pop")]) {
@@ -705,7 +785,13 @@ for (const box of [details, $("pop")]) {
     const key = e.target.dataset.draft;
     if (!key) return;
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(key); }
-    else if (e.key === "Escape") { if (box === details) e.target.blur(); else pop(null); }
+    else if (e.key === "Escape") {
+      e.stopPropagation();
+      // 改到一半放弃：恢复原样；否则输入框失焦，气泡里的输入框连气泡一起收起。
+      if (key.startsWith("edit|")) { drafts.delete(key); editing = null; renderPop(); renderDetails(); }
+      else if (box === details) e.target.blur();
+      else pop(null);
+    }
   });
 }
 function setCommenting(on) {

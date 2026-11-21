@@ -12,7 +12,8 @@ function applied(threads: readonly Thread[], raw: unknown, at: string): readonly
 }
 
 export function verifyReview(): number {
-  const edge = { kind: "edge", diagram: "index", source: "shop", target: "pay", ordinal: 1 };
+  const edge = { kind: "edge", diagram: "index", source: "shop", target: "pay", ordinal: 1, along: 0.4 };
+  const blank = { kind: "point", diagram: "index", x: 320.5, y: 88, near: ["shop", "pay"] };
 
   // 1. 使用者新开一条：编号从 t1 起，未解决，等 agent；正文去掉首尾空白
   let threads = applied([], { kind: "open", anchor: edge, author: "human", text: "  方向反了\n" }, "2026-11-22T00:00:00.000Z");
@@ -33,21 +34,28 @@ export function verifyReview(): number {
   assert.deepEqual(threads[0]!.messages.map((m) => m.author), ["human", "agent", "human"]);
 
   // 4. 第二条批注的编号接着排，不与第一条相撞
-  threads = applied(threads, { kind: "open", anchor: { kind: "diagram", diagram: "index" }, author: "human", text: "缺一个系统" }, "2026-11-22T00:04:00.000Z");
+  threads = applied(threads, { kind: "open", anchor: blank, author: "human", text: "这里缺一个系统" }, "2026-11-22T00:04:00.000Z");
   assert.deepEqual(threads.map((t) => t.id), ["t1", "t2"]);
+  assert.deepEqual(threads[1]!.anchor, blank);
+  threads = applied(threads, { kind: "open", anchor: { kind: "node", diagram: "index", node: "shop", dx: 0.9, dy: 0.1 }, author: "human", text: "职责太宽" }, "2026-11-22T00:04:30.000Z");
 
   // 5. 对不存在的批注回复或改状态：报出那个编号，不改任何批注
   assert.deepEqual(applyChange(threads, { kind: "reply", thread: "t9", author: "agent", text: "x" }, "2026-11-22T00:05:00.000Z"), { kind: "unknown-thread", thread: "t9" });
   assert.deepEqual(applyChange(threads, { kind: "status", thread: "t9", status: "resolved" }, "2026-11-22T00:05:00.000Z"), { kind: "unknown-thread", thread: "t9" });
 
-  // 6. 不合格式的请求体一律拒绝：空白正文、未知作者、未知状态、箭头序号不是非负整数、指向里缺字段、未知改动
+  // 6. 不合格式的请求体一律拒绝：空白正文、未知作者、未知状态、箭头序号不是非负整数、沿线位置出了线、落点缺坐标或不是数、邻近节点不是名字、未知的落点与改动
   for (const bad of [
     { kind: "open", anchor: edge, author: "human", text: "   " },
     { kind: "open", anchor: edge, author: "reviewer", text: "x" },
     { kind: "status", thread: "t1", status: "closed" },
     { kind: "open", anchor: { ...edge, ordinal: -1 }, author: "human", text: "x" },
     { kind: "open", anchor: { ...edge, ordinal: 0.5 }, author: "human", text: "x" },
-    { kind: "open", anchor: { kind: "node", diagram: "index" }, author: "human", text: "x" },
+    { kind: "open", anchor: { ...edge, along: 1.2 }, author: "human", text: "x" },
+    { kind: "open", anchor: { kind: "node", diagram: "index", node: "shop" }, author: "human", text: "x" },
+    { kind: "open", anchor: { ...blank, x: "320" }, author: "human", text: "x" },
+    { kind: "open", anchor: { ...blank, y: Number.NaN }, author: "human", text: "x" },
+    { kind: "open", anchor: { ...blank, near: ["shop", 3] }, author: "human", text: "x" },
+    { kind: "open", anchor: { kind: "diagram", diagram: "index" }, author: "human", text: "x" },
     { kind: "delete", thread: "t1" },
     null,
     "open",

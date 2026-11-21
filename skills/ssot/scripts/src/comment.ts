@@ -42,7 +42,8 @@ function where(anchor: Anchor, diagrams: readonly Outline[]): string[] {
   const lines = [`  图：${anchor.diagram}${diagram ? `「${diagram.title}」` : "（现在的设计里没有这张图）"}`];
   const title = (id: string): string => (diagram?.items[id] ? `${id}「${diagram.items[id].title}」` : id);
   switch (anchor.kind) {
-    case "diagram":
+    case "point":
+      lines.push(`  空白处：坐标 (${Math.round(anchor.x)}, ${Math.round(anchor.y)})；${anchor.near.length > 0 ? `最近的节点由近到远：${anchor.near.map(title).join("、")}` : "附近没有节点"}`);
       break;
     case "node": {
       const item = diagram?.items[anchor.node];

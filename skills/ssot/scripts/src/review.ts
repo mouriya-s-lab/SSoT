@@ -1,4 +1,4 @@
-// 批注：使用者在 ssot serve 的页面上对一张图、图上的一个节点或一条箭头留下的话，agent 经 ssot comment 读取并回复。
+// 批注：使用者在 ssot serve 的页面上点图上任意一处留下的话，agent 经 ssot comment 读取并回复。
 // 批注是使用者对会话说的话，不是设计的一部分：存在安装目录下，不写进设计目录。ssot serve 进程是它唯一的写入者。
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -7,11 +7,14 @@ import { assertNever } from "./diag";
 import { asRecord } from "./guard";
 import { DATA } from "./install";
 
-/** 批注指向哪里。节点用图上的节点 id；箭头用两端的节点 id 加它在同一对端点之间的序号（从 0 起）。 */
+/** 批注落在图上哪里。落在节点或箭头上的跟着那个元素走，重画后布局变了也指着同一处；落在空白处的记图上的坐标。 */
 export type Anchor =
-  | { readonly kind: "diagram"; readonly diagram: string }
-  | { readonly kind: "node"; readonly diagram: string; readonly node: string }
-  | { readonly kind: "edge"; readonly diagram: string; readonly source: string; readonly target: string; readonly ordinal: number };
+  /** 节点用图上的节点 id；dx、dy 是落点在节点外框里的相对位置（左上角 0，右下角 1）。 */
+  | { readonly kind: "node"; readonly diagram: string; readonly node: string; readonly dx: number; readonly dy: number }
+  /** 箭头用两端的节点 id 加它在同一对端点之间的序号（从 0 起）；along 是落点沿线的相对位置（起点 0，终点 1）。 */
+  | { readonly kind: "edge"; readonly diagram: string; readonly source: string; readonly target: string; readonly ordinal: number; readonly along: number }
+  /** x、y 是图的坐标；near 是落下时离落点最近的几个节点 id，由近到远，让读批注的一方知道它在哪一带。 */
+  | { readonly kind: "point"; readonly diagram: string; readonly x: number; readonly y: number; readonly near: readonly string[] };
 
 export type Author = "human" | "agent";
 export type ThreadStatus = "open" | "resolved";
@@ -44,6 +47,7 @@ export type ChangeResult =
 const name = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
 const body = (v: unknown): string | null => (typeof v === "string" && v.trim().length > 0 ? v.trim() : null);
 const author = (v: unknown): Author | null => (v === "human" || v === "agent" ? v : null);
+const finite = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
 export function parseAnchor(raw: unknown): Anchor | null {
   const v = asRecord(raw);
@@ -51,16 +55,25 @@ export function parseAnchor(raw: unknown): Anchor | null {
   const diagram = name(v.diagram);
   if (diagram === null) return null;
   switch (v.kind) {
-    case "diagram":
-      return { kind: "diagram", diagram };
     case "node": {
-      const node = name(v.node);
-      return node === null ? null : { kind: "node", diagram, node };
+      const node = name(v.node), dx = finite(v.dx), dy = finite(v.dy);
+      return node === null || dx === null || dy === null ? null : { kind: "node", diagram, node, dx, dy };
     }
     case "edge": {
-      const source = name(v.source), target = name(v.target), ordinal = v.ordinal;
-      if (source === null || target === null || typeof ordinal !== "number" || !Number.isInteger(ordinal) || ordinal < 0) return null;
-      return { kind: "edge", diagram, source, target, ordinal };
+      const source = name(v.source), target = name(v.target), ordinal = v.ordinal, along = finite(v.along);
+      if (source === null || target === null || typeof ordinal !== "number" || !Number.isInteger(ordinal) || ordinal < 0 || along === null || along < 0 || along > 1) return null;
+      return { kind: "edge", diagram, source, target, ordinal, along };
+    }
+    case "point": {
+      const x = finite(v.x), y = finite(v.y);
+      if (x === null || y === null || !Array.isArray(v.near)) return null;
+      const near: string[] = [];
+      for (const item of v.near) {
+        const id = name(item);
+        if (id === null) return null;
+        near.push(id);
+      }
+      return { kind: "point", diagram, x, y, near };
     }
     default:
       return null;

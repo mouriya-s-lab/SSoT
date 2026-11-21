@@ -110,7 +110,8 @@ skill 之间不互相调用：写作 skill 不派评审，也不自己接着做�
 - 日常开发落地了代码、改动了某个模块或处理了故障，要补充进 SSoT：`ssot-iterate`。
 - 把整座存量项目或旧设计迁入 SSoT：`ssot-migrate`（先立全局 C4 基线并结合全仓 commit/issue 热点筛掉常规 CRUD 区域，再对重点热点区域逐个接 `ssot-iterate`）。
 - 用户要求评审某个切片：对应的 verify skill。
-- 用户在 `ssot serve` 的页面上留了批注：运行 `ssot comment <design>` 读出。一条批注是用户对图上那个位置说的话，按它说的内容从上面几项里选起点；处理之后用 `reply` 写明改了什么，或为什么不改。`resolve` 只在用户说这一条已经解决时用，否则留给用户在页面上标。
+- 给用户开了 `ssot serve`：同时在一个输出会唤醒你的后台终端里运行 `ssot comment <design> watch`（omp 里用 `exec_command` 起它再挂 `monitor`，条件 `^ssot 批注`），用户在页面上每落一条批注、回复、改或删一句话、标为已解决或重新打开，它打一行，带批注号、落点、原话和回复命令；你自己的回复与批注不会唤醒你。不再看页面时结束这个终端。
+- 被一行批注唤醒，或用户说页面上有批注：运行 `ssot comment <design>` 读全。一条批注是用户对图上那个位置说的话，按它说的内容从上面几项里选起点；处理之后用 `reply` 写明改了什么，或为什么不改。`resolve` 只在用户说这一条已经解决时用，否则留给用户在页面上标。要问用户某个元素的事，用 `add` 把问题落在图上那个节点或箭头上。
 - 不确定已写下的东西是否一致：运行 `ssot status <design>`。它只报两类事实：已写下内容里的 error（交给拥有那个切片的写作 skill，先 LikeC4，再 VDM，再 Quint），以及带 `#contract` 却还没有模块的元素（这个标签是已经做出的深入选择，模块缺了说明这次深入没做完；`check` 把它报成 `contract.module` 的 error，`status` 排在其余 error 之后单独报）。“没有前沿”不说明需求已经兑现，也不说明该往下写什么。
 
 **越界提示。** 写作 skill 开始时运行 `git rev-parse HEAD` 记下开始时的提交；交付前运行 `ssot check <design> --scope <本切片的视图> --base <开始时的提交>`。它列出落在本切片之外的改动并提示应交给谁；列出的改动不是本切片可改的，撤回它，写进交付。
@@ -140,10 +141,12 @@ Quint 接线（手写）──回放──▶ 只回放轨迹里出现的契约�
 | `ssot check <design>` | 全量检查：编译三种载体、生成链新鲜度、跨载体规则、模拟、覆盖目标、回放、证明义务 |
 | `ssot check <design> --scope <视图 id>` | 仍编译全部内容，模拟、回放、QuickCheck 只在该视图的切片闭包内运行，只报告归属于该视图节点的诊断 |
 | `ssot check <design> --scope <视图 id> --base <rev>` | 另列出 `<rev>` 之后落在该作用域之外的改动 |
-| `ssot serve <design> [--port N]` | 在本地网页（默认端口 5180）上交互浏览 `ssot render` 的同一批图，侧栏按上下级排成树（整栏与每个分支都可以收起），点图上的下钻标注打开下一层，设计文件改动后自动重画；用户可以在图上任意位置留批注（节点上、箭头上或空白处），批注以图钉叠在图上；给人看设计用，评审仍以 `ssot render` 导出的 PNG 为准 |
-| `ssot comment <design> [--all] [--port N]` | 列出用户在 `ssot serve` 页面上留的未解决批注：编号、落在哪张图的哪个节点、哪条箭头或哪片空白处（空白处给出图的坐标与最近的几个节点）、双方说过的话、在等谁回复；`--all` 连已解决的一起列。该设计的 `ssot serve` 要正在这个端口上运行 |
+| `ssot serve <design> [--port N]` | 在本地网页（默认端口 5180）上交互浏览 `ssot render` 的同一批图，侧栏按上下级排成树（整栏与每个分支都可以收起），点图上的下钻标注打开下一层，设计文件改动后自动重画；用户按 `C` 或右键在图上任意位置留批注（节点上、箭头上或空白处），批注以图钉叠在图上，指着的元素后来改过或已不在图上时图钉标出；给人看设计用，评审仍以 `ssot render` 导出的 PNG 为准 |
+| `ssot comment <design> [--all] [--port N]` | 列出用户在 `ssot serve` 页面上留的未解决批注：编号、落在哪张图的哪个节点、哪条箭头或哪片空白处（空白处给出图的坐标与最近的几个节点）、指着的元素落下之后改过或已不在图上、每句话（含已编辑、已删除）、在等谁回复；`--all` 连已解决的一起列。以下各条都要该设计的 `ssot serve` 正在这个端口上运行 |
+| `ssot comment <design> watch [--port N]` | 一直运行：连上时已有等 agent 回复的批注先打一行，之后用户在页面上的每个动作打一行；agent 的动作不打。`ssot serve` 重启时自动重连，断开期间的动作不漏 |
 | `ssot comment <design> reply <批注号> [--text <话>] [--port N]` | 在一条批注下面回复，页面上随即显示；不给 `--text` 时从标准输入读 |
 | `ssot comment <design> resolve <批注号> [--port N]` | 把一条批注标为已解决 |
+| `ssot comment <design> add --diagram <图 id> (--node <节点 id> \| --edge <起点>-><终点>[#n] \| --x X --y Y) [--text <话>] [--port N]` | agent 自己在图上落一条批注问用户；`#n` 指这两端之间的第 n 条箭头 |
 | `ssot render <design> [--out <目录>]` | 导出渲染图并按顺序列出 `<路径>\t<id>`：C4 视图（`index` → 逐层下钻 → 部署视图）、契约分层图（id `layers`，只在有契约模块时）、每个契约模块依次是盒子图（id `box:<模块名>`）和它下面一层的承诺图（id `promises:<模块名>`）、类型图（id `types:<模块名>`）与读写表（id `access:<模块名>`，只在模块有 `state` 时）、接线索引（id `wirings`，只在有可运行 Quint 模块时）、每个可运行 Quint 模块依次是组合图（id `composition:<模块名>`）和它下面一层的性质图（id `properties:<模块名>`） |
 | `ssot eval <design> <模块> '<表达式>' [--bind …]` | 在原样规格里求一个 VDM 表达式，用来构造违反实例 |
 | `ssot status <design> [--deadline 秒]` | 运行一次全量 `check`，报一项第五节所说的事实 `{skill, scope, reason}`；都没有时输出“没有前沿”；没有 error 而 `check` 被截止打断时报“验证没有做完”，以 `3` 退出 |

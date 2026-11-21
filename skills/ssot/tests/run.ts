@@ -20,6 +20,7 @@ import { mutations as structure, verifyStructureProjections } from "./cases/stru
 import { verifyRenderProjections } from "./cases/render";
 import { verifyEvalCommand } from "./cases/eval";
 import { verifyHotspotsCommand } from "./cases/hotspots";
+import { verifyReview } from "./cases/review";
 
 const HERE = import.meta.dir;
 const SSOT = join(HERE, "..", "scripts", "ssot.ts");
@@ -123,6 +124,13 @@ const tasks: { readonly id: string; readonly run: () => Promise<Outcome> }[] = [
     run: async (): Promise<Outcome> => {
       const checks = await verifyHotspotsCommand();
       return { id: "hotspots-analysis", expect: "-", ok: true, line: `${checks} 项热点文件、协同改动、commit 与 issue 反推断言通过` };
+    },
+  },
+  {
+    id: "review-threads",
+    run: async (): Promise<Outcome> => {
+      const checks = verifyReview();
+      return { id: "review-threads", expect: "-", ok: true, line: `${checks} 项批注的开、回复、解决、请求体解析与落盘断言通过` };
     },
   },
   {

@@ -5,7 +5,8 @@
 //   ssot check  <design> [--scope <视图 id> [--base <rev>]] [--samples N] [--steps K] [--seed S] [--deadline 秒]
 //   ssot render <design> [--out <dir>]
 //   ssot serve  <design> [--port N]
-//   ssot comment <design> [--all] | reply <批注号> [--text <话>] | resolve <批注号>   [--port N]
+//   ssot comment <design> [--all] | watch | reply <批注号> [--text <话>] | resolve <批注号>
+//                | add --diagram <图 id> (--node <节点 id> | --edge <起点>-><终点>[#n] | --x X --y Y) [--text <话>]   [--port N]
 //   ssot eval     <design> <模块> <表达式> [--bind ...]
 //   ssot status   <design>
 //   ssot hotspots <路径> [--top N] [--since <日期>]
@@ -35,7 +36,7 @@ import { setup } from "./src/setup";
 import { deriveStatus } from "./src/status";
 import { render } from "./src/render";
 import { serve } from "./src/serve";
-import { comment } from "./src/comment";
+import { comment, parseCommentArgs } from "./src/comment";
 
 interface Layout {
   readonly root: string;
@@ -382,7 +383,7 @@ function option(args: string[], name: string): string | null {
 }
 
 const USAGE =
-  "用法：ssot setup | gen <design> | check <design> [--scope <视图 id> [--base <rev>]] [--samples N] [--steps K] [--seed S] [--deadline 秒] | render <design> [--out <dir>] | serve <design> [--port N] | comment <design> [--all | reply <批注号> [--text <话>] | resolve <批注号>] [--port N] | eval <design> <module> <expression> [--bind name=<module>:<expr>:<typeModule>:<typeName>]... | status <design> | hotspots <path> [--top N] [--since <日期>]";
+  "用法：ssot setup | gen <design> | check <design> [--scope <视图 id> [--base <rev>]] [--samples N] [--steps K] [--seed S] [--deadline 秒] | render <design> [--out <dir>] | serve <design> [--port N] | comment <design> [--all | watch | reply <批注号> [--text <话>] | resolve <批注号> | add --diagram <图 id> (--node <节点 id> | --edge <起点>-><终点>[#n] | --x X --y Y) [--text <话>]] [--port N] | eval <design> <module> <expression> [--bind name=<module>:<expr>:<typeModule>:<typeName>]... | status <design> | hotspots <path> [--top N] [--since <日期>]";
 
 async function main(argv: string[]): Promise<number> {
   const [cmd, dir, ...rest] = argv;
@@ -408,13 +409,12 @@ async function main(argv: string[]): Promise<number> {
     case "serve":
       return serve(l.root, l.structure, Number(option(rest, "--port") ?? "5180"));
     case "comment": {
-      const [action, thread] = rest, port = Number(option(rest, "--port") ?? "5180");
-      if (action === undefined || action.startsWith("--")) return comment(l.root, port, { kind: "list", all: rest.includes("--all") });
-      if (thread === undefined || thread.startsWith("--") || (action !== "reply" && action !== "resolve")) {
+      const action = parseCommentArgs(rest, (name) => option(rest, name));
+      if (action === null) {
         console.log(USAGE);
         return 2;
       }
-      return comment(l.root, port, action === "reply" ? { kind: "reply", thread, text: option(rest, "--text") } : { kind: "resolve", thread });
+      return comment(l.root, Number(option(rest, "--port") ?? "5180"), action);
     }
     case "eval":
       return evalCommand(await front(l, "none"), rest);

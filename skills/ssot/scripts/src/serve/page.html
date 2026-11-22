@@ -13,10 +13,10 @@
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: #fff; }
-  #app { display: grid; grid-template-columns: 280px 1fr auto; grid-template-rows: auto 1fr; height: 100%; }
-  #app.nav-closed { grid-template-columns: 0 1fr auto; }
+  #app { display: grid; grid-template-columns: 280px minmax(0, 1fr) auto; grid-template-rows: auto 1fr; height: 100%; }
+  #app.nav-closed { grid-template-columns: 0 minmax(0, 1fr) auto; }
   #app.nav-closed nav { display: none; }
-  header { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--line); min-height: 52px; }
+  header { grid-column: 1 / -1; min-width: 0; overflow: hidden; display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--line); min-height: 52px; }
   header button svg { display: block; }
   header .brand { font-weight: 700; letter-spacing: .02em; }
   #crumbs { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; }
@@ -70,12 +70,17 @@
   #pop { position: absolute; display: none; z-index: 6; width: 300px; max-height: calc(100% - 16px); overflow: auto; padding: 10px 12px 10px; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.18); cursor: default; }
   #pop .thread { margin: 0; padding: 0; border: 0; opacity: 1; }
   #commentTool.on { background: var(--accent); border-color: var(--accent); color: #fff; }
-  #legend { position: absolute; left: 12px; bottom: 38px; z-index: 3; max-width: calc(100% - 24px); max-height: 45%; overflow: auto; background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.08); cursor: default; }
+  #corner { position: absolute; left: 12px; right: 12px; bottom: 10px; z-index: 3; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; pointer-events: none; max-height: 50%; }
+  #legend { pointer-events: auto; max-width: 100%; min-height: 0; overflow: auto; background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.08); cursor: default; }
   #legend.none { display: none; }
   #legendBar { display: flex; align-items: center; gap: 6px; width: 100%; padding: 4px 10px; border: 0; border-radius: 0; background: none; font-size: 12px; color: var(--muted); text-align: left; }
   #legend.closed #legendBody { display: none; }
-  #legendBody svg { display: block; }
-  #hint { position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: var(--muted); background: rgba(255,255,255,.85); padding: 4px 8px; border-radius: 6px; pointer-events: none; }
+  #legendBody { padding: 0 10px 6px; }
+  #legendBody .row { display: flex; flex-wrap: wrap; column-gap: 26px; row-gap: 2px; }
+  #legendBody .item { display: flex; align-items: center; min-width: 0; font: 12px/1.35 Arial, sans-serif; color: #20252b; }
+  #legendBody .item svg { display: block; flex: none; overflow: visible; }
+  #legendBody .item span { overflow-wrap: anywhere; }
+  #hint { max-width: 100%; font-size: 12px; color: var(--muted); background: rgba(255,255,255,.85); padding: 4px 8px; border-radius: 6px; }
   #tip { position: absolute; pointer-events: none; max-width: 360px; background: #1f2933; color: #fff; font-size: 12.5px; padding: 6px 9px; border-radius: 6px; display: none; z-index: 5; line-height: 1.45; }
   #tip b { color: #ffd8a8; }
   aside { grid-column: 3; width: 0; overflow: hidden; border-left: 1px solid var(--line); background: #fff; }
@@ -159,8 +164,10 @@
     <div id="problems"></div>
     <div id="tip"></div>
     <div id="pop"></div>
-    <div id="legend"><button id="legendBar" title="收起或展开图例 (L)"><span id="legendFold">▾</span>图例</button><div id="legendBody"></div></div>
-    <div id="hint">拖动平移 · 滚轮平移 / ⌘ 或 Ctrl + 滚轮缩放 · 单击看详情 · 点图上的标注或双击下钻 · 按 C 后点图上任意位置批注，或在那里右键 · B 收起侧栏 · L 收起图例 · Esc 取消</div>
+    <div id="corner">
+      <div id="legend"><button id="legendBar" title="收起或展开图例 (L)"><span id="legendFold">▾</span>图例</button><div id="legendBody"></div></div>
+      <div id="hint">拖动平移 · 滚轮平移 / ⌘ 或 Ctrl + 滚轮缩放 · 单击看详情 · 点图上的标注或双击下钻 · 按 C 后点图上任意位置批注，或在那里右键 · B 收起侧栏 · L 收起图例 · Esc 取消</div>
+    </div>
   </main>
   <aside id="details"><div class="inner"></div></aside>
 </div>
@@ -325,9 +332,7 @@ function apply() {
 }
 function fit() {
   if (!current) return;
-  // 图例浮在画布左下：适应时只用它上面那块，图不藏在图例下面。
-  const r = canvas.getBoundingClientRect(), pad = 24, legend = $("legend");
-  const height = legend.classList.contains("none") ? r.height : legend.getBoundingClientRect().top - r.top;
+  const r = canvas.getBoundingClientRect(), pad = 24, height = $("corner").getBoundingClientRect().top - r.top;
   const scale = Math.min((r.width - pad * 2) / current.width, (height - pad * 2) / current.height, 1.5);
   views.set(current.id, { scale, x: (r.width - current.width * scale) / 2, y: Math.max(pad, (height - current.height * scale) / 2) });
   apply();
@@ -378,23 +383,8 @@ $("download").onclick = () => {
 };
 window.addEventListener("resize", () => { if (current && !views.has(current.id)) fit(); });
 
-// ---------- 图例：画布之外的浮层，不随图平移缩放 ----------
-// 图例按整张图的宽度画出，右边多半是空白：按内容裁掉四周，没有内容时整块不显示。
-function trimLegend() {
-  const legend = $("legend"), svg = $("legendBody").querySelector("svg");
-  legend.classList.remove("none");
-  if (legend.classList.contains("closed")) return;
-  const box = svg?.getBBox();
-  if (!box || box.width === 0) { legend.classList.add("none"); return; }
-  const pad = 10;
-  svg.setAttribute("viewBox", `${box.x - pad} ${box.y - pad} ${box.width + pad * 2} ${box.height + pad * 2}`);
-  svg.setAttribute("width", box.width + pad * 2);
-  svg.setAttribute("height", box.height + pad * 2);
-}
 function toggleLegend() {
-  const closed = $("legend").classList.toggle("closed");
-  $("legendFold").textContent = closed ? "▸" : "▾";
-  if (!closed) trimLegend();
+  $("legendFold").textContent = $("legend").classList.toggle("closed") ? "▸" : "▾";
 }
 $("legendBar").onclick = toggleLegend;
 
@@ -405,8 +395,8 @@ function show(diagram) {
   tip.style.display = "none";
   hovered = null;
   stage.innerHTML = `${diagram.svg}<div id="pins"></div>`;
-  $("legendBody").innerHTML = diagram.legend;
-  trimLegend();
+  $("legendBody").innerHTML = diagram.legend.map((group) => `<div class="row">${group.map((e) => `<div class="item">${e.swatch}<span>${esc(e.label)}</span></div>`).join("")}</div>`).join("");
+  $("legend").classList.toggle("none", diagram.legend.length === 0);
   $("empty").style.display = "none";
   if (first) fit(); else apply();
   renderPop();

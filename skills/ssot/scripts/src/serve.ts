@@ -22,18 +22,17 @@ export interface DiagramView {
   readonly title: string;
   readonly description: string;
   readonly parent: string | null;
-  /** 画布（不含图例）的大小与 SVG；图例另放在 legend，页面把它画在画布之外。 */
   readonly width: number;
   readonly height: number;
   readonly svg: string;
-  readonly legend: string;
+  readonly legend: readonly (readonly { readonly swatch: string; readonly label: string }[])[];
   readonly items: Readonly<Record<string, SiteItem & { readonly rev: string }>>;
   readonly edges: readonly (SiteEdge & { readonly rev: string })[];
 }
 
 function viewOf(d: SiteDiagram): DiagramView {
   return {
-    id: d.id, kind: d.kind, title: d.title, description: d.description, parent: d.parent, width: d.svg.canvas.width, height: d.svg.canvas.height, svg: d.svg.canvas.svg, legend: d.svg.legend.svg,
+    id: d.id, kind: d.kind, title: d.title, description: d.description, parent: d.parent, width: d.svg.canvas.width, height: d.svg.canvas.height, svg: d.svg.canvas.svg, legend: d.svg.legend.map((group) => group.map((entry) => ({ swatch: entry.swatch.svg, label: entry.label }))),
     items: Object.fromEntries(Object.entries(d.items).map(([id, item]) => [id, { ...item, rev: itemRev(item) }])),
     edges: d.edges.map((edge) => ({ ...edge, rev: edgeRev(edge) })),
   };

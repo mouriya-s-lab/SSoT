@@ -15,11 +15,8 @@ import { type Point, type Rect, type RouteBox, type RouteRequest, routeCost, rou
 import { type NodeIcon, loadIcons, nodeIcon } from "./icon";
 
 export interface SvgPart { readonly width: number; readonly height: number; readonly svg: string }
-/**
- * 本身是图与图例合成的一整张（ssot render 导出的 PNG）；canvas 与 legend 是同一张按分隔线切开的两块，给 ssot serve：
- * 图例放在画布之外，不随图平移缩放。canvas 的坐标与整张相同，批注落点不受影响。
- */
-export interface DiagramSvg extends SvgPart { readonly canvas: SvgPart; readonly legend: SvgPart }
+export interface LegendSwatch { readonly swatch: SvgPart; readonly label: string }
+export interface DiagramSvg extends SvgPart { readonly canvas: SvgPart; readonly legend: readonly (readonly LegendSwatch[])[] }
 const INK = "#20252b", MUTED = "#59636e", BEHAVIOR = "#2a78d6", CONTRACT = "#eb6834";
 const esc = (value: string): string => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 const widthOf = (value: string): number => [...value].reduce((width, char) => width + (char.codePointAt(0)! > 255 ? 15 : 8.5), 0);
@@ -64,17 +61,35 @@ function sectionPoints(edge: ElkExtendedEdge): Point[][] {
   if (!edge.sections?.length) throw new Error(`ELK 没有布置连线 ${edge.id}`);
   return edge.sections.map((section) => [section.startPoint, ...(section.bendPoints ?? []), section.endPoint]);
 }
-/** 图例每行的高度；图例在图底，legendRows 行，最后一行的文字基线在 height - 32。 */
-const LEGEND_ROW = 28;
-function frame(title: string, subtitle: string, width: number, height: number, body: string, legend: string, legendRows = 1): DiagramSvg {
-  const w = Math.ceil(Math.max(width, 860)), h = Math.ceil(height), rule = h - 65 - (legendRows - 1) * LEGEND_ROW;
-  const open = (y: number, height: number): string => `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${height}" viewBox="0 ${y} ${w} ${height}" font-family="Arial, sans-serif" font-size="14"><defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse"><path d="M0,0 L9,4.5 L0,9 z" fill="${MUTED}"/></marker></defs>`;
+const LEGEND_ROW = 28, LEGEND_GAP = 34, LEGEND_ENTRY_HEIGHT = 26, LEGEND_ENTRY_BASE = 19;
+const svgOpen = (width: number, height: number): string => `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="Arial, sans-serif" font-size="14"><defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse"><path d="M0,0 L9,4.5 L0,9 z" fill="${MUTED}"/></marker></defs>`;
+interface LegendEntry { readonly swatch: number; readonly label: string; readonly draw: (x: number, base: number) => string }
+function legendPart(e: LegendEntry): LegendSwatch {
+  const width = Math.ceil(e.swatch) + 2;
+  return { swatch: { width, height: LEGEND_ENTRY_HEIGHT, svg: `${svgOpen(width, LEGEND_ENTRY_HEIGHT)}${e.draw(1, LEGEND_ENTRY_BASE)}</svg>` }, label: e.label };
+}
+function frame(title: string, subtitle: string, width: number, canvasHeight: number, body: string, legend: readonly (readonly LegendEntry[])[]): DiagramSvg {
+  const w = Math.ceil(Math.max(width, 860)), rule = Math.ceil(canvasHeight), groups = legend.filter((g) => g.length > 0);
+  const placed: { readonly entry: LegendEntry; readonly x: number; readonly row: number }[] = [];
+  let row = -1;
+  for (const group of groups) {
+    let x = 28;
+    row++;
+    for (const entry of group) {
+      const span = entry.swatch + sizedWidth(entry.label, 12);
+      if (x > 28 && x + span > w - 28) { row++; x = 28; }
+      placed.push({ entry, x, row });
+      x += span + LEGEND_GAP;
+    }
+  }
+  const h = rule + 65 + Math.max(row, 0) * LEGEND_ROW;
+  const drawn = placed.map(({ entry, x, row: r }) => entry.draw(x, rule + 33 + r * LEGEND_ROW) + text(x + entry.swatch, rule + 33 + r * LEGEND_ROW, [entry.label], "start", 12)).join("");
   const heading = `${text(28, 34, [title], "start", 21, "bold")}${text(28, 59, [subtitle], "start", 14)}`;
   return {
     width: w, height: h,
-    svg: `${open(0, h)}<rect width="100%" height="100%" fill="#fff"/>${heading}${body}<line x1="28" x2="${w - 28}" y1="${rule}" y2="${rule}" stroke="#dde1e5"/>${legend}</svg>`,
-    canvas: { width: w, height: rule, svg: `${open(0, rule)}<rect width="100%" height="100%" fill="#fff"/>${heading}${body}</svg>` },
-    legend: { width: w, height: h - rule, svg: `${open(rule, h - rule)}${legend}</svg>` },
+    svg: `${svgOpen(w, h)}<rect width="100%" height="100%" fill="#fff"/>${heading}${body}<line x1="28" x2="${w - 28}" y1="${rule}" y2="${rule}" stroke="#dde1e5"/>${drawn}</svg>`,
+    canvas: { width: w, height: rule, svg: `${svgOpen(w, rule)}<rect width="100%" height="100%" fill="#fff"/>${heading}${body}</svg>` },
+    legend: groups.map((g) => g.map(legendPart)),
   };
 }
 function flowPath(edge: ElkExtendedEdge, kind: "flow" | "update"): string {
@@ -159,20 +174,12 @@ const drillAttrs = (d: Drill, of: string, primary: boolean): string =>
 function drillPill(right: number, cy: number, d: Drill, of: string, primary: boolean): string {
   return `<g ${drillAttrs(d, of, primary)}><title>Open ${esc(DRILL_STYLE[d.kind].label)}</title>${drillShape(right - drillWidth(d.kind), cy - DRILL_HEIGHT / 2, d.kind)}</g>`;
 }
-interface LegendEntry { readonly swatch: number; readonly label: string; readonly draw: (x: number, base: number) => string }
 const drillLegend = (kind: DrillKind): LegendEntry => ({ swatch: drillWidth(kind) + 8, label: DRILL_STYLE[kind].legend, draw: (x, base) => drillShape(x, base - 15, kind) });
 const linkLegend = (sample: string, label: string): LegendEntry => ({
   swatch: sizedWidth(sample, 13) + 10, label,
   draw: (x, base) => `<text x="${x}" y="${base}" font-size="13" fill="${CONTRACT}" text-decoration="underline">${esc(sample)}</text>`,
 });
 const typeLinkLegend = linkLegend("Type", "underlined type · opens it in the type diagram");
-/** 图例一行排一组项；rows 行里第 r 行的基线在 height - 32 - (rows - 1 - r) * LEGEND_ROW。 */
-function legendRow(entries: readonly LegendEntry[], base: number): string {
-  let x = 28, svg = "";
-  for (const e of entries) { svg += e.draw(x, base) + text(x + e.swatch, base, [e.label], "start", 12); x += e.swatch + sizedWidth(e.label, 12) + 34; }
-  return svg;
-}
-const legendRowWidth = (entries: readonly LegendEntry[]): number => entries.reduce((w, e) => w + e.swatch + sizedWidth(e.label, 12) + 34, 28);
 
 /** 文字里出现的名字（类型、契约模块、端口）画成带下划线的下钻链接；links 给出一个名字的去处，不是链接时为 null。 */
 function linkedText(x: number, y: number, lines: readonly string[], anchor: "start" | "end", size: number, links: (name: string) => Drill | null, of: string, weight: "normal" | "bold" = "normal", fill = INK): string {
@@ -269,16 +276,13 @@ export async function boxSvg(diagram: BoxDiagram, drills: BoxDrills): Promise<Di
   });
   if (diagram.ports.length === 0) body += text(box.x + boxWidth / 2, box.y + 44, ["No exported operations / functions"], "middle");
   body += pills + "</g>";
-  // 图例三行：盒子的画法、下钻标注、证明义务的状态色。
   const shapes: LegendEntry[] = [
     { swatch: 20, label: "Port · exported operation / function", draw: (x, base) => `<circle cx="${x + 7}" cy="${base - 5}" r="4" fill="${CONTRACT}"/>` },
     { swatch: 50, label: "Wire · parameter / result type", draw: (x, base) => `<path d="M${x},${base - 5} h38" stroke="${MUTED}" marker-end="url(#arrow)"/>` },
     { swatch: 42, label: "Feedback · state", draw: (x, base) => `<path d="M${x},${base} v-14 h30 v14" fill="none" stroke="${MUTED}" marker-end="url(#arrow)"/>` },
   ];
   const opens = [drillLegend("promises"), ...(drills.access !== null ? [drillLegend("access")] : []), typeLinkLegend];
-  const height = top + laid.height + 110 + 2 * LEGEND_ROW;
-  const legend = legendRow(shapes, height - 32 - 2 * LEGEND_ROW) + legendRow(opens, height - 32 - LEGEND_ROW) + poLegend(28, height - 32);
-  return frame(`Contract box · ${diagram.module}`, diagram.element, Math.max(laid.width + 56, legendRowWidth(opens)), height, body, legend, 3);
+  return frame(`Contract box · ${diagram.module}`, diagram.element, laid.width + 56, top + laid.height + 45, body, [shapes, opens, poLegend]);
 }
 
 const CARD_WIDTH = 760, CARD_HEAD = 36, CARD_GAP = 16;
@@ -322,19 +326,12 @@ export function promisesSvg(diagram: BoxDiagram): DiagramSvg {
     y += h + CARD_GAP;
   }
   if (cards.length === 0) body += text(16, 24, ["No exported operations / functions and no state"], "start", 13, "normal", MUTED);
-  const height = 95 + Math.max(y, 40) + 100;
-  return frame(`Promises · ${diagram.module}`, `${diagram.element} · what each port promises (pre / post) and what the state always keeps (inv)`, CARD_WIDTH + 56, height, `<g transform="translate(28,95)">${body}</g>`, poLegend(28, height - 32));
+  return frame(`Promises · ${diagram.module}`, `${diagram.element} · what each port promises (pre / post) and what the state always keeps (inv)`, CARD_WIDTH + 56, 95 + Math.max(y, 40) + 35, `<g transform="translate(28,95)">${body}</g>`, [poLegend]);
 }
-/** 证明义务状态色的图例：每种状态一个色点。 */
-const PO_LEGEND = "Proof obligation:";
-function poLegend(x: number, y: number): string {
-  let svg = text(x, y, [PO_LEGEND], "start", 12), at = x + sizedWidth(PO_LEGEND, 12);
-  for (const s of PO_ORDER) {
-    svg += `<circle cx="${at + 5}" cy="${y - 4}" r="5" fill="${PO_STYLE[s].color}"/>` + text(at + 16, y, [PO_STYLE[s].name], "start", 12);
-    at += 16 + sizedWidth(PO_STYLE[s].name, 12) + 14;
-  }
-  return svg;
-}
+const poLegend: readonly LegendEntry[] = [
+  { swatch: 0, label: "Proof obligation:", draw: () => "" },
+  ...PO_ORDER.map((s): LegendEntry => ({ swatch: 16, label: PO_STYLE[s].name, draw: (x, base) => `<circle cx="${x + 5}" cy="${base - 4}" r="5" fill="${PO_STYLE[s].color}"/>` })),
+];
 
 type StepCall = { readonly kind: "call" | "read"; readonly contract: string; readonly operations: readonly string[] };
 
@@ -431,7 +428,6 @@ export async function compositionSvg(diagram: CompositionDiagram, drills: Compos
   }
   if (children.length === 0) body += text(20, 30, ["No steps or wires"]);
   body += "</g>";
-  const height = Math.max(laid.height + 210, 330) + LEGEND_ROW;
   const shapes: LegendEntry[] = [
     { swatch: 30, label: "Step · action in step", draw: (x, base) => `<rect x="${x}" y="${base - 14}" width="20" height="16" rx="4" fill="#eef4fa" stroke="${BEHAVIOR}"/>` },
     { swatch: 36, label: "Wire · var : type", draw: (x, base) => `<rect x="${x}" y="${base - 14}" width="26" height="16" rx="8" fill="#fff" stroke="${MUTED}"/>` },
@@ -444,11 +440,10 @@ export async function compositionSvg(diagram: CompositionDiagram, drills: Compos
     { swatch: sizedWidth("reads box", 12) + 10, label: "the step reads a box's feedback", draw: (x, base) => text(x, base, ["reads box"], "start", 12, "normal", CONTRACT) },
     linkLegend("box", "opens the contract box"), linkLegend("port", "opens the port's promises"), drillLegend("properties"),
   ];
-  const width = Math.max(laid.width + 56, 1240, legendRowWidth(opens));
+  const width = Math.max(laid.width + 56, 1240);
   // 性质图的标注在标题行右端，属于整张图。
   body += drillPill(width - 28, 30, { kind: "properties", diagram: drills.properties, node: null }, `wiring:${diagram.module}`, false);
-  const legend = legendRow(shapes, height - 32 - LEGEND_ROW) + legendRow(opens, height - 32);
-  return frame(`Composition · ${diagram.module}`, "Steps as boxes, behavior variables as wires; contract calls and reads listed in the step that makes them", width, height, body, legend, 2);
+  return frame(`Composition · ${diagram.module}`, "Steps as boxes, behavior variables as wires; contract calls and reads listed in the step that makes them", width, Math.max(laid.height + 210, 330) - 65, body, [shapes, opens]);
 }
 
 const WIRING_CARD_HEAD = 40;
@@ -481,8 +476,7 @@ export function wiringsSvg(wirings: readonly WiringSummary[], boxes: ReadonlySet
     y += h + CARD_GAP;
   }
   const opens = [drillLegend("wiring"), drillLegend("properties"), linkLegend("box", "opens the contract box")];
-  const height = 95 + Math.max(y, 40) + 100;
-  return frame("Wirings", "Each wiring diagram (one Quint module) is drawn around one concern and wires contract boxes together", Math.max(CARD_WIDTH + 56, legendRowWidth(opens)), height, `<g transform="translate(28,95)">${body}</g>`, legendRow(opens, height - 32));
+  return frame("Wirings", "Each wiring diagram (one Quint module) is drawn around one concern and wires contract boxes together", CARD_WIDTH + 56, 95 + Math.max(y, 40) + 35, `<g transform="translate(28,95)">${body}</g>`, [opens]);
 }
 
 /** 性质图里一张卡片的正文：注释（需求编号）与等宽的原文。 */
@@ -514,12 +508,11 @@ export function propertiesSvg(diagram: PropertiesDiagram): DiagramSvg {
     y += h + CARD_GAP;
   }
   if (cards.length === 0) body += text(16, 24, ["No safety and no coverage targets"], "start", 13, "normal", MUTED);
-  const height = 95 + Math.max(y, 40) + 100;
   const legend: LegendEntry[] = [
     { swatch: 30, label: "safety and its conjuncts · must hold on every simulated state", draw: (x, base) => `<rect x="${x}" y="${base - 14}" width="20" height="16" rx="4" fill="#eef4fa" stroke="${BEHAVIOR}"/>` },
     { swatch: 30, label: "coverage target · a directed simulation must reach it", draw: (x, base) => `<rect x="${x}" y="${base - 14}" width="20" height="16" rx="4" fill="#eef7f1" stroke="${BEHAVIOR}"/>` },
   ];
-  return frame(`Properties · ${diagram.module}`, "What the wiring must keep and the situations it must reach; ssot check reports the simulation results", Math.max(CARD_WIDTH + 56, legendRowWidth(legend)), height, `<g transform="translate(28,95)">${body}</g>`, legendRow(legend, height - 32));
+  return frame(`Properties · ${diagram.module}`, "What the wiring must keep and the situations it must reach; ssot check reports the simulation results", CARD_WIDTH + 56, 95 + Math.max(y, 40) + 35, `<g transform="translate(28,95)">${body}</g>`, [legend]);
 }
 
 const C4_STYLE: Readonly<Record<C4NodeKind, { readonly notation: string; readonly fill: string; readonly stroke: string; readonly ink: string; readonly sub: string }>> = {
@@ -938,9 +931,7 @@ export async function c4Svg(diagram: C4Diagram, drills: ReadonlyMap<string, Dril
   }
   const area = extent([...ids.map(box), ...frameHeaders.map((h) => h.rect), ...labelBoxes.filter((r): r is Rect => r !== null)], routes);
 
-  // 图例：一项是一个色块或图标加说明，排不下时换行。draw 的 base 是这一项文字的基线。
-  type LegendItem = { readonly swatch: number; readonly label: string; readonly draw: (x: number, base: number) => string };
-  const items: LegendItem[] = [];
+  const items: LegendEntry[] = [];
   const kinds = [...new Set(leaves.map((n) => n.kind))];
   const kindGlyph = new Map(leafIcons.filter(({ icon }) => icon.source === "kind").map(({ node, icon }) => [node.kind, icon.url]));
   for (const kind of kinds) {
@@ -964,21 +955,7 @@ export async function c4Svg(diagram: C4Diagram, drills: ReadonlyMap<string, Dril
   items.push({ swatch: 30, label: "Call · initiator → callee", draw: (x, base) => `<path d="M${x},${base - 5} h22" stroke="#5d6b78" stroke-width="1.6" stroke-dasharray="5 3" marker-end="url(#arrow)"/>` });
   const drillKinds = new Set([...drills.values()].map((d) => d.kind));
   for (const kind of ["view", "box"] as const) if (drillKinds.has(kind)) items.push(drillLegend(kind));
-  const width = Math.max(area.width + 56, 860);
-  const placedItems: { readonly item: LegendItem; readonly x: number; readonly row: number }[] = [];
-  let legendX = 28, row = 0;
-  for (const item of items) {
-    const span = item.swatch + sizedWidth(item.label, 12);
-    if (legendX > 28 && legendX + span > width - 28) { row++; legendX = 28; }
-    placedItems.push({ item, x: legendX, row });
-    legendX += span + 34;
-  }
-  const rows = row + 1, height = area.height + 95 + 110 + (rows - 1) * LEGEND_ROW;
-  const legend = placedItems.map(({ item, x, row: r }) => {
-    const base = height - 32 - (rows - 1 - r) * LEGEND_ROW;
-    return item.draw(x, base) + text(x + item.swatch, base, [item.label], "start", 12);
-  }).join("");
-  return frame(diagram.title, diagram.description, width, height, `<g transform="translate(${28 - area.x},${95 - area.y})">${frames}${edges}${headers}${nodes}${labels}${pills}</g>`, legend, rows);
+  return frame(diagram.title, diagram.description, area.width + 56, area.height + 140, `<g transform="translate(${28 - area.x},${95 - area.y})">${frames}${edges}${headers}${nodes}${labels}${pills}</g>`, [items]);
 }
 
 const TIER_STYLE: Readonly<Record<LayerTier, { readonly name: string; readonly band: string; readonly fill: string; readonly stroke: string }>> = {
@@ -1040,20 +1017,12 @@ export async function layersSvg(diagram: LayersDiagram, drills: ReadonlyMap<stri
     if (d !== undefined) labels += drillPill(r.x + r.width - 10, r.y, d, m.module, true);
   }
   if (diagram.modules.length === 0) nodes += text(20, 30, ["No contract modules"]);
-  const height2 = area.y + area.height + 20 + 95 + 110;
-  let legendX = 28, legend = "";
-  for (const tier of TIER_ORDER) {
-    legend += `<rect x="${legendX}" y="${height2 - 45}" width="22" height="16" rx="3" fill="${TIER_STYLE[tier].fill}" stroke="${TIER_STYLE[tier].stroke}"/>` + text(legendX + 30, height2 - 32, [TIER_STYLE[tier].name], "start", 12);
-    legendX += 30 + sizedWidth(TIER_STYLE[tier].name, 12) + 34;
-  }
-  legend += `<path d="M${legendX},${height2 - 37} h22" stroke="#5d6b78" stroke-width="1.6" marker-end="url(#arrow)"/>` + text(legendX + 30, height2 - 32, ["Import · importer → imported, names imported"], "start", 12);
-  legendX += 30 + sizedWidth("Import · importer → imported, names imported", 12) + 34;
-  if (drills.size > 0) {
-    const e = drillLegend("box");
-    legend += e.draw(legendX, height2 - 32) + text(legendX + e.swatch, height2 - 32, [e.label], "start", 12);
-    legendX += e.swatch + sizedWidth(e.label, 12) + 28;
-  }
-  return frame("Contract layers", "Who imports whose definitions: imported modules sit lower; business above architecture; data stores deepest", Math.max(totalWidth + 56, legendX), height2, `<g transform="translate(28,95)">${bands}${edges}${nodes}${labels}</g>`, legend);
+  const legend: LegendEntry[] = [
+    ...TIER_ORDER.map((tier): LegendEntry => ({ swatch: 30, label: TIER_STYLE[tier].name, draw: (x, base) => `<rect x="${x}" y="${base - 13}" width="22" height="16" rx="3" fill="${TIER_STYLE[tier].fill}" stroke="${TIER_STYLE[tier].stroke}"/>` })),
+    { swatch: 30, label: "Import · importer → imported, names imported", draw: (x, base) => `<path d="M${x},${base - 5} h22" stroke="#5d6b78" stroke-width="1.6" marker-end="url(#arrow)"/>` },
+    ...(drills.size > 0 ? [drillLegend("box")] : []),
+  ];
+  return frame("Contract layers", "Who imports whose definitions: imported modules sit lower; business above architecture; data stores deepest", totalWidth + 56, area.y + area.height + 160, `<g transform="translate(28,95)">${bands}${edges}${nodes}${labels}</g>`, [legend]);
 }
 
 type TypeRole = "own" | "state" | "imported";
@@ -1136,17 +1105,11 @@ export async function typesSvg(diagram: TypesDiagram): Promise<DiagramSvg> {
     nodes += "</g>";
   }
   if (boxes.length === 0) nodes += text(20, 30, ["No types or state in this module"]);
-  // 图例两行：第一行是框与箭头，第二行是证明义务的状态色。
-  const height = area.y + area.height + 95 + 110 + 20 + LEGEND_ROW, row = height - 32 - LEGEND_ROW;
-  let legendX = 28, legend = "";
-  for (const role of ["own", "state", "imported"] as const) {
-    const style = TYPE_STYLE[role];
-    legend += `<rect x="${legendX}" y="${row - 13}" width="22" height="16" rx="3" fill="${style.fill}" stroke="${style.stroke}"${style.dash}/>` + text(legendX + 30, row, [style.name], "start", 12);
-    legendX += 30 + sizedWidth(style.name, 12) + 30;
-  }
-  legend += `<path d="M${legendX},${row - 5} h22" stroke="#5d6b78" stroke-width="1.6" marker-end="url(#arrow)"/>` + text(legendX + 30, row, ["Uses · via fields"], "start", 12);
-  legend += poLegend(28, height - 32);
-  return frame(title, `${diagram.element} · each box is a type with its structure; arrows point at the types it uses`, area.x + area.width + 20 + 56, height, `<g transform="translate(28,95)">${edges}${nodes}${labels}</g>`, legend, 2);
+  const shapes: LegendEntry[] = [
+    ...(["own", "state", "imported"] as const).map((role): LegendEntry => ({ swatch: 30, label: TYPE_STYLE[role].name, draw: (x, base) => `<rect x="${x}" y="${base - 13}" width="22" height="16" rx="3" fill="${TYPE_STYLE[role].fill}" stroke="${TYPE_STYLE[role].stroke}"${TYPE_STYLE[role].dash}/>` })),
+    { swatch: 30, label: "Uses · via fields", draw: (x, base) => `<path d="M${x},${base - 5} h22" stroke="#5d6b78" stroke-width="1.6" marker-end="url(#arrow)"/>` },
+  ];
+  return frame(title, `${diagram.element} · each box is a type with its structure; arrows point at the types it uses`, area.x + area.width + 20 + 56, area.y + area.height + 160, `<g transform="translate(28,95)">${edges}${nodes}${labels}</g>`, [shapes, poLegend]);
 }
 
 const ACCESS_STYLE: Readonly<Record<Access, { readonly fill: string; readonly ink: string; readonly text: string; readonly name: string }>> = {
@@ -1183,14 +1146,8 @@ export function accessSvg(table: AccessTable): DiagramSvg {
   for (let r = 1; r < table.rows.length; r++) body += `<line x1="0" x2="${gridWidth}" y1="${ACCESS_HEAD + r * ACCESS_ROW}" y2="${ACCESS_HEAD + r * ACCESS_ROW}" stroke="#edf0f3"/>`;
   for (let i = 0; i < columns.length; i++) body += `<line x1="${x0(i)}" x2="${x0(i)}" y1="0" y2="${gridHeight}" stroke="#e1e5e9"/>`;
   if (table.rows.length === 0) body += text(16, ACCESS_HEAD + 24, ["No operations"], "start", 13, "normal", MUTED);
-  const height = 95 + gridHeight + 100;
-  let legendX = 28, legend = "";
-  for (const cell of ["wr", "rd", "none"] as const) {
-    const style = ACCESS_STYLE[cell];
-    legend += `<rect x="${legendX}" y="${height - 45}" width="22" height="16" rx="3" fill="${style.fill}" stroke="#c9d1d9"/>` + text(legendX + 30, height - 32, [style.name], "start", 12);
-    legendX += 30 + sizedWidth(style.name, 12) + 30;
-  }
-  return frame(`Read / write · ${table.module}`, `${table.element} · which state fields each operation reads or writes`, Math.max(gridWidth, legendX) + 56, height, `<g transform="translate(28,95)">${body}</g>`, legend);
+  const legend = (["wr", "rd", "none"] as const).map((cell): LegendEntry => ({ swatch: 30, label: ACCESS_STYLE[cell].name, draw: (x, base) => `<rect x="${x}" y="${base - 13}" width="22" height="16" rx="3" fill="${ACCESS_STYLE[cell].fill}" stroke="#c9d1d9"/>` }));
+  return frame(`Read / write · ${table.module}`, `${table.element} · which state fields each operation reads or writes`, gridWidth + 56, 95 + gridHeight + 35, `<g transform="translate(28,95)">${body}</g>`, [legend]);
 }
 
 export async function screenshotSvg(browser: Browser, image: DiagramSvg, path: string): Promise<void> {

@@ -70,7 +70,6 @@ export async function verifyHotspotsCommand(): Promise<number> {
     const full = await runHotspots([repo, "--top", "5"]);
     assert.equal(full.code, 0);
     assert.equal(full.report.kind, "ok");
-    if (full.report.kind !== "ok") throw new Error(full.report.message);
     assert.equal(full.report.totalCommits, 4);
     assert.equal(full.report.totalFixCommits, 3);
 
@@ -115,7 +114,6 @@ export async function verifyHotspotsCommand(): Promise<number> {
     const scoped = await runHotspots([join(repo, "src", "catalog")]);
     assert.equal(scoped.code, 0);
     assert.equal(scoped.report.kind, "ok");
-    if (scoped.report.kind !== "ok") throw new Error(scoped.report.message);
     assert.equal(scoped.report.scope, "src/catalog");
     assert.deepEqual(scoped.report.files.map((f) => f.file), ["src/catalog/products.ts"]);
 

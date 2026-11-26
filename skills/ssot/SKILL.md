@@ -164,7 +164,11 @@ Quint 接线（手写）──回放──▶ 只回放轨迹里出现的契约�
 
 ## 九、评审者、准入勘探员与热点溯源员
 
-`agents/` 下有三个预置定义。用时把它原样拷进当前会话所在项目的 `.omp/agents/`（omp 从会话工作目录向上找最近的 `.omp/agents/`），用 `task` 派发（不用 `fork_task`：它会把你的上下文带过去），用完删掉拷入的文件：
+`agents/` 下有三个预置定义，用的是 omp 的代理格式。用时把它原样拷进当前会话所在项目的 `.omp/agents/`（omp 从会话工作目录向上找最近的 `.omp/agents/`），用 `task` 派发（不用 `fork_task`：它会把你的上下文带过去），用完删掉拷入的文件。
+
+**兼容。** `model` 是 omp 的有序候选列表（`provider/模型:思考档`），omp 取其中第一个本机可用的；一个都不可用时 omp 不报错，改用主会话的模型。本机没有这些 provider 时，在 omp 设置的 `task.agentModelOverrides` 里按代理名指定本机的模型。`tools` 是 omp 的内置工具名：`ssot:reader` 只读（`read`、`grep`、`glob`、`find`），`ssot:hotspot` 与 `ssot:reviewer` 另有 `bash`，前者用它运行 `ssot hotspots`、`git` 与 `gh`，后者用它运行 verify skill「可运行」里的 `ssot` 命令；三者都不再派子代理（`spawns: false`）。其他 harness 不读 `.omp/agents/`：在那里用它自己的隔离子代理承载，以定义正文为任务说明，只授予对应的工具（Claude Code 里是 `Read`、`Grep`、`Glob`，`ssot:hotspot` 与 `ssot:reviewer` 再加 `Bash`）。
+
+三个代理：
 
 - **`ssot:reviewer`**：没看过设计的评审者。只交给它要执行的 verify skill 名、`scope` 与评审材料，不给你的推理、草稿或期望的结论：
   - 结构：`ssot render` 列出的 C4 图片路径与顺序，不给设计目录、诊断或需求；

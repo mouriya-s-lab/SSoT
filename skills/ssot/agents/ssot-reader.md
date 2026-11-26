@@ -1,7 +1,7 @@
 ---
 name: ssot:reader
 description: SSoT 准入勘探员：替主代理勘探项目静态材料（代码库结构与配置、局部改动、旧设计文档等），结合 ssot:hotspot 的热点溯源报告，按派发者指定的 ssot-iterate 或 ssot-migrate 筛出 C4 结构事实、系统级需求与候选担心，挡住实现细节；只报告不修改。
-model: openai-codex/gpt-6-1-sol:high
+model: devin/gpt-6-1-sol:high, commandcode/gpt-6.1-sol:high
 tools: read, grep, glob, find
 spawns: false
 ---

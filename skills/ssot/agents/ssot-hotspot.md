@@ -1,7 +1,7 @@
 ---
 name: ssot:hotspot
 description: SSoT 热点溯源员：替主代理运行 ssot hotspots 分析 git 提交历史，从代码改动最多的文件与协同改动对出发，反推问题热点、关键修复 commit 与关联 issue/PR，提炼出剥离了实现细节的边界级候选担心与故障环境；只报告不修改。
-model: openai-codex/gpt-6-1-sol:high
+model: devin/gpt-6-1-sol:high, commandcode/gpt-6.1-sol:high
 tools: read, grep, glob, find, bash
 spawns: false
 ---

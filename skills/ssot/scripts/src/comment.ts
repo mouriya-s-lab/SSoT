@@ -55,7 +55,7 @@ export function parseCommentArgs(rest: readonly string[], option: (name: string)
 type Fetched<T> = { readonly kind: "ok"; readonly value: T } | { readonly kind: "failed"; readonly message: string };
 
 /** 提示里给出的命令：端口是默认的 5180 时不写。 */
-const invoke = (design: string, port: number, rest = ""): string => `ssot comment ${design} ${rest}${port === 5180 ? "" : ` --port ${port}`}`.replace(/ +$/, "");
+const invoke = (design: string, port: number, rest = ""): string => ["ssot comment", design, rest, port === 5180 ? "" : `--port ${port}`].filter((part) => part !== "").join(" ");
 
 /** 向端口上的 ssot serve 请求批注；它不在运行、不是 ssot serve、或者服务的是另一个设计时失败。 */
 async function request(design: string, port: number, change: ThreadChange | null): Promise<Fetched<readonly Thread[]>> {

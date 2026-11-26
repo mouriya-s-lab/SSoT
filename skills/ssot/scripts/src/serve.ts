@@ -57,6 +57,7 @@ export async function serve(design: string, structure: string, port: number): Pr
 
   // 构建在进行中又有文件改动时，只记下“还要再建一次”，当前这次结束后接着建；不并发构建。
   let running = false, again = false;
+  const firstBuild = Promise.withResolvers<void>();
   const rebuild = async (): Promise<void> => {
     if (running) { again = true; return; }
     running = true;
@@ -77,6 +78,7 @@ export async function serve(design: string, structure: string, port: number): Pr
         console.error(published.diagnostics[0]);
       }
       announce();
+      firstBuild.resolve();
     } while (again);
     running = false;
   };
@@ -100,6 +102,7 @@ export async function serve(design: string, structure: string, port: number): Pr
         case "/":
           return new Response(Bun.file(PAGE), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
         case "/api/site":
+          await firstBuild.promise;
           return Response.json({ version: published.version, building: published.building, failed: published.failed, diagnostics: published.diagnostics, diagrams: published.diagrams });
         case "/api/threads": {
           if (request.method !== "POST") return Response.json({ design, threads });

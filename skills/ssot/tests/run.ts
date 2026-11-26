@@ -21,6 +21,7 @@ import { verifyRenderProjections } from "./cases/render";
 import { verifyEvalCommand } from "./cases/eval";
 import { verifyHotspotsCommand } from "./cases/hotspots";
 import { verifyReview } from "./cases/review";
+import { verifyServeComment } from "./cases/serve";
 
 const HERE = import.meta.dir;
 const SSOT = join(HERE, "..", "scripts", "ssot.ts");
@@ -131,6 +132,13 @@ const tasks: { readonly id: string; readonly run: () => Promise<Outcome> }[] = [
     run: async (): Promise<Outcome> => {
       const checks = verifyReview();
       return { id: "review-threads", expect: "-", ok: true, line: `${checks} 项批注的开、回复、解决、请求体解析与落盘断言通过` };
+    },
+  },
+  {
+    id: "serve-comment",
+    run: async (): Promise<Outcome> => {
+      const checks = await verifyServeComment();
+      return { id: "serve-comment", expect: "-", ok: true, line: `${checks} 项 ssot serve 首次构建、watch 唤醒、agent 动作不唤醒、重画与 stale 标记断言通过` };
     },
   },
   {
